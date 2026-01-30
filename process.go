@@ -22,6 +22,9 @@ type Process struct {
 	// WorkDir is the isolated workspace directory
 	WorkDir string
 
+	// Project is the container project name for isolated execution
+	Project string
+
 	// StartedAt is when the process was spawned
 	StartedAt time.Time
 

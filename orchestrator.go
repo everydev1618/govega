@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/martellcode/vega/container"
 )
 
 // Orchestrator manages multiple processes.
@@ -24,6 +25,10 @@ type Orchestrator struct {
 
 	// Rate limiting
 	rateLimits map[string]*rateLimiter
+
+	// Container management
+	containerManager  *container.Manager
+	containerRegistry *container.ProjectRegistry
 
 	// Lifecycle callbacks
 	onComplete []func(*Process, string)
@@ -134,6 +139,20 @@ func WithRateLimits(limits map[string]RateLimitConfig) OrchestratorOption {
 	}
 }
 
+// WithContainerManager enables container-based project isolation.
+// If baseDir is provided, a ProjectRegistry will also be created.
+func WithContainerManager(cm *container.Manager, baseDir string) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.containerManager = cm
+		if baseDir != "" && cm != nil {
+			registry, err := container.NewProjectRegistry(baseDir, cm)
+			if err == nil {
+				o.containerRegistry = registry
+			}
+		}
+	}
+}
+
 // RateLimitConfig configures rate limiting for a model.
 type RateLimitConfig struct {
 	RequestsPerMinute int
@@ -201,6 +220,13 @@ func WithMaxIterations(n int) SpawnOption {
 func WithProcessContext(ctx context.Context) SpawnOption {
 	return func(p *Process) {
 		p.ctx, p.cancel = context.WithCancel(ctx)
+	}
+}
+
+// WithProject sets the container project for isolated execution.
+func WithProject(name string) SpawnOption {
+	return func(p *Process) {
+		p.Project = name
 	}
 }
 
@@ -314,6 +340,11 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 		o.eventPoller.Stop()
 	}
 
+	// Close container manager
+	if o.containerManager != nil {
+		o.containerManager.Close()
+	}
+
 	// Cancel all processes
 	o.cancel()
 
@@ -334,6 +365,16 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// GetContainerManager returns the container manager, if configured.
+func (o *Orchestrator) GetContainerManager() *container.Manager {
+	return o.containerManager
+}
+
+// GetProjectRegistry returns the project registry, if configured.
+func (o *Orchestrator) GetProjectRegistry() *container.ProjectRegistry {
+	return o.containerRegistry
 }
 
 // OnHealthAlert registers a callback for health alerts.

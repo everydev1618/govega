@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/martellcode/vega/container"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,7 +20,15 @@ type Tools struct {
 	middleware []ToolMiddleware
 	sandbox    string
 	mcpClients []*mcpClientEntry // MCP server clients
+	container  *containerState   // Container routing state
 	mu         sync.RWMutex
+}
+
+// containerState holds container routing configuration.
+type containerState struct {
+	manager     *container.Manager
+	project     string
+	routedTools map[string]bool
 }
 
 // tool is an internal representation of a registered tool.
@@ -76,6 +85,32 @@ func WithSandbox(path string) ToolsOption {
 	}
 }
 
+// WithContainer enables container-based tool execution.
+func WithContainer(cm *container.Manager) ToolsOption {
+	return func(t *Tools) {
+		if t.container == nil {
+			t.container = &containerState{
+				routedTools: make(map[string]bool),
+			}
+		}
+		t.container.manager = cm
+	}
+}
+
+// WithContainerRouting specifies which tools should be routed to containers.
+func WithContainerRouting(tools ...string) ToolsOption {
+	return func(t *Tools) {
+		if t.container == nil {
+			t.container = &containerState{
+				routedTools: make(map[string]bool),
+			}
+		}
+		for _, name := range tools {
+			t.container.routedTools[name] = true
+		}
+	}
+}
+
 // Register adds a tool to the collection.
 // The function can be:
 // - func(params) string
@@ -113,16 +148,43 @@ func (t *Tools) Use(mw ToolMiddleware) {
 	t.middleware = append(t.middleware, mw)
 }
 
+// SetProject sets the active project for container routing.
+func (t *Tools) SetProject(name string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.container == nil {
+		t.container = &containerState{
+			routedTools: make(map[string]bool),
+		}
+	}
+	t.container.project = name
+}
+
+// ContainerAvailable returns whether container execution is available.
+func (t *Tools) ContainerAvailable() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.container != nil && t.container.manager != nil && t.container.manager.IsAvailable()
+}
+
 // Execute calls a tool by name.
 func (t *Tools) Execute(ctx context.Context, name string, params map[string]any) (string, error) {
 	t.mu.RLock()
 	tl, ok := t.tools[name]
 	middleware := t.middleware
 	sandbox := t.sandbox
+	containerState := t.container
 	t.mu.RUnlock()
 
 	if !ok {
 		return "", &ToolError{ToolName: name, Err: ErrToolNotFound}
+	}
+
+	// Check if this tool should be routed to container
+	if containerState != nil && containerState.manager != nil &&
+		containerState.manager.IsAvailable() && containerState.project != "" &&
+		containerState.routedTools[name] {
+		return t.executeInContainer(ctx, name, params, containerState)
 	}
 
 	// Apply sandbox rewriting if needed
@@ -148,6 +210,55 @@ func (t *Tools) Execute(ctx context.Context, name string, params map[string]any)
 	return result, nil
 }
 
+// executeInContainer runs a tool in the project container.
+func (t *Tools) executeInContainer(ctx context.Context, name string, params map[string]any, cs *containerState) (string, error) {
+	// Build command from tool name and params
+	// For now, support exec-style tools by converting params to command args
+	command, ok := params["command"].(string)
+	if !ok {
+		// Try to get a command array
+		if cmdArr, ok := params["command"].([]any); ok {
+			cmdParts := make([]string, len(cmdArr))
+			for i, c := range cmdArr {
+				cmdParts[i] = fmt.Sprint(c)
+			}
+			command = strings.Join(cmdParts, " ")
+		}
+	}
+
+	if command == "" {
+		return "", fmt.Errorf("container routing requires 'command' parameter")
+	}
+
+	// Parse command into parts
+	cmdParts := strings.Fields(command)
+	if len(cmdParts) == 0 {
+		return "", fmt.Errorf("empty command")
+	}
+
+	workDir, _ := params["work_dir"].(string)
+
+	result, err := cs.manager.Exec(ctx, cs.project, cmdParts, workDir)
+	if err != nil {
+		return "", err
+	}
+
+	// Combine stdout and stderr
+	output := result.Stdout
+	if result.Stderr != "" {
+		if output != "" {
+			output += "\n"
+		}
+		output += result.Stderr
+	}
+
+	if result.ExitCode != 0 {
+		return output, fmt.Errorf("command exited with code %d", result.ExitCode)
+	}
+
+	return output, nil
+}
+
 // Schema returns the schemas for all tools.
 func (t *Tools) Schema() []ToolSchema {
 	t.mu.RLock()
@@ -169,6 +280,7 @@ func (t *Tools) Filter(names ...string) *Tools {
 		tools:      make(map[string]*tool),
 		middleware: t.middleware,
 		sandbox:    t.sandbox,
+		container:  t.container,
 	}
 
 	nameSet := make(map[string]bool)
