@@ -1,0 +1,83 @@
+# MCP Server Integration Demo
+# This example shows how to connect to MCP servers and use their tools.
+#
+# Prerequisites:
+# - Node.js/npx installed
+# - GITHUB_TOKEN environment variable set (for GitHub server)
+#
+# Run with:
+#   vega run examples/mcp-demo.vega.yaml --workflow file-analysis --task "./src"
+
+name: MCP Demo
+
+settings:
+  default_model: claude-sonnet-4-20250514
+
+  mcp:
+    servers:
+      # Filesystem server - provides file operations
+      - name: filesystem
+        transport: stdio
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+        timeout: 30s
+
+      # Memory server - provides key-value storage
+      - name: memory
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-memory"]
+
+agents:
+  analyzer:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a code analyzer. You can read files from the filesystem
+      and store analysis results in memory for later retrieval.
+
+      When analyzing code:
+      1. Read the relevant files
+      2. Identify patterns, issues, and suggestions
+      3. Store key findings in memory
+      4. Provide a summary
+    tools:
+      - filesystem__read_file
+      - filesystem__list_directory
+      - memory__store
+      - memory__retrieve
+
+  reporter:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a technical report writer. You retrieve analysis results
+      from memory and create clear, actionable reports.
+    tools:
+      - memory__retrieve
+
+workflows:
+  file-analysis:
+    description: Analyze files in a directory and generate a report
+    inputs:
+      path:
+        type: string
+        required: true
+        description: Path to analyze
+    steps:
+      - analyzer:
+          send: |
+            Analyze the code in {{path}}:
+            1. List all files in the directory
+            2. Read each code file
+            3. Store key findings in memory with keys like "finding_1", "finding_2"
+            4. Summarize what you found
+          save: analysis
+          timeout: 2m
+
+      - reporter:
+          send: |
+            Create a report from the analysis findings stored in memory.
+            Retrieve the findings and format them as a clear technical report.
+          save: report
+
+    output:
+      analysis: "{{analysis}}"
+      report: "{{report}}"

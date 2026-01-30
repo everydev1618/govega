@@ -1,0 +1,39 @@
+# Binaries
+tonycto
+tron
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Go build/coverage
+*.out
+coverage.html
+coverage.txt
+
+# Dependency directories
+vendor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-*
+
+# Environment
+.env
+.env.*
+
+# Local testing
+tmp/
+.cache/

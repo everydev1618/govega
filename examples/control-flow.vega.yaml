@@ -1,0 +1,197 @@
+# Control Flow Example
+# Demonstrates conditionals, loops, and other control structures.
+
+name: Control Flow Demo
+description: Demonstrates DSL control flow features
+
+agents:
+  processor:
+    model: claude-sonnet-4-20250514
+    system: You are a data processor. Process inputs as requested.
+
+  validator:
+    model: claude-sonnet-4-20250514
+    system: You validate data and return "valid" or "invalid" with a reason.
+
+  formatter:
+    model: claude-sonnet-4-20250514
+    system: You format output into clean, readable text.
+
+workflows:
+  # Conditional workflow
+  conditional-process:
+    description: Process data differently based on type
+    inputs:
+      data:
+        type: string
+        required: true
+      type:
+        type: string
+        enum: [text, json, csv]
+        default: text
+
+    steps:
+      # Conditional based on input type
+      - if: "{{type}} == 'json'"
+        then:
+          - processor:
+              send: "Parse and format this JSON: {{data}}"
+              save: result
+        else:
+          - if: "{{type}} == 'csv'"
+            then:
+              - processor:
+                  send: "Parse and format this CSV: {{data}}"
+                  save: result
+            else:
+              - processor:
+                  send: "Process this text: {{data}}"
+                  save: result
+
+    output: "{{result}}"
+
+  # Loop workflow - process multiple items
+  batch-process:
+    description: Process multiple items in a batch
+    inputs:
+      items:
+        type: array
+        description: Items to process
+        required: true
+
+    steps:
+      - set:
+          results: []
+
+      # For-each loop
+      - for: item in items
+        steps:
+          - processor:
+              send: "Process item: {{item}}"
+              save: item_result
+
+          - set:
+              results: "{{results + [item_result]}}"
+
+      # Format all results
+      - formatter:
+          send: |
+            Format these results nicely:
+            {{results | join:'\n---\n'}}
+          save: formatted
+
+    output: "{{formatted}}"
+
+  # Repeat-until loop
+  iterative-refine:
+    description: Refine output until it meets quality criteria
+    inputs:
+      task:
+        type: string
+        required: true
+      max_iterations:
+        type: number
+        default: 5
+
+    steps:
+      # Initial attempt
+      - processor:
+          send: "{{task}}"
+          save: draft
+
+      # Repeat until valid or max iterations
+      - repeat:
+          max: "{{max_iterations}}"
+          until: "'valid' in validation"
+          steps:
+            - validator:
+                send: |
+                  Validate this output:
+                  {{draft}}
+
+                  Reply with "valid" if acceptable, or "invalid: <reason>" if not.
+                save: validation
+
+            - if: "'invalid' in validation"
+              then:
+                - processor:
+                    send: |
+                      Improve this based on feedback:
+
+                      Current: {{draft}}
+                      Feedback: {{validation}}
+                    save: draft
+
+    output:
+      result: "{{draft}}"
+      validation: "{{validation}}"
+      iterations: "{{loop.count}}"
+
+  # Parallel processing
+  parallel-analysis:
+    description: Analyze data from multiple perspectives simultaneously
+    inputs:
+      content:
+        type: string
+        required: true
+
+    steps:
+      # Run all analyses in parallel
+      - parallel:
+          - processor:
+              send: "Analyze sentiment: {{content}}"
+              save: sentiment
+
+          - processor:
+              send: "Extract key topics: {{content}}"
+              save: topics
+
+          - processor:
+              send: "Summarize in one sentence: {{content}}"
+              save: summary
+
+      # Combine results
+      - formatter:
+          send: |
+            Create a report from these analyses:
+
+            Sentiment: {{sentiment}}
+            Topics: {{topics}}
+            Summary: {{summary}}
+          save: report
+
+    output: "{{report}}"
+
+  # Sub-workflow call
+  validated-process:
+    description: Process with validation (calls other workflows)
+    inputs:
+      data:
+        type: string
+        required: true
+
+    steps:
+      # First validate
+      - validator:
+          send: "Is this valid input? {{data}}"
+          save: check
+
+      # Conditional sub-workflow call
+      - if: "'valid' in check"
+        then:
+          - workflow: conditional-process
+            with:
+              data: "{{data}}"
+              type: text
+            save: result
+        else:
+          - set:
+              result: "Invalid input: {{check}}"
+
+    output: "{{result}}"
+
+# Usage:
+#   vega run control-flow.vega.yaml --workflow conditional-process --input '{"data": "{\"key\": \"value\"}", "type": "json"}'
+#   vega run control-flow.vega.yaml --workflow batch-process --input '{"items": ["item1", "item2", "item3"]}'
+#   vega run control-flow.vega.yaml --workflow iterative-refine --task "Write a haiku about programming"
+#   vega run control-flow.vega.yaml --workflow parallel-analysis --task "AI is transforming software development"

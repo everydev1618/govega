@@ -1,0 +1,18 @@
+# Simple Agent Example
+# This is the simplest possible Vega configuration - a single agent.
+
+name: Simple Agent
+description: A basic chatbot agent
+
+agents:
+  assistant:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a helpful assistant. You answer questions clearly and concisely.
+      Be friendly but professional.
+
+# No workflows defined - just chat with the agent directly
+# Usage:
+#   vega repl simple-agent.vega.yaml
+#   > /ask assistant
+#   > Hello! What can you help me with?

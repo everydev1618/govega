@@ -1,0 +1,162 @@
+# Supervision Demo Example
+# Demonstrates Erlang-style supervision and fault tolerance.
+
+name: Supervision Demo
+description: Demonstrates fault tolerance patterns
+
+settings:
+  default_model: claude-sonnet-4-20250514
+  # Global supervision defaults
+  supervision:
+    strategy: restart
+    max_restarts: 5
+    window: 10m
+
+agents:
+  # A worker that might fail - will be automatically restarted
+  flaky-worker:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a worker that processes tasks.
+      Sometimes tasks are difficult and you might need multiple attempts.
+    supervision:
+      strategy: restart
+      max_restarts: 3
+      window: 5m
+    retry:
+      max_attempts: 3
+      backoff: exponential
+
+  # A critical worker that stops on failure
+  critical-worker:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a worker handling critical operations.
+      Errors should be reported, not retried automatically.
+    supervision:
+      strategy: stop
+
+  # A worker that escalates failures
+  escalating-worker:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a worker that escalates failures to a supervisor.
+    supervision:
+      strategy: escalate
+
+  # The supervisor that handles escalated failures
+  supervisor:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a supervisor agent. When workers fail:
+      - Analyze the failure
+      - Decide on corrective action
+      - Report the incident
+
+      Be decisive and thorough.
+
+workflows:
+  # Workflow demonstrating retry logic
+  resilient-task:
+    description: Process a task with automatic retries
+    inputs:
+      task:
+        type: string
+        description: Task to process
+        required: true
+
+    steps:
+      # Try-catch for explicit error handling
+      - try:
+          - flaky-worker:
+              send: |
+                Process this task:
+                {{task}}
+
+                This task might be challenging. Do your best.
+              save: result
+              timeout: 30s
+              retry: 3
+        catch:
+          - supervisor:
+              send: |
+                A task failed after multiple retries:
+
+                Task: {{task}}
+                Error: {{error}}
+
+                Analyze the failure and suggest next steps.
+              save: analysis
+
+          - set:
+              result: "Task failed. Supervisor analysis: {{analysis}}"
+
+    output: "{{result}}"
+
+  # Workflow with parallel work and supervision
+  parallel-supervised:
+    description: Run multiple tasks in parallel with supervision
+    inputs:
+      tasks:
+        type: array
+        description: List of tasks to process
+        required: true
+
+    steps:
+      - parallel:
+          - flaky-worker:
+              send: "Process task 1: {{tasks[0]}}"
+              save: result1
+              continue_on_error: true
+
+          - flaky-worker:
+              send: "Process task 2: {{tasks[1]}}"
+              save: result2
+              continue_on_error: true
+
+          - flaky-worker:
+              send: "Process task 3: {{tasks[2]}}"
+              save: result3
+              continue_on_error: true
+
+      # Supervisor reviews all results
+      - supervisor:
+          send: |
+            Review these parallel task results:
+
+            Task 1: {{result1 | default:'FAILED'}}
+            Task 2: {{result2 | default:'FAILED'}}
+            Task 3: {{result3 | default:'FAILED'}}
+
+            Summarize the overall status and any failures.
+          save: summary
+
+    output: "{{summary}}"
+
+  # Critical path workflow
+  critical-path:
+    description: Process critical operations (no automatic retry)
+    inputs:
+      operation:
+        type: string
+        description: Critical operation to perform
+        required: true
+
+    steps:
+      - critical-worker:
+          send: |
+            Perform this critical operation carefully:
+
+            {{operation}}
+
+            This operation cannot be retried automatically.
+            Ensure correctness before proceeding.
+          save: result
+          timeout: 60s
+
+    output: "{{result}}"
+
+# Usage:
+#   vega run supervision-demo.vega.yaml --workflow resilient-task --task "Process complex data"
+#   vega run supervision-demo.vega.yaml --workflow parallel-supervised --input '{"tasks": ["task1", "task2", "task3"]}'
+#   vega run supervision-demo.vega.yaml --workflow critical-path --task "Deploy to production"

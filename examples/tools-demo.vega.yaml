@@ -1,0 +1,151 @@
+# Tools Demo Example
+# Demonstrates custom tool definitions and tool usage.
+
+name: Tools Demo
+description: Demonstrates custom tool definitions
+
+agents:
+  worker:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a helpful assistant with access to various tools.
+      Use the tools when needed to complete tasks.
+      Always explain what you're doing.
+    tools:
+      - read_file
+      - write_file
+      - list_files
+      - search_files
+      - fetch_weather
+      - get_stock_price
+
+# Custom tool definitions
+tools:
+  # HTTP-based tool
+  fetch_weather:
+    name: fetch_weather
+    description: Get current weather for a city
+    params:
+      - name: city
+        type: string
+        description: City name
+        required: true
+      - name: units
+        type: string
+        description: Temperature units (metric or imperial)
+        default: metric
+        enum:
+          - metric
+          - imperial
+    implementation:
+      type: http
+      method: GET
+      url: https://api.weatherapi.com/v1/current.json
+      query:
+        q: "{{city}}"
+        units: "{{units}}"
+      headers:
+        Authorization: "Bearer ${WEATHER_API_KEY}"
+      timeout: 10s
+
+  # Another HTTP tool
+  get_stock_price:
+    name: get_stock_price
+    description: Get current stock price for a symbol
+    params:
+      - name: symbol
+        type: string
+        description: Stock ticker symbol (e.g., AAPL, GOOGL)
+        required: true
+    implementation:
+      type: http
+      method: GET
+      url: https://api.polygon.io/v2/aggs/ticker/{{symbol}}/prev
+      headers:
+        Authorization: "Bearer ${POLYGON_API_KEY}"
+      timeout: 5s
+
+  # Command-line tool
+  list_files:
+    name: list_files
+    description: List files in a directory
+    params:
+      - name: path
+        type: string
+        description: Directory path
+        required: true
+      - name: pattern
+        type: string
+        description: Optional glob pattern to filter files
+        default: "*"
+    implementation:
+      type: exec
+      command: ls -la {{path}}/{{pattern}}
+      timeout: 5s
+
+  # Search tool
+  search_files:
+    name: search_files
+    description: Search for text in files
+    params:
+      - name: pattern
+        type: string
+        description: Search pattern (regex supported)
+        required: true
+      - name: path
+        type: string
+        description: Directory to search in
+        default: "."
+      - name: file_type
+        type: string
+        description: File extension to search (e.g., py, js, go)
+    implementation:
+      type: exec
+      command: grep -r "{{pattern}}" {{path}} --include="*.{{file_type}}"
+      timeout: 30s
+
+workflows:
+  file-analysis:
+    description: Analyze files in a directory
+    inputs:
+      directory:
+        type: string
+        description: Directory to analyze
+        required: true
+
+    steps:
+      - worker:
+          send: |
+            List and analyze the files in {{directory}}.
+
+            1. First, list all files in the directory
+            2. Read any interesting files you find
+            3. Provide a summary of what's in the directory
+          save: analysis
+
+    output: "{{analysis}}"
+
+  research:
+    description: Research a topic using available tools
+    inputs:
+      topic:
+        type: string
+        description: Topic to research
+        required: true
+
+    steps:
+      - worker:
+          send: |
+            Research the following topic and provide a comprehensive summary:
+
+            {{topic}}
+
+            Use any tools available to gather information.
+          save: findings
+
+    output: "{{findings}}"
+
+# Usage:
+#   export WEATHER_API_KEY=your_key
+#   vega run tools-demo.vega.yaml --workflow research --task "Current weather in major tech hubs"
+#   vega run tools-demo.vega.yaml --workflow file-analysis --input '{"directory": "./src"}'

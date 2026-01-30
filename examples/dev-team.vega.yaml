@@ -1,0 +1,211 @@
+# Development Team Example
+# A complete development team with multiple specialized agents.
+
+name: Development Team
+description: A full software development team with specialized roles
+
+settings:
+  default_model: claude-sonnet-4-20250514
+  sandbox: /tmp/vega-sandbox
+  budget: "$25.00"
+  rate_limit:
+    requests_per_minute: 60
+
+agents:
+  # The architect designs solutions
+  architect:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a senior software architect. Your responsibilities:
+      - Design system architecture and component interactions
+      - Choose appropriate technologies and patterns
+      - Consider scalability, security, and maintainability
+      - Create clear technical specifications
+
+      Be thorough but practical in your designs.
+    temperature: 0.7
+
+  # The frontend developer builds UIs
+  frontend:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a frontend developer specializing in:
+      - React, Vue, and modern JavaScript/TypeScript
+      - CSS, Tailwind, and responsive design
+      - Accessibility and user experience
+      - Performance optimization
+
+      Write clean, component-based code with proper types.
+    tools:
+      - read_file
+      - write_file
+
+  # The backend developer builds APIs and services
+  backend:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a backend developer specializing in:
+      - REST and GraphQL APIs
+      - Database design and queries
+      - Authentication and authorization
+      - Microservices and distributed systems
+
+      Write secure, scalable, well-tested code.
+    tools:
+      - read_file
+      - write_file
+      - run_command
+
+  # The reviewer ensures quality
+  reviewer:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a senior code reviewer and QA engineer.
+      Review code for:
+      - Bugs and edge cases
+      - Security vulnerabilities
+      - Performance issues
+      - Code style and maintainability
+      - Test coverage
+
+      Be constructive and thorough.
+
+  # The PM coordinates and summarizes
+  pm:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a technical project manager.
+      - Summarize technical discussions for stakeholders
+      - Identify risks and blockers
+      - Create clear action items
+      - Track progress and dependencies
+    temperature: 0.5
+
+workflows:
+  # Full feature development workflow
+  develop-feature:
+    description: Develop a complete feature from spec to review
+    inputs:
+      feature:
+        type: string
+        description: Feature description or user story
+        required: true
+
+    steps:
+      # Step 1: Architect creates the design
+      - architect:
+          send: |
+            Design a solution for this feature:
+
+            {{feature}}
+
+            Include:
+            1. High-level architecture
+            2. Component breakdown
+            3. Data models
+            4. API contracts
+            5. Technology choices
+          save: design
+
+      # Step 2: Frontend and backend work in parallel
+      - parallel:
+          - frontend:
+              send: |
+                Based on this design, implement the frontend:
+
+                {{design}}
+
+                Create the React components needed.
+              save: frontend_code
+
+          - backend:
+              send: |
+                Based on this design, implement the backend:
+
+                {{design}}
+
+                Create the API endpoints and database models.
+              save: backend_code
+
+      # Step 3: Review both implementations
+      - reviewer:
+          send: |
+            Review these implementations:
+
+            ## Frontend Code
+            {{frontend_code}}
+
+            ## Backend Code
+            {{backend_code}}
+
+            Check for integration issues between frontend and backend.
+          save: review
+
+      # Step 4: PM creates summary
+      - pm:
+          send: |
+            Create a summary of this feature development:
+
+            ## Original Request
+            {{feature}}
+
+            ## Design
+            {{design}}
+
+            ## Review Feedback
+            {{review}}
+
+            Summarize for stakeholders and list any action items.
+          save: summary
+
+    output:
+      summary: "{{summary}}"
+      design: "{{design}}"
+      frontend: "{{frontend_code}}"
+      backend: "{{backend_code}}"
+      review: "{{review}}"
+
+  # Quick code review workflow
+  quick-review:
+    description: Get a quick code review
+    inputs:
+      code:
+        type: string
+        description: Code to review
+        required: true
+      language:
+        type: string
+        default: auto
+
+    steps:
+      - reviewer:
+          send: |
+            Review this {{language}} code:
+
+            ```
+            {{code}}
+            ```
+          save: feedback
+
+    output: "{{feedback}}"
+
+  # Architecture consultation
+  consult:
+    description: Get architecture advice
+    inputs:
+      question:
+        type: string
+        description: Architecture question or challenge
+        required: true
+
+    steps:
+      - architect:
+          send: "{{question}}"
+          save: advice
+
+    output: "{{advice}}"
+
+# Usage:
+#   vega run dev-team.vega.yaml --workflow develop-feature --task "Add user authentication with OAuth2"
+#   vega run dev-team.vega.yaml --workflow quick-review --input params.json
+#   vega repl dev-team.vega.yaml

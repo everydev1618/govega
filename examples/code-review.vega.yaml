@@ -1,0 +1,74 @@
+# Code Review Team Example
+# A two-agent workflow where one writes code and another reviews it.
+
+name: Code Review Team
+description: Write code and get it reviewed automatically
+
+agents:
+  coder:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are an expert software developer. You write clean, well-documented code.
+      Follow best practices and include error handling.
+      When given a task, produce working code with comments.
+    tools:
+      - read_file
+      - write_file
+
+  reviewer:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a senior code reviewer. You review code for:
+      - Correctness and logic errors
+      - Security vulnerabilities
+      - Performance issues
+      - Code style and readability
+      - Missing error handling
+
+      Be constructive and specific in your feedback.
+      If the code is good, say so briefly.
+
+workflows:
+  review:
+    description: Write code and have it reviewed
+    inputs:
+      task:
+        type: string
+        description: The coding task to complete
+        required: true
+      language:
+        type: string
+        description: Programming language to use
+        default: python
+
+    steps:
+      # Step 1: Coder writes the code
+      - coder:
+          send: |
+            Write {{language}} code for the following task:
+
+            {{task}}
+
+            Include appropriate comments and error handling.
+          save: code
+
+      # Step 2: Reviewer reviews the code
+      - reviewer:
+          send: |
+            Please review the following {{language}} code:
+
+            ```{{language}}
+            {{code}}
+            ```
+
+            Provide specific feedback on any issues you find.
+          save: review
+
+    # Return both the code and the review
+    output:
+      code: "{{code}}"
+      review: "{{review}}"
+
+# Usage:
+#   vega run code-review.vega.yaml --workflow review --task "Create a function that validates email addresses"
+#   vega run code-review.vega.yaml --workflow review --task "Build a REST API endpoint" --input '{"language": "go"}'

@@ -1,0 +1,66 @@
+# Agent Skills Demo
+# This example shows how to use dynamic skill injection based on message context.
+#
+# Skills are loaded from the ./skills directory and automatically injected
+# into the system prompt when keywords or patterns match the user's message.
+#
+# Run with:
+#   vega repl examples/skills-demo.vega.yaml
+#   > /ask assistant
+#   > Can you review this code for security issues?
+
+name: Skills Demo
+
+settings:
+  default_model: claude-sonnet-4-20250514
+
+  skills:
+    directories:
+      - ./examples/skills
+
+agents:
+  assistant:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a helpful software development assistant.
+      You can help with coding, code review, documentation, and more.
+    skills:
+      # Include all skills from the global directories
+      max_active: 3  # Inject up to 3 matching skills
+
+  specialist:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a specialized assistant that only uses specific skills.
+    skills:
+      include:
+        - code-review
+        - security-*
+      exclude:
+        - deprecated-*
+      max_active: 2
+
+workflows:
+  review:
+    description: Review code with skill-enhanced prompts
+    inputs:
+      code:
+        type: string
+        required: true
+        description: Code to review
+    steps:
+      - assistant:
+          send: |
+            Please review this code:
+
+            ```
+            {{code}}
+            ```
+
+            Focus on:
+            - Security vulnerabilities
+            - Best practices
+            - Performance considerations
+          save: review
+
+    output: "{{review}}"
