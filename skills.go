@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/vegaops/vega/skills"
+	"github.com/martellcode/vega/skills"
 )
 
 // SkillsPrompt wraps a base SystemPrompt and dynamically injects relevant skills.

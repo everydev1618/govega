@@ -1,4 +1,4 @@
-module github.com/vegaops/vega
+module github.com/martellcode/vega
 
 go 1.25.4
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vegaops/vega/dsl"
+	"github.com/martellcode/vega/dsl"
 )
 
 var (
