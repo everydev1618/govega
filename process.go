@@ -61,6 +61,29 @@ type Process struct {
 
 	// finalResult stores the result when process completes
 	finalResult string
+
+	// Process linking (Erlang-style)
+	// links are bidirectional - if linked process dies, we die too (unless trapExit)
+	links map[string]*Process
+	// monitors are unidirectional - we get notified when monitored process dies
+	monitors map[string]*monitorEntry
+	// monitoredBy tracks who is monitoring us (for cleanup)
+	monitoredBy map[string]*monitorEntry
+	// trapExit when true, converts exit signals to messages instead of killing
+	trapExit bool
+	// exitSignals receives exit notifications when trapExit is true
+	exitSignals chan ExitSignal
+	// linkMu protects link/monitor maps
+	linkMu sync.RWMutex
+	// nextMonitorID for generating unique monitor references
+	nextMonitorID uint64
+
+	// Named process support
+	name string
+
+	// Automatic restart support
+	restartPolicy ChildRestart
+	spawnOpts     []SpawnOption
 }
 
 // Status represents the process lifecycle state.
@@ -73,6 +96,50 @@ const (
 	StatusFailed    Status = "failed"
 	StatusTimeout   Status = "timeout"
 )
+
+// ExitReason describes why a process exited.
+type ExitReason string
+
+const (
+	// ExitNormal means the process completed successfully
+	ExitNormal ExitReason = "normal"
+	// ExitError means the process failed with an error
+	ExitError ExitReason = "error"
+	// ExitKilled means the process was explicitly killed
+	ExitKilled ExitReason = "killed"
+	// ExitLinked means the process died because a linked process died
+	ExitLinked ExitReason = "linked"
+)
+
+// ExitSignal is sent to linked/monitoring processes when a process exits.
+// When trapExit is true, these are delivered via the ExitSignals channel.
+// When trapExit is false, linked process deaths cause this process to die.
+type ExitSignal struct {
+	// ProcessID is the ID of the process that exited
+	ProcessID string
+	// AgentName is the name of the agent that was running
+	AgentName string
+	// Reason explains why the process exited
+	Reason ExitReason
+	// Error is set if Reason is ExitError
+	Error error
+	// Result is set if Reason is ExitNormal
+	Result string
+	// Timestamp is when the exit occurred
+	Timestamp time.Time
+}
+
+// MonitorRef is a reference to an active monitor, used for demonitoring.
+type MonitorRef struct {
+	id        uint64
+	processID string
+}
+
+// monitorEntry tracks a monitoring relationship.
+type monitorEntry struct {
+	ref     MonitorRef
+	process *Process
+}
 
 // ProcessMetrics tracks process usage.
 type ProcessMetrics struct {
@@ -116,6 +183,13 @@ func (p *Process) Metrics() ProcessMetrics {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.metrics
+}
+
+// Name returns the registered name of the process, or empty string if not named.
+func (p *Process) Name() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.name
 }
 
 // Send sends a message and waits for a response.
@@ -229,19 +303,43 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 }
 
 // Stop terminates the process.
+// This is equivalent to killing the process - linked processes will be notified.
 func (p *Process) Stop() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	if p.status == StatusCompleted || p.status == StatusFailed {
+		p.mu.Unlock()
+		return // Already dead
+	}
 
 	if p.cancel != nil {
 		p.cancel()
 	}
 	p.status = StatusCompleted
 	p.metrics.CompletedAt = time.Now()
+	agentName := ""
+	if p.Agent != nil {
+		agentName = p.Agent.Name
+	}
+	p.mu.Unlock()
+
+	// Propagate exit to linked/monitoring processes
+	signal := ExitSignal{
+		ProcessID: p.ID,
+		AgentName: agentName,
+		Reason:    ExitKilled,
+		Timestamp: time.Now(),
+	}
+	p.propagateExit(signal)
+
+	// Notify orchestrator (for name unregistration)
+	if p.orchestrator != nil {
+		p.orchestrator.emitComplete(p, "")
+	}
 }
 
 // Complete marks the process as successfully completed with a result.
-// This triggers OnProcessComplete callbacks.
+// This triggers OnProcessComplete callbacks and notifies linked/monitoring processes.
+// Normal completion does NOT cause linked processes to die.
 func (p *Process) Complete(result string) {
 	p.mu.Lock()
 	if p.status == StatusCompleted || p.status == StatusFailed {
@@ -255,7 +353,21 @@ func (p *Process) Complete(result string) {
 	p.status = StatusCompleted
 	p.finalResult = result
 	p.metrics.CompletedAt = time.Now()
+	agentName := ""
+	if p.Agent != nil {
+		agentName = p.Agent.Name
+	}
 	p.mu.Unlock()
+
+	// Propagate exit to linked/monitoring processes (normal exit)
+	signal := ExitSignal{
+		ProcessID: p.ID,
+		AgentName: agentName,
+		Reason:    ExitNormal,
+		Result:    result,
+		Timestamp: time.Now(),
+	}
+	p.propagateExit(signal)
 
 	// Notify orchestrator
 	if p.orchestrator != nil {
@@ -264,7 +376,8 @@ func (p *Process) Complete(result string) {
 }
 
 // Fail marks the process as failed with an error.
-// This triggers OnProcessFailed callbacks.
+// This triggers OnProcessFailed callbacks and notifies linked/monitoring processes.
+// Failed processes cause linked processes to die too (unless they trap exits).
 func (p *Process) Fail(err error) {
 	p.mu.Lock()
 	if p.status == StatusCompleted || p.status == StatusFailed {
@@ -278,7 +391,21 @@ func (p *Process) Fail(err error) {
 	p.status = StatusFailed
 	p.metrics.CompletedAt = time.Now()
 	p.metrics.Errors++
+	agentName := ""
+	if p.Agent != nil {
+		agentName = p.Agent.Name
+	}
 	p.mu.Unlock()
+
+	// Propagate exit to linked/monitoring processes (error exit)
+	signal := ExitSignal{
+		ProcessID: p.ID,
+		AgentName: agentName,
+		Reason:    ExitError,
+		Error:     err,
+		Timestamp: time.Now(),
+	}
+	p.propagateExit(signal)
 
 	// Notify orchestrator
 	if p.orchestrator != nil {
@@ -600,4 +727,292 @@ func (s *Stream) Err() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.err
+}
+
+// --- Process Linking (Erlang-style) ---
+
+// Link creates a bidirectional link between this process and another.
+// If either process dies, the other will also die (unless trapExit is set).
+// Linking is idempotent - linking to an already-linked process is a no-op.
+func (p *Process) Link(other *Process) {
+	if p == other || other == nil {
+		return
+	}
+
+	// Lock both processes in consistent order to avoid deadlock
+	first, second := p, other
+	if p.ID > other.ID {
+		first, second = other, p
+	}
+
+	first.linkMu.Lock()
+	second.linkMu.Lock()
+
+	// Initialize maps if needed
+	if first.links == nil {
+		first.links = make(map[string]*Process)
+	}
+	if second.links == nil {
+		second.links = make(map[string]*Process)
+	}
+
+	// Create bidirectional link
+	first.links[second.ID] = second
+	second.links[first.ID] = first
+
+	second.linkMu.Unlock()
+	first.linkMu.Unlock()
+}
+
+// Unlink removes the bidirectional link between this process and another.
+// Unlinking is idempotent - unlinking from a non-linked process is a no-op.
+func (p *Process) Unlink(other *Process) {
+	if p == other || other == nil {
+		return
+	}
+
+	// Lock both processes in consistent order to avoid deadlock
+	first, second := p, other
+	if p.ID > other.ID {
+		first, second = other, p
+	}
+
+	first.linkMu.Lock()
+	second.linkMu.Lock()
+
+	delete(first.links, second.ID)
+	delete(second.links, first.ID)
+
+	second.linkMu.Unlock()
+	first.linkMu.Unlock()
+}
+
+// Monitor starts monitoring another process.
+// When the monitored process exits, this process receives an ExitSignal
+// on its ExitSignals channel (does not cause death, unlike Link).
+// Returns a MonitorRef that can be used to stop monitoring.
+func (p *Process) Monitor(other *Process) MonitorRef {
+	if p == other || other == nil {
+		return MonitorRef{}
+	}
+
+	p.linkMu.Lock()
+	defer p.linkMu.Unlock()
+
+	other.linkMu.Lock()
+	defer other.linkMu.Unlock()
+
+	// Initialize maps if needed
+	if p.monitors == nil {
+		p.monitors = make(map[string]*monitorEntry)
+	}
+	if other.monitoredBy == nil {
+		other.monitoredBy = make(map[string]*monitorEntry)
+	}
+	if p.exitSignals == nil {
+		p.exitSignals = make(chan ExitSignal, 16)
+	}
+
+	// Generate unique monitor ID
+	p.nextMonitorID++
+	ref := MonitorRef{
+		id:        p.nextMonitorID,
+		processID: other.ID,
+	}
+
+	entry := &monitorEntry{
+		ref:     ref,
+		process: p,
+	}
+
+	p.monitors[other.ID] = entry
+	other.monitoredBy[p.ID] = entry
+
+	return ref
+}
+
+// Demonitor stops monitoring a process.
+// The MonitorRef must be one returned by a previous Monitor call.
+func (p *Process) Demonitor(ref MonitorRef) {
+	if ref.processID == "" {
+		return
+	}
+
+	p.linkMu.Lock()
+	entry, ok := p.monitors[ref.processID]
+	if !ok || entry.ref.id != ref.id {
+		p.linkMu.Unlock()
+		return
+	}
+	delete(p.monitors, ref.processID)
+	p.linkMu.Unlock()
+
+	// Find the other process and remove ourselves from monitoredBy
+	if p.orchestrator != nil {
+		if other := p.orchestrator.Get(ref.processID); other != nil {
+			other.linkMu.Lock()
+			delete(other.monitoredBy, p.ID)
+			other.linkMu.Unlock()
+		}
+	}
+}
+
+// SetTrapExit enables or disables exit trapping.
+// When trapExit is true, linked process deaths deliver ExitSignals
+// instead of killing this process. This is how supervisors survive
+// their children dying.
+func (p *Process) SetTrapExit(trap bool) {
+	p.linkMu.Lock()
+	defer p.linkMu.Unlock()
+
+	p.trapExit = trap
+	if trap && p.exitSignals == nil {
+		p.exitSignals = make(chan ExitSignal, 16)
+	}
+}
+
+// TrapExit returns whether exit trapping is enabled.
+func (p *Process) TrapExit() bool {
+	p.linkMu.RLock()
+	defer p.linkMu.RUnlock()
+	return p.trapExit
+}
+
+// ExitSignals returns the channel for receiving exit signals.
+// Only receives signals when trapExit is true, or for monitored processes.
+// Returns nil if no exit signal channel has been created.
+func (p *Process) ExitSignals() <-chan ExitSignal {
+	p.linkMu.RLock()
+	defer p.linkMu.RUnlock()
+	return p.exitSignals
+}
+
+// Links returns the IDs of all linked processes.
+func (p *Process) Links() []string {
+	p.linkMu.RLock()
+	defer p.linkMu.RUnlock()
+
+	ids := make([]string, 0, len(p.links))
+	for id := range p.links {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// propagateExit notifies linked and monitoring processes of this process's death.
+func (p *Process) propagateExit(signal ExitSignal) {
+	p.linkMu.Lock()
+
+	// Collect linked processes
+	linkedProcs := make([]*Process, 0, len(p.links))
+	for _, linked := range p.links {
+		linkedProcs = append(linkedProcs, linked)
+	}
+
+	// Collect monitoring processes
+	monitoringProcs := make([]*Process, 0, len(p.monitoredBy))
+	for _, entry := range p.monitoredBy {
+		monitoringProcs = append(monitoringProcs, entry.process)
+	}
+
+	// Clear our links and monitors (we're dead)
+	p.links = nil
+	p.monitoredBy = nil
+
+	p.linkMu.Unlock()
+
+	// Notify linked processes
+	for _, linked := range linkedProcs {
+		linked.handleLinkedExit(p, signal)
+	}
+
+	// Notify monitoring processes
+	for _, monitoring := range monitoringProcs {
+		monitoring.handleMonitoredExit(p, signal)
+	}
+}
+
+// handleLinkedExit is called when a linked process dies.
+func (p *Process) handleLinkedExit(dead *Process, signal ExitSignal) {
+	// Remove the dead process from our links
+	p.linkMu.Lock()
+	delete(p.links, dead.ID)
+	trapExit := p.trapExit
+	exitCh := p.exitSignals
+	p.linkMu.Unlock()
+
+	if trapExit && exitCh != nil {
+		// Trapping exits - deliver as signal instead of dying
+		select {
+		case exitCh <- signal:
+		default:
+			// Channel full, signal dropped
+		}
+		return
+	}
+
+	// Not trapping exits - we die too (unless it was a normal exit)
+	if signal.Reason == ExitNormal {
+		return // Normal exits don't propagate death
+	}
+
+	// Cascade the death
+	p.mu.Lock()
+	if p.status == StatusCompleted || p.status == StatusFailed {
+		p.mu.Unlock()
+		return // Already dead
+	}
+	p.status = StatusFailed
+	p.metrics.CompletedAt = time.Now()
+	p.mu.Unlock()
+
+	// Propagate with ExitLinked reason
+	cascadeSignal := ExitSignal{
+		ProcessID: p.ID,
+		AgentName: p.Agent.Name,
+		Reason:    ExitLinked,
+		Error:     &LinkedProcessError{LinkedID: dead.ID, OriginalError: signal.Error},
+		Timestamp: time.Now(),
+	}
+	p.propagateExit(cascadeSignal)
+
+	// Notify orchestrator
+	if p.orchestrator != nil {
+		p.orchestrator.emitFailed(p, cascadeSignal.Error)
+	}
+}
+
+// handleMonitoredExit is called when a monitored process dies.
+func (p *Process) handleMonitoredExit(dead *Process, signal ExitSignal) {
+	// Remove the dead process from our monitors
+	p.linkMu.Lock()
+	delete(p.monitors, dead.ID)
+	exitCh := p.exitSignals
+	p.linkMu.Unlock()
+
+	// Monitors always deliver signals (never cause death)
+	if exitCh != nil {
+		select {
+		case exitCh <- signal:
+		default:
+			// Channel full, signal dropped
+		}
+	}
+}
+
+// LinkedProcessError is the error set when a process dies due to a linked process dying.
+type LinkedProcessError struct {
+	LinkedID      string
+	OriginalError error
+}
+
+func (e *LinkedProcessError) Error() string {
+	if e.OriginalError != nil {
+		return "linked process " + e.LinkedID + " died: " + e.OriginalError.Error()
+	}
+	return "linked process " + e.LinkedID + " died"
+}
+
+func (e *LinkedProcessError) Unwrap() error {
+	return e.OriginalError
 }

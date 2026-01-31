@@ -45,6 +45,12 @@ var (
 
 	// ErrTimeout is returned when an operation times out
 	ErrTimeout = errors.New("operation timed out")
+
+	// ErrLinkedProcessDied is returned when a process dies due to a linked process dying
+	ErrLinkedProcessDied = errors.New("linked process died")
+
+	// ErrNameTaken is returned when trying to register a name that's already in use
+	ErrNameTaken = errors.New("name already registered")
 )
 
 // ProcessError wraps errors with process context.

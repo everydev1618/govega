@@ -359,3 +359,364 @@ func TestWithProcessContext(t *testing.T) {
 		t.Error("Process context should be cancelled when parent is cancelled")
 	}
 }
+
+// --- Named Process Tests ---
+
+func TestRegister(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+	proc, _ := o.Spawn(agent)
+
+	err := o.Register("worker-1", proc)
+	if err != nil {
+		t.Fatalf("Register() returned error: %v", err)
+	}
+
+	if proc.Name() != "worker-1" {
+		t.Errorf("proc.Name() = %q, want %q", proc.Name(), "worker-1")
+	}
+}
+
+func TestRegisterDuplicate(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+	proc1, _ := o.Spawn(agent)
+	proc2, _ := o.Spawn(agent)
+
+	o.Register("worker", proc1)
+	err := o.Register("worker", proc2)
+
+	if err == nil {
+		t.Error("Register() should return error for duplicate name")
+	}
+}
+
+func TestRegisterSameProcessTwice(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+	proc, _ := o.Spawn(agent)
+
+	o.Register("worker", proc)
+	err := o.Register("worker", proc) // Same process, same name
+
+	if err != nil {
+		t.Errorf("Re-registering same process with same name should be idempotent, got: %v", err)
+	}
+}
+
+func TestGetByName(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+	proc, _ := o.Spawn(agent)
+
+	o.Register("worker", proc)
+	found := o.GetByName("worker")
+
+	if found != proc {
+		t.Error("GetByName() should return the registered process")
+	}
+}
+
+func TestGetByNameNotFound(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+
+	found := o.GetByName("nonexistent")
+	if found != nil {
+		t.Error("GetByName() should return nil for unknown name")
+	}
+}
+
+func TestUnregister(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+	proc, _ := o.Spawn(agent)
+
+	o.Register("worker", proc)
+	o.Unregister("worker")
+
+	if o.GetByName("worker") != nil {
+		t.Error("After Unregister(), name should not be found")
+	}
+	if proc.Name() != "" {
+		t.Error("After Unregister(), process name should be empty")
+	}
+}
+
+func TestNameUnregisteredOnComplete(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+	proc, _ := o.Spawn(agent)
+
+	o.Register("worker", proc)
+	proc.Complete("done")
+
+	time.Sleep(10 * time.Millisecond)
+
+	if o.GetByName("worker") != nil {
+		t.Error("Name should be unregistered when process completes")
+	}
+}
+
+func TestNameUnregisteredOnFail(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+	proc, _ := o.Spawn(agent)
+
+	o.Register("worker", proc)
+	proc.Fail(ErrTimeout)
+
+	time.Sleep(10 * time.Millisecond)
+
+	if o.GetByName("worker") != nil {
+		t.Error("Name should be unregistered when process fails")
+	}
+}
+
+// --- Supervision Tree Tests ---
+
+func TestSupervisorStrategy(t *testing.T) {
+	tests := []struct {
+		strategy SupervisorStrategy
+		want     string
+	}{
+		{OneForOne, "one_for_one"},
+		{OneForAll, "one_for_all"},
+		{RestForOne, "rest_for_one"},
+	}
+
+	for _, tt := range tests {
+		if tt.strategy.String() != tt.want {
+			t.Errorf("SupervisorStrategy.String() = %q, want %q", tt.strategy.String(), tt.want)
+		}
+	}
+}
+
+func TestChildRestart(t *testing.T) {
+	tests := []struct {
+		restart ChildRestart
+		want    string
+	}{
+		{Permanent, "permanent"},
+		{Transient, "transient"},
+		{Temporary, "temporary"},
+	}
+
+	for _, tt := range tests {
+		if tt.restart.String() != tt.want {
+			t.Errorf("ChildRestart.String() = %q, want %q", tt.restart.String(), tt.want)
+		}
+	}
+}
+
+func TestNewSupervisor(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy:    OneForOne,
+		MaxRestarts: 5,
+		Window:      time.Minute,
+		Children: []ChildSpec{
+			{Name: "worker1", Agent: Agent{Name: "Worker"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	if sup == nil {
+		t.Fatal("NewSupervisor() returned nil")
+	}
+	if sup.spec.Strategy != OneForOne {
+		t.Errorf("Supervisor strategy = %v, want %v", sup.spec.Strategy, OneForOne)
+	}
+}
+
+func TestSupervisorStart(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "worker1", Agent: Agent{Name: "Worker1"}, Restart: Permanent},
+			{Name: "worker2", Agent: Agent{Name: "Worker2"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	err := sup.Start()
+	if err != nil {
+		t.Fatalf("Supervisor.Start() returned error: %v", err)
+	}
+	defer sup.Stop()
+
+	children := sup.Children()
+	if len(children) != 2 {
+		t.Errorf("Supervisor has %d children, want 2", len(children))
+	}
+
+	// Check names are registered
+	if o.GetByName("worker1") == nil {
+		t.Error("worker1 should be registered")
+	}
+	if o.GetByName("worker2") == nil {
+		t.Error("worker2 should be registered")
+	}
+}
+
+func TestSupervisorStop(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "worker1", Agent: Agent{Name: "Worker1"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	sup.Stop()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Names should be unregistered
+	if o.GetByName("worker1") != nil {
+		t.Error("worker1 should be unregistered after Stop()")
+	}
+}
+
+func TestSupervisorChildren(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Agent: Agent{Name: "Worker1"}, Restart: Permanent},
+			{Agent: Agent{Name: "Worker2"}, Restart: Permanent},
+			{Agent: Agent{Name: "Worker3"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	children := sup.Children()
+	if len(children) != 3 {
+		t.Errorf("len(Children()) = %d, want 3", len(children))
+	}
+
+	for i, child := range children {
+		if child.Status() != StatusRunning {
+			t.Errorf("Child %d status = %v, want %v", i, child.Status(), StatusRunning)
+		}
+	}
+}
+
+// --- Automatic Restart Tests ---
+
+func TestSpawnSupervised(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+
+	proc, err := o.SpawnSupervised(agent, Permanent)
+	if err != nil {
+		t.Fatalf("SpawnSupervised() returned error: %v", err)
+	}
+
+	if proc.Status() != StatusRunning {
+		t.Errorf("Process status = %v, want %v", proc.Status(), StatusRunning)
+	}
+
+	// Agent should be registered for respawning
+	_, ok := o.GetAgent("TestAgent")
+	if !ok {
+		t.Error("Agent should be registered for respawning")
+	}
+}
+
+func TestRegisterAgent(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "MyAgent"}
+
+	o.RegisterAgent(agent)
+
+	found, ok := o.GetAgent("MyAgent")
+	if !ok {
+		t.Error("GetAgent() should find registered agent")
+	}
+	if found.Name != "MyAgent" {
+		t.Errorf("Agent name = %q, want %q", found.Name, "MyAgent")
+	}
+}
+
+func TestAutomaticRestartPermanent(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+
+	proc, _ := o.SpawnSupervised(agent, Permanent, WithTask("test task"))
+	originalID := proc.ID
+
+	// Fail the process
+	proc.Fail(ErrTimeout)
+
+	// Wait for restart
+	time.Sleep(100 * time.Millisecond)
+
+	// Check that a new process was spawned
+	procs := o.List()
+	found := false
+	for _, p := range procs {
+		if p.ID != originalID && p.Status() == StatusRunning {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Error("Permanent process should be automatically restarted")
+	}
+}
+
+func TestAutomaticRestartTemporary(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+
+	proc, _ := o.SpawnSupervised(agent, Temporary)
+	originalID := proc.ID
+
+	// Fail the process
+	proc.Fail(ErrTimeout)
+
+	// Wait a bit
+	time.Sleep(100 * time.Millisecond)
+
+	// Check that NO new process was spawned
+	procs := o.List()
+	for _, p := range procs {
+		if p.ID != originalID && p.Status() == StatusRunning {
+			t.Error("Temporary process should NOT be automatically restarted")
+		}
+	}
+}
+
+func TestAutomaticRestartWithSupervision(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	agent := Agent{Name: "TestAgent"}
+
+	restartCount := 0
+	sup := Supervision{
+		Strategy:    Restart,
+		MaxRestarts: 2,
+		Window:      time.Minute,
+		OnRestart: func(p *Process, attempt int) {
+			restartCount = attempt
+		},
+	}
+
+	proc, _ := o.SpawnSupervised(agent, Permanent, WithSupervision(sup))
+
+	// Fail the process
+	proc.Fail(ErrTimeout)
+
+	// Wait for restart
+	time.Sleep(100 * time.Millisecond)
+
+	if restartCount == 0 {
+		t.Error("OnRestart callback should have been called")
+	}
+}
