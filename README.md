@@ -41,17 +41,17 @@ vega run team.vega.yaml --workflow review --task "Write a function to validate e
 ### Go Library
 
 ```bash
-go get github.com/vegaops/vega
+go get github.com/everydev1618/govega
 ```
 
 ### CLI Tool
 
 ```bash
 # From source
-go install github.com/vegaops/vega/cmd/vega@latest
+go install github.com/everydev1618/govega/cmd/vega@latest
 
 # Or clone and build
-git clone https://github.com/vegaops/vega
+git clone https://github.com/everydev1618/govega
 cd vega
 go build -o vega ./cmd/vega
 ```
@@ -78,8 +78,8 @@ import (
     "fmt"
     "log"
 
-    "github.com/vegaops/vega"
-    "github.com/vegaops/vega/llm"
+    "github.com/everydev1618/govega"
+    "github.com/everydev1618/govega/llm"
 )
 
 func main() {
@@ -286,7 +286,7 @@ agent := vega.Agent{
 Connect to MCP servers to use external tools:
 
 ```go
-import "github.com/vegaops/vega/mcp"
+import "github.com/everydev1618/govega/mcp"
 
 tools := vega.NewTools(
     vega.WithMCPServer(mcp.ServerConfig{
@@ -344,7 +344,7 @@ agents:
 Skills provide dynamic prompt injection based on message context:
 
 ```go
-import "github.com/vegaops/vega/skills"
+import "github.com/everydev1618/govega/skills"
 
 // Load skills from directories
 loader := skills.NewLoader("./skills", "~/.vega/skills")
