@@ -190,7 +190,7 @@ agent := vega.Agent{
 }
 ```
 
-Or define in YAML:
+Or define in YAML with full HTTP support:
 
 ```yaml
 tools:
@@ -203,10 +203,45 @@ tools:
     implementation:
       type: http
       method: GET
-      url: https://api.weather.com/v1/current
-      query:
-        q: "{{city}}"
+      url: "https://api.weather.com/v1/current?city={{.city}}"
+      headers:
+        Authorization: "Bearer {{.api_key}}"
+      timeout: 10s
+
+  create_issue:
+    description: Create a GitHub issue
+    params:
+      - name: title
+        type: string
+        required: true
+      - name: body
+        type: string
+        required: true
+    implementation:
+      type: http
+      method: POST
+      url: "https://api.github.com/repos/{{.owner}}/{{.repo}}/issues"
+      headers:
+        Authorization: "token {{.token}}"
+        Content-Type: application/json
+      body:
+        title: "{{.title}}"
+        body: "{{.body}}"
+      timeout: 30s
+
+  run_script:
+    description: Execute a shell script
+    params:
+      - name: script
+        type: string
+        required: true
+    implementation:
+      type: exec
+      command: "bash -c '{{.script}}'"
+      timeout: 60s
 ```
+
+Tool implementations support `{{.param}}` template interpolation for dynamic values.
 
 ### Streaming Responses
 
@@ -269,6 +304,77 @@ agent := vega.Agent{
     },
 }
 ```
+
+### Intelligent Retry with Error Classification
+
+Vega automatically classifies errors and retries appropriately:
+
+```go
+agent := vega.Agent{
+    Name: "resilient-worker",
+    Retry: &vega.RetryPolicy{
+        MaxAttempts: 5,
+        Backoff: vega.BackoffConfig{
+            Initial:    100 * time.Millisecond,
+            Multiplier: 2.0,
+            Max:        30 * time.Second,
+            Jitter:     0.1, // ±10% randomness
+            Type:       vega.BackoffExponential,
+        },
+        RetryOn: []vega.ErrorClass{
+            vega.ErrClassRateLimit,
+            vega.ErrClassOverloaded,
+            vega.ErrClassTimeout,
+            vega.ErrClassTemporary,
+        },
+    },
+}
+```
+
+Error classes are automatically detected:
+- `ErrClassRateLimit` - 429 errors, "rate limit" messages
+- `ErrClassOverloaded` - 503 errors, capacity issues
+- `ErrClassTimeout` - Deadline exceeded, connection timeouts
+- `ErrClassTemporary` - Transient server errors (5xx)
+- `ErrClassAuthentication` - 401/403 errors (not retried)
+- `ErrClassInvalidRequest` - 400 errors (not retried)
+- `ErrClassBudgetExceeded` - Cost limits (not retried)
+
+### Configurable Iteration Limits
+
+Control how many tool call loops an agent can perform:
+
+```go
+agent := vega.Agent{
+    Name:          "deep-researcher",
+    MaxIterations: 100, // Default is 50
+}
+```
+
+### Context Auto-Compaction
+
+Manage long conversations with automatic summarization:
+
+```go
+// Create a sliding window context that keeps recent messages
+// and summarizes older ones
+ctx := vega.NewSlidingWindowContext(20) // Keep last 20 messages
+
+agent := vega.Agent{
+    Name:    "long-conversation-agent",
+    Context: ctx,
+}
+
+// Check if compaction is needed
+if ctx.NeedsCompaction(50000) { // 50k token threshold
+    err := ctx.Compact(llm) // Uses LLM to summarize old messages
+}
+```
+
+The `SlidingWindowContext` automatically:
+- Keeps a configurable number of recent messages
+- Can summarize older messages using the LLM
+- Preserves important context while reducing token usage
 
 ### Budget Control
 
@@ -582,16 +688,60 @@ workflows:
 
 ---
 
+### Structured Logging
+
+Vega uses Go's `slog` for structured logging. Enable debug logging to see detailed information:
+
+```go
+import "log/slog"
+
+// Enable debug logging
+slog.SetLogLoggerLevel(slog.LevelDebug)
+```
+
+Log events include:
+- Process spawn/complete/fail with agent names and IDs
+- LLM call success/failure with latency, tokens, and error classification
+- Retry attempts with backoff delays
+- MCP server stderr output
+
+### Default Configuration
+
+Vega provides sensible defaults that can be overridden:
+
+```go
+// Default constants (defined in agent.go)
+const (
+    DefaultMaxIterations        = 50        // Tool call loop limit
+    DefaultMaxContextTokens     = 100000    // Context window size
+    DefaultLLMTimeout           = 5 * time.Minute
+    DefaultStreamBufferSize     = 100
+    DefaultSupervisorPollInterval = 100 * time.Millisecond
+)
+
+// Anthropic defaults (defined in llm/anthropic.go)
+const (
+    DefaultAnthropicTimeout = 5 * time.Minute
+    DefaultAnthropicModel   = "claude-sonnet-4-20250514"
+    DefaultAnthropicBaseURL = "https://api.anthropic.com"
+)
+```
+
+---
+
 ## Why Vega?
 
 | Feature | Raw SDK | Other Frameworks | Vega |
 |---------|---------|------------------|------|
 | Supervision trees | Manual | ❌ | ✅ Built-in |
-| Automatic retries | Manual | Partial | ✅ Built-in |
+| Automatic retries | Manual | Partial | ✅ Smart (error-classified) |
 | Rate limiting | Manual | Manual | ✅ Built-in |
 | Cost tracking | Manual | Partial | ✅ Built-in |
 | MCP server support | Manual | Partial | ✅ Built-in |
 | Dynamic skills | ❌ | ❌ | ✅ Built-in |
+| Context compaction | ❌ | ❌ | ✅ Auto-summarization |
+| Structured logging | Manual | Partial | ✅ slog integration |
+| Error classification | ❌ | ❌ | ✅ 7 error classes |
 | Non-programmer friendly | ❌ | ❌ | ✅ YAML DSL |
 | Parallel execution | Complex | Complex | ✅ `parallel:` |
 | Config-driven | ❌ | Limited | ✅ Full YAML |
@@ -602,27 +752,30 @@ workflows:
 
 ```
 vega/
-├── agent.go           # Agent definition
-├── process.go         # Running process with lifecycle
-├── orchestrator.go    # Process management
-├── supervision.go     # Fault tolerance
-├── tools.go           # Tool registration
+├── agent.go           # Agent definition, context managers, defaults
+├── process.go         # Running process with lifecycle, retry logic
+├── orchestrator.go    # Process management, callbacks, groups
+├── supervision.go     # Fault tolerance, health monitoring
+├── tools.go           # Tool registration, HTTP/exec executors
 ├── mcp_tools.go       # MCP server integration
 ├── skills.go          # Skills prompt wrapper
-├── llm.go             # LLM interface
-├── errors.go          # Error types
+├── llm.go             # LLM interface, cost calculation
+├── errors.go          # Error types, classification, retry decisions
 ├── llm/
-│   └── anthropic.go   # Anthropic backend
+│   └── anthropic.go   # Anthropic backend with streaming
 ├── mcp/               # Model Context Protocol client
 │   ├── types.go       # MCP types and JSON-RPC
 │   ├── client.go      # MCP client implementation
-│   ├── transport_stdio.go  # Subprocess transport
+│   ├── transport_stdio.go  # Subprocess transport with logging
 │   └── transport_http.go   # HTTP/SSE transport
 ├── skills/            # Agent skills system
 │   ├── types.go       # Skill and trigger types
 │   ├── parser.go      # SKILL.md file parser
 │   ├── loader.go      # Directory scanner
 │   └── matcher.go     # Keyword/pattern matching
+├── container/         # Docker container management
+│   ├── manager.go     # Container lifecycle
+│   └── project.go     # Project isolation
 ├── dsl/
 │   ├── types.go       # AST types
 │   ├── parser.go      # YAML parser
