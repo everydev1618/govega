@@ -1117,6 +1117,200 @@ func (s *Supervisor) Children() []*Process {
 	return procs
 }
 
+// --- Dynamic Child Management ---
+
+// ChildInfo contains information about a supervised child.
+type ChildInfo struct {
+	Name    string
+	ID      string
+	Status  Status
+	Restart ChildRestart
+	Agent   string
+}
+
+// WhichChildren returns information about all current children.
+func (s *Supervisor) WhichChildren() []ChildInfo {
+	s.childrenMu.RLock()
+	defer s.childrenMu.RUnlock()
+
+	infos := make([]ChildInfo, len(s.children))
+	for i, child := range s.children {
+		infos[i] = ChildInfo{
+			Name:    child.spec.Name,
+			ID:      child.process.ID,
+			Status:  child.process.Status(),
+			Restart: child.spec.Restart,
+			Agent:   child.spec.Agent.Name,
+		}
+	}
+	return infos
+}
+
+// StartChild dynamically adds and starts a new child to the supervisor.
+// Returns the new process or an error if the child couldn't be started.
+func (s *Supervisor) StartChild(spec ChildSpec) (*Process, error) {
+	s.childrenMu.Lock()
+	defer s.childrenMu.Unlock()
+
+	// Check for duplicate name
+	if spec.Name != "" {
+		for _, child := range s.children {
+			if child.spec.Name == spec.Name {
+				return nil, &ProcessError{AgentName: spec.Agent.Name, Err: ErrNameTaken}
+			}
+		}
+	}
+
+	// Spawn the child
+	index := len(s.children)
+	child, err := s.spawnChild(spec, index)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add to children list
+	s.children = append(s.children, child)
+
+	// Add to spec for restart purposes
+	s.spec.Children = append(s.spec.Children, spec)
+
+	return child.process, nil
+}
+
+// TerminateChild stops a specific child by name.
+// The child will be restarted according to its restart policy unless DeleteChild is called.
+func (s *Supervisor) TerminateChild(name string) error {
+	s.childrenMu.Lock()
+	defer s.childrenMu.Unlock()
+
+	for _, child := range s.children {
+		if child.spec.Name == name {
+			if child.process.Status() == StatusRunning {
+				child.process.Stop()
+			}
+			return nil
+		}
+	}
+
+	return ErrProcessNotFound
+}
+
+// RestartChild forces a restart of a specific child by name.
+func (s *Supervisor) RestartChild(name string) error {
+	s.childrenMu.Lock()
+
+	var targetChild *supervisedChild
+	var targetIndex int
+	for i, child := range s.children {
+		if child.spec.Name == name {
+			targetChild = child
+			targetIndex = i
+			break
+		}
+	}
+
+	if targetChild == nil {
+		s.childrenMu.Unlock()
+		return ErrProcessNotFound
+	}
+
+	// Stop the current process
+	if targetChild.process.Status() == StatusRunning {
+		targetChild.process.Stop()
+	}
+
+	// Unregister name
+	if targetChild.spec.Name != "" {
+		s.orchestrator.Unregister(targetChild.spec.Name)
+	}
+
+	s.childrenMu.Unlock()
+
+	// Spawn new process (outside lock to avoid deadlock)
+	newChild, err := s.spawnChild(targetChild.spec, targetIndex)
+	if err != nil {
+		return err
+	}
+
+	// Update the children slice
+	s.childrenMu.Lock()
+	s.children[targetIndex] = newChild
+	s.childrenMu.Unlock()
+
+	return nil
+}
+
+// DeleteChild removes a child from the supervisor entirely.
+// The child is stopped if running and will not be restarted.
+func (s *Supervisor) DeleteChild(name string) error {
+	s.childrenMu.Lock()
+	defer s.childrenMu.Unlock()
+
+	for i, child := range s.children {
+		if child.spec.Name == name {
+			// Stop if running
+			if child.process.Status() == StatusRunning {
+				child.process.Stop()
+			}
+
+			// Unregister name
+			if child.spec.Name != "" {
+				s.orchestrator.Unregister(child.spec.Name)
+			}
+
+			// Remove from children slice
+			s.children = append(s.children[:i], s.children[i+1:]...)
+
+			// Remove from spec
+			for j, spec := range s.spec.Children {
+				if spec.Name == name {
+					s.spec.Children = append(s.spec.Children[:j], s.spec.Children[j+1:]...)
+					break
+				}
+			}
+
+			// Update indices for remaining children
+			for j := i; j < len(s.children); j++ {
+				s.children[j].index = j
+			}
+
+			return nil
+		}
+	}
+
+	return ErrProcessNotFound
+}
+
+// CountChildren returns the number of children (total, running, failed).
+func (s *Supervisor) CountChildren() (total, running, failed int) {
+	s.childrenMu.RLock()
+	defer s.childrenMu.RUnlock()
+
+	total = len(s.children)
+	for _, child := range s.children {
+		switch child.process.Status() {
+		case StatusRunning:
+			running++
+		case StatusFailed:
+			failed++
+		}
+	}
+	return
+}
+
+// GetChild returns the process for a specific child by name.
+func (s *Supervisor) GetChild(name string) *Process {
+	s.childrenMu.RLock()
+	defer s.childrenMu.RUnlock()
+
+	for _, child := range s.children {
+		if child.spec.Name == name {
+			return child.process
+		}
+	}
+	return nil
+}
+
 // --- Automatic Restart Integration ---
 
 // SpawnSupervised spawns a process with automatic restart on failure.
