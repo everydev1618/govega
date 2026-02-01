@@ -1292,6 +1292,407 @@ done:
 	}
 }
 
+// =============================================================================
+// DYNAMIC CHILD MANAGEMENT TESTS
+// =============================================================================
+
+func TestWhichChildren(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "w1", Agent: Agent{Name: "Worker1"}, Restart: Permanent},
+			{Name: "w2", Agent: Agent{Name: "Worker2"}, Restart: Transient},
+			{Name: "w3", Agent: Agent{Name: "Worker3"}, Restart: Temporary},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	infos := sup.WhichChildren()
+	if len(infos) != 3 {
+		t.Fatalf("WhichChildren() returned %d, want 3", len(infos))
+	}
+
+	// Verify info correctness
+	for _, info := range infos {
+		if info.Status != StatusRunning {
+			t.Errorf("Child %s status = %v, want Running", info.Name, info.Status)
+		}
+		if info.ID == "" {
+			t.Errorf("Child %s has empty ID", info.Name)
+		}
+	}
+
+	// Check specific restart policies
+	nameToRestart := make(map[string]ChildRestart)
+	for _, info := range infos {
+		nameToRestart[info.Name] = info.Restart
+	}
+
+	if nameToRestart["w1"] != Permanent {
+		t.Error("w1 should have Permanent restart")
+	}
+	if nameToRestart["w2"] != Transient {
+		t.Error("w2 should have Transient restart")
+	}
+	if nameToRestart["w3"] != Temporary {
+		t.Error("w3 should have Temporary restart")
+	}
+}
+
+func TestStartChild(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "w1", Agent: Agent{Name: "Worker1"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	// Start with 1 child
+	if len(sup.Children()) != 1 {
+		t.Fatalf("Expected 1 child, got %d", len(sup.Children()))
+	}
+
+	// Add a new child dynamically
+	newSpec := ChildSpec{
+		Name:    "w2",
+		Agent:   Agent{Name: "Worker2"},
+		Restart: Permanent,
+		Task:    "dynamic task",
+	}
+
+	proc, err := sup.StartChild(newSpec)
+	if err != nil {
+		t.Fatalf("StartChild() returned error: %v", err)
+	}
+
+	if proc == nil {
+		t.Fatal("StartChild() returned nil process")
+	}
+
+	// Should now have 2 children
+	if len(sup.Children()) != 2 {
+		t.Errorf("Expected 2 children, got %d", len(sup.Children()))
+	}
+
+	// New child should be registered
+	if o.GetByName("w2") == nil {
+		t.Error("New child should be registered by name")
+	}
+
+	// New child should have task
+	if proc.Task != "dynamic task" {
+		t.Errorf("New child task = %q, want %q", proc.Task, "dynamic task")
+	}
+}
+
+func TestStartChildDuplicateName(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "worker", Agent: Agent{Name: "Worker"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	// Try to add child with duplicate name
+	_, err := sup.StartChild(ChildSpec{
+		Name:  "worker", // Duplicate
+		Agent: Agent{Name: "Worker"},
+	})
+
+	if err == nil {
+		t.Error("StartChild() should return error for duplicate name")
+	}
+}
+
+func TestTerminateChild(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy:    OneForOne,
+		MaxRestarts: 0, // Disable auto-restart for this test
+		Children: []ChildSpec{
+			{Name: "w1", Agent: Agent{Name: "Worker1"}, Restart: Temporary},
+			{Name: "w2", Agent: Agent{Name: "Worker2"}, Restart: Temporary},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	// Terminate w1
+	err := sup.TerminateChild("w1")
+	if err != nil {
+		t.Fatalf("TerminateChild() returned error: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// w1 should be stopped
+	w1 := sup.GetChild("w1")
+	if w1 != nil && w1.Status() == StatusRunning {
+		t.Error("w1 should not be running after terminate")
+	}
+
+	// w2 should still be running
+	w2 := sup.GetChild("w2")
+	if w2 == nil || w2.Status() != StatusRunning {
+		t.Error("w2 should still be running")
+	}
+}
+
+func TestTerminateChildNotFound(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	err := sup.TerminateChild("nonexistent")
+	if err != ErrProcessNotFound {
+		t.Errorf("TerminateChild() for nonexistent should return ErrProcessNotFound, got %v", err)
+	}
+}
+
+func TestRestartChild(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "worker", Agent: Agent{Name: "Worker"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	// Get original process ID
+	originalID := sup.GetChild("worker").ID
+
+	// Force restart
+	err := sup.RestartChild("worker")
+	if err != nil {
+		t.Fatalf("RestartChild() returned error: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Should have new process with different ID
+	newProc := sup.GetChild("worker")
+	if newProc == nil {
+		t.Fatal("Worker should exist after restart")
+	}
+
+	if newProc.ID == originalID {
+		t.Error("Worker should have new ID after restart")
+	}
+
+	if newProc.Status() != StatusRunning {
+		t.Errorf("Worker status = %v, want Running", newProc.Status())
+	}
+
+	// Name should still be registered
+	if o.GetByName("worker") != newProc {
+		t.Error("Worker should be re-registered with new process")
+	}
+}
+
+func TestDeleteChild(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "w1", Agent: Agent{Name: "Worker1"}, Restart: Permanent},
+			{Name: "w2", Agent: Agent{Name: "Worker2"}, Restart: Permanent},
+			{Name: "w3", Agent: Agent{Name: "Worker3"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	// Delete w2
+	err := sup.DeleteChild("w2")
+	if err != nil {
+		t.Fatalf("DeleteChild() returned error: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Should have 2 children now
+	if len(sup.Children()) != 2 {
+		t.Errorf("Expected 2 children after delete, got %d", len(sup.Children()))
+	}
+
+	// w2 should not exist
+	if sup.GetChild("w2") != nil {
+		t.Error("w2 should not exist after delete")
+	}
+
+	// w2 name should be unregistered
+	if o.GetByName("w2") != nil {
+		t.Error("w2 name should be unregistered")
+	}
+
+	// w1 and w3 should still exist
+	if sup.GetChild("w1") == nil {
+		t.Error("w1 should still exist")
+	}
+	if sup.GetChild("w3") == nil {
+		t.Error("w3 should still exist")
+	}
+}
+
+func TestDeleteChildNotFound(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	err := sup.DeleteChild("nonexistent")
+	if err != ErrProcessNotFound {
+		t.Errorf("DeleteChild() for nonexistent should return ErrProcessNotFound, got %v", err)
+	}
+}
+
+func TestCountChildren(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "w1", Agent: Agent{Name: "Worker1"}, Restart: Temporary},
+			{Name: "w2", Agent: Agent{Name: "Worker2"}, Restart: Temporary},
+			{Name: "w3", Agent: Agent{Name: "Worker3"}, Restart: Temporary},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	total, running, failed := sup.CountChildren()
+	if total != 3 {
+		t.Errorf("Total = %d, want 3", total)
+	}
+	if running != 3 {
+		t.Errorf("Running = %d, want 3", running)
+	}
+	if failed != 0 {
+		t.Errorf("Failed = %d, want 0", failed)
+	}
+
+	// Fail one
+	sup.GetChild("w1").Fail(errors.New("crash"))
+	time.Sleep(50 * time.Millisecond)
+
+	total, running, failed = sup.CountChildren()
+	if total != 3 {
+		t.Errorf("Total = %d, want 3", total)
+	}
+	if running != 2 {
+		t.Errorf("Running = %d, want 2", running)
+	}
+	if failed != 1 {
+		t.Errorf("Failed = %d, want 1", failed)
+	}
+}
+
+func TestGetChild(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{
+			{Name: "worker", Agent: Agent{Name: "Worker"}, Restart: Permanent},
+		},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	// Get existing child
+	worker := sup.GetChild("worker")
+	if worker == nil {
+		t.Error("GetChild() should return the worker")
+	}
+
+	// Get nonexistent child
+	nonexistent := sup.GetChild("nonexistent")
+	if nonexistent != nil {
+		t.Error("GetChild() should return nil for nonexistent")
+	}
+}
+
+func TestDynamicScaling(t *testing.T) {
+	o := NewOrchestrator(WithLLM(&mockLLM{}))
+	spec := SupervisorSpec{
+		Strategy: OneForOne,
+		Children: []ChildSpec{},
+	}
+
+	sup := o.NewSupervisor(spec)
+	sup.Start()
+	defer sup.Stop()
+
+	// Scale up to 5 workers
+	for i := 0; i < 5; i++ {
+		name := "worker-" + string(rune('0'+i))
+		_, err := sup.StartChild(ChildSpec{
+			Name:    name,
+			Agent:   Agent{Name: "Worker"},
+			Restart: Permanent,
+		})
+		if err != nil {
+			t.Fatalf("Failed to start child %s: %v", name, err)
+		}
+	}
+
+	total, running, _ := sup.CountChildren()
+	if total != 5 || running != 5 {
+		t.Errorf("After scale up: total=%d, running=%d, want 5, 5", total, running)
+	}
+
+	// Scale down to 2 workers
+	for i := 2; i < 5; i++ {
+		name := "worker-" + string(rune('0'+i))
+		err := sup.DeleteChild(name)
+		if err != nil {
+			t.Fatalf("Failed to delete child %s: %v", name, err)
+		}
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	total, running, _ = sup.CountChildren()
+	if total != 2 || running != 2 {
+		t.Errorf("After scale down: total=%d, running=%d, want 2, 2", total, running)
+	}
+}
+
 func TestIntegrationFullOrchestratorLifecycle(t *testing.T) {
 	o := NewOrchestrator(
 		WithLLM(&mockLLM{}),
