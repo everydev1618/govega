@@ -139,6 +139,92 @@ vega repl assistant.vega.yaml
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Orchestrator["Orchestrator"]
+        direction TB
+        Registry["Agent Registry"]
+        ProcessMgr["Process Manager"]
+        Groups["Process Groups"]
+        RateLimiter["Rate Limiter"]
+    end
+
+    subgraph Supervision["Supervision Tree"]
+        direction TB
+        Supervisor["Supervisor"]
+        Strategy{{"Strategy<br/>OneForOne | OneForAll | RestForOne"}}
+        Supervisor --> Strategy
+    end
+
+    subgraph Processes["Processes"]
+        direction LR
+        P1["Process 1"]
+        P2["Process 2"]
+        P3["Process 3"]
+    end
+
+    subgraph Agent["Agent (Blueprint)"]
+        Model["Model"]
+        System["System Prompt"]
+        Tools["Tools"]
+        Config["Retry / Circuit Breaker / Budget"]
+    end
+
+    subgraph LLMLoop["LLM Execution Loop"]
+        direction TB
+        Build["Build Messages"]
+        Call["LLM Call"]
+        Parse["Parse Response"]
+        ToolExec["Execute Tools"]
+        Build --> Call --> Parse
+        Parse -->|"Tool Use"| ToolExec --> Build
+        Parse -->|"Text Response"| Done["Complete"]
+    end
+
+    Agent -->|"spawn"| Orchestrator
+    Orchestrator -->|"creates"| Processes
+    Supervisor -->|"monitors"| Processes
+    Processes -->|"run"| LLMLoop
+
+    P1 <-->|"links"| P2
+    P2 -.->|"monitors"| P3
+```
+
+```mermaid
+flowchart LR
+    subgraph Lifecycle["Process Lifecycle"]
+        Pending["🟡 Pending"]
+        Running["🟢 Running"]
+        Completed["✅ Completed"]
+        Failed["❌ Failed"]
+        Timeout["⏱️ Timeout"]
+
+        Pending --> Running
+        Running --> Completed
+        Running --> Failed
+        Running --> Timeout
+        Failed -->|"restart"| Pending
+    end
+```
+
+```mermaid
+flowchart TB
+    subgraph SpawnTree["Spawn Tree"]
+        Root["Orchestrator Process"]
+        Child1["Worker 1<br/>depth: 1"]
+        Child2["Worker 2<br/>depth: 1"]
+        GrandChild["Sub-worker<br/>depth: 2"]
+
+        Root --> Child1
+        Root --> Child2
+        Child1 --> GrandChild
+    end
+```
+
+---
+
 ## Features
 
 ### Erlang-Style Supervision
