@@ -512,8 +512,10 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 			return resp.Content, metrics, nil
 		}
 
-		// Execute tool calls
-		messages = append(messages, Message{Role: RoleAssistant, Content: resp.Content})
+		// Execute tool calls - add assistant message only if it has content
+		if strings.TrimSpace(resp.Content) != "" {
+			messages = append(messages, Message{Role: RoleAssistant, Content: resp.Content})
+		}
 
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
@@ -623,7 +625,10 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 			}
 			assistantContent = strings.Join(toolParts, "\n")
 		}
-		messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
+		// Only add assistant message if it has content
+		if strings.TrimSpace(assistantContent) != "" {
+			messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
+		}
 
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
@@ -810,7 +815,15 @@ func (p *Process) buildMessages() []Message {
 		p.mu.RUnlock()
 	}
 
-	return messages
+	// Filter out any messages with empty content to prevent API errors
+	filtered := make([]Message, 0, len(messages))
+	for _, msg := range messages {
+		if strings.TrimSpace(msg.Content) != "" {
+			filtered = append(filtered, msg)
+		}
+	}
+
+	return filtered
 }
 
 // formatToolResult formats a tool result for the LLM.
