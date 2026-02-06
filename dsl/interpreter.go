@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/martellcode/vega"
-	"github.com/martellcode/vega/llm"
-	"github.com/martellcode/vega/mcp"
-	"github.com/martellcode/vega/skills"
+	"github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/mcp"
+	"github.com/everydev1618/govega/skills"
 )
 
 // Interpreter executes DSL workflows.

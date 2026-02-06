@@ -17,7 +17,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/martellcode/vega/container"
+	"github.com/everydev1618/govega/container"
 	"gopkg.in/yaml.v3"
 )
 
@@ -544,12 +544,33 @@ func (t *Tools) callFunction(fn any, ctx context.Context, params map[string]any)
 			continue
 		}
 
-		// Handle single string parameter
-		if inType.Kind() == reflect.String && len(params) == 1 {
-			for _, v := range params {
-				args = append(args, reflect.ValueOf(fmt.Sprint(v)))
-				break
+		// Handle string parameter
+		if inType.Kind() == reflect.String {
+			// Try common param names first
+			commonNames := []string{"path", "query", "name", "content", "text", "input", "value"}
+			var strVal string
+			found := false
+
+			// First try common names
+			for _, name := range commonNames {
+				if v, ok := params[name]; ok {
+					strVal = fmt.Sprint(v)
+					found = true
+					break
+				}
 			}
+
+			// If not found and there's exactly one param, use it
+			if !found && len(params) == 1 {
+				for _, v := range params {
+					strVal = fmt.Sprint(v)
+					found = true
+					break
+				}
+			}
+
+			// If still not found, use empty string (function should handle validation)
+			args = append(args, reflect.ValueOf(strVal))
 			continue
 		}
 

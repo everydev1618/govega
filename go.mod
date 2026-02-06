@@ -1,4 +1,4 @@
-module github.com/martellcode/vega
+module github.com/everydev1618/govega
 
 go 1.25.4
 

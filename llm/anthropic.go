@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/martellcode/vega"
+	"github.com/everydev1618/govega"
 )
 
 // AnthropicLLM is an LLM implementation using the Anthropic API.

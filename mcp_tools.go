@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/martellcode/vega/mcp"
+	"github.com/everydev1618/govega/mcp"
 )
 
 // mcpClientEntry holds an MCP client with its configuration.

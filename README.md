@@ -106,8 +106,12 @@ func main() {
     ctx := context.Background()
     response, err := proc.Send(ctx, "Write a hello world function in Go")
     if err != nil {
+        proc.Fail(err)  // Mark process as failed
         log.Fatal(err)
     }
+
+    // IMPORTANT: Always mark processes as completed when done
+    proc.Complete(response)
 
     fmt.Println(response)
 
@@ -136,6 +140,30 @@ vega repl assistant.vega.yaml
 > /ask helper
 > What is the capital of France?
 ```
+
+---
+
+## ⚠️ Important: Process Lifecycle
+
+**Every spawned process must be completed or failed.** This is the most common mistake when using Vega.
+
+```go
+// ❌ WRONG - process leaks, stays "running" forever
+proc, _ := orch.Spawn(agent)
+proc.SendAsync(task)
+return "Started!"
+
+// ✅ CORRECT - process properly completed
+proc, _ := orch.Spawn(agent)
+response, err := proc.Send(ctx, task)
+if err != nil {
+    proc.Fail(err)
+    return err
+}
+proc.Complete(response)
+```
+
+See [Best Practices](docs/BEST_PRACTICES.md) for more details.
 
 ---
 
@@ -898,6 +926,7 @@ workflows:
 | Document | Description |
 |----------|-------------|
 | [Quick Start](docs/QUICKSTART.md) | Get running in 5 minutes |
+| [**Best Practices**](docs/BEST_PRACTICES.md) | **Common pitfalls and how to avoid them** |
 | [DSL Reference](docs/DSL.md) | Complete YAML syntax |
 | [Go Library Spec](docs/SPEC.md) | Full API reference |
 | [Tools](docs/TOOLS.md) | Built-in and custom tools |
