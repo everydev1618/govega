@@ -483,6 +483,86 @@ name: Empty
 	}
 }
 
+func TestParseAgentWithTeam(t *testing.T) {
+	yaml := `
+name: Test
+agents:
+  leader:
+    model: claude-sonnet-4-20250514
+    system: You are a leader.
+    team: [worker, analyst]
+
+  worker:
+    model: claude-sonnet-4-20250514
+    system: You are a worker.
+
+  analyst:
+    model: claude-sonnet-4-20250514
+    system: You are an analyst.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	leader := doc.Agents["leader"]
+	if len(leader.Team) != 2 {
+		t.Fatalf("len(Agent.Team) = %d, want 2", len(leader.Team))
+	}
+
+	if leader.Team[0] != "worker" {
+		t.Errorf("Agent.Team[0] = %q, want %q", leader.Team[0], "worker")
+	}
+	if leader.Team[1] != "analyst" {
+		t.Errorf("Agent.Team[1] = %q, want %q", leader.Team[1], "analyst")
+	}
+
+	// Workers should have no team.
+	worker := doc.Agents["worker"]
+	if len(worker.Team) != 0 {
+		t.Errorf("worker.Team should be empty, got %v", worker.Team)
+	}
+}
+
+func TestValidateTeamSelfReference(t *testing.T) {
+	yaml := `
+name: Test
+agents:
+  solo:
+    model: claude-sonnet-4-20250514
+    system: You are solo.
+    team: [solo]
+`
+	p := NewParser()
+	_, err := p.Parse([]byte(yaml))
+	if err == nil {
+		t.Error("Parse() should return error for self-referencing team")
+	}
+	if !strings.Contains(err.Error(), "cannot be on its own team") {
+		t.Errorf("Error %q should mention self-reference", err.Error())
+	}
+}
+
+func TestValidateTeamUnknownMember(t *testing.T) {
+	yaml := `
+name: Test
+agents:
+  leader:
+    model: claude-sonnet-4-20250514
+    system: You are a leader.
+    team: [ghost]
+`
+	p := NewParser()
+	_, err := p.Parse([]byte(yaml))
+	if err == nil {
+		t.Error("Parse() should return error for unknown team member")
+	}
+	if !strings.Contains(err.Error(), "ghost") {
+		t.Errorf("Error %q should mention 'ghost'", err.Error())
+	}
+}
+
 func TestParseAgentWithBudget(t *testing.T) {
 	yaml := `
 name: Test

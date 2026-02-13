@@ -23,6 +23,7 @@ type Agent struct {
 	Budget      string            `yaml:"budget"` // e.g., "$0.50"
 	Tools       []string          `yaml:"tools"`
 	Knowledge   []string          `yaml:"knowledge"`
+	Team        []string          `yaml:"team"`
 	Supervision *SupervisionDef   `yaml:"supervision"`
 	Retry       *RetryDef         `yaml:"retry"`
 	Skills      *SkillsDef        `yaml:"skills"`
