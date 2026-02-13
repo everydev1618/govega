@@ -38,22 +38,23 @@ vega run team.vega.yaml --workflow review --task "Write a function to validate e
 
 ## Installation
 
-### Go Library
-
-```bash
-go get github.com/martellcode/vega
-```
-
 ### CLI Tool
 
 ```bash
-# From source
-go install github.com/martellcode/vega/cmd/vega@latest
+# Homebrew (macOS / Linux)
+brew install everydev1618/tap/vega
 
-# Or clone and build
-git clone https://github.com/martellcode/vega
-cd vega
-go build -o vega ./cmd/vega
+# Go install
+go install github.com/everydev1618/govega/cmd/vega@latest
+
+# Or download a binary from GitHub Releases
+# https://github.com/everydev1618/govega/releases
+```
+
+### Go Library
+
+```bash
+go get github.com/everydev1618/govega
 ```
 
 ### Configuration
@@ -693,6 +694,48 @@ agents:
       - github__create_issue
 ```
 
+### Web Dashboard & REST API
+
+Monitor and control your agents through a browser-based dashboard:
+
+```bash
+vega serve team.vega.yaml
+# Open http://localhost:3001
+```
+
+The dashboard provides:
+- **Overview** — Live stats, recent events, active processes
+- **Process Explorer** — Sortable process list with conversation history
+- **Spawn Tree** — Hierarchical view of parent-child process relationships
+- **Event Stream** — Real-time SSE feed with filtering
+- **Agent Registry** — Agent definitions from your `.vega.yaml`
+- **MCP Servers** — Connection status and available tools
+- **Workflow Launcher** — Run workflows from the browser with auto-generated input forms
+- **Cost Dashboard** — Per-agent and per-process cost tracking
+
+**REST API** — All data is also available via JSON endpoints:
+
+```bash
+curl localhost:3001/api/processes    # List processes
+curl localhost:3001/api/agents       # List agents
+curl localhost:3001/api/stats        # Aggregate metrics
+curl localhost:3001/api/spawn-tree   # Spawn tree
+curl localhost:3001/api/workflows    # List workflows
+curl localhost:3001/api/mcp/servers  # MCP server status
+curl localhost:3001/api/events       # SSE event stream
+
+# Launch a workflow
+curl -X POST localhost:3001/api/workflows/review/run \
+  -H 'Content-Type: application/json' \
+  -d '{"task": "Write a sort function"}'
+```
+
+**Flags:**
+- `--addr :3001` — HTTP listen address (default `:3001`)
+- `--db .vega-serve.db` — SQLite database path for persistent history
+
+Historical process data, events, and workflow runs persist across restarts via SQLite.
+
 ### Agent Skills
 
 Skills provide dynamic prompt injection based on message context:
@@ -776,6 +819,10 @@ vega validate team.vega.yaml --verbose
 
 # Interactive REPL
 vega repl team.vega.yaml
+
+# Web dashboard & REST API
+vega serve team.vega.yaml
+vega serve team.vega.yaml --addr :8080 --db my-data.db
 
 # Show help
 vega help
@@ -934,6 +981,7 @@ workflows:
 | [Skills](docs/SKILLS.md) | Dynamic prompt injection |
 | [Supervision](docs/SUPERVISION.md) | Fault tolerance patterns |
 | [Architecture](docs/ARCHITECTURE.md) | Internal design |
+| [Web Dashboard](docs/SERVE.md) | `vega serve` dashboard & REST API |
 
 ---
 
@@ -987,6 +1035,7 @@ const (
 | Rate limiting | Manual | Manual | ✅ Built-in |
 | Cost tracking | Manual | Partial | ✅ Built-in |
 | MCP server support | Manual | Partial | ✅ Built-in |
+| Web dashboard | ❌ | ❌ | ✅ Built-in |
 | Dynamic skills | ❌ | ❌ | ✅ Built-in |
 | Conversation history | Manual | Manual | ✅ WithMessages, persistence helpers |
 | Context compaction | ❌ | ❌ | ✅ Auto-summarization |
@@ -1027,12 +1076,23 @@ vega/
 ├── container/         # Docker container management
 │   ├── manager.go     # Container lifecycle
 │   └── project.go     # Project isolation
+├── serve/             # Web dashboard & REST API
+│   ├── server.go      # HTTP server, routes, CORS
+│   ├── handlers_api.go    # REST endpoint handlers
+│   ├── handlers_sse.go    # Server-Sent Events stream
+│   ├── broker.go      # Event pub/sub for SSE
+│   ├── store.go       # Persistence interface
+│   ├── store_sqlite.go    # SQLite implementation
+│   ├── types.go       # API request/response types
+│   ├── embed.go       # Embedded SPA frontend
+│   └── frontend/      # React + Vite + Tailwind dashboard
 ├── dsl/
 │   ├── types.go       # AST types
 │   ├── parser.go      # YAML parser
 │   └── interpreter.go # Workflow execution
 ├── cmd/vega/
-│   └── main.go        # CLI entry point
+│   ├── main.go        # CLI entry point
+│   └── serve.go       # serve command
 ├── examples/          # Example .vega.yaml files
 └── docs/              # Documentation
 ```
