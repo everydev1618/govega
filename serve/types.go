@@ -1,0 +1,193 @@
+package serve
+
+import "time"
+
+// --- API Response Types ---
+
+// ProcessResponse is the API representation of a process.
+type ProcessResponse struct {
+	ID          string          `json:"id"`
+	Agent       string          `json:"agent"`
+	Task        string          `json:"task,omitempty"`
+	Status      string          `json:"status"`
+	StartedAt   time.Time       `json:"started_at"`
+	CompletedAt *time.Time      `json:"completed_at,omitempty"`
+	ParentID    string          `json:"parent_id,omitempty"`
+	SpawnDepth  int             `json:"spawn_depth"`
+	SpawnReason string          `json:"spawn_reason,omitempty"`
+	Metrics     MetricsResponse `json:"metrics"`
+}
+
+// ProcessDetailResponse includes conversation history.
+type ProcessDetailResponse struct {
+	ProcessResponse
+	Messages []MessageResponse `json:"messages"`
+}
+
+// MessageResponse is a conversation message.
+type MessageResponse struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// MetricsResponse is the API representation of process metrics.
+type MetricsResponse struct {
+	Iterations   int       `json:"iterations"`
+	InputTokens  int       `json:"input_tokens"`
+	OutputTokens int       `json:"output_tokens"`
+	CostUSD      float64   `json:"cost_usd"`
+	ToolCalls    int       `json:"tool_calls"`
+	Errors       int       `json:"errors"`
+	LastActiveAt time.Time `json:"last_active_at,omitempty"`
+}
+
+// AgentResponse is the API representation of an agent definition.
+type AgentResponse struct {
+	Name          string   `json:"name"`
+	Model         string   `json:"model,omitempty"`
+	System        string   `json:"system,omitempty"`
+	Tools         []string `json:"tools,omitempty"`
+	Team          []string `json:"team,omitempty"`
+	ProcessID     string   `json:"process_id,omitempty"`
+	ProcessStatus string   `json:"process_status,omitempty"`
+	Source        string   `json:"source,omitempty"`
+}
+
+// WorkflowResponse is the API representation of a workflow definition.
+type WorkflowResponse struct {
+	Name        string                   `json:"name"`
+	Description string                   `json:"description,omitempty"`
+	Steps       int                      `json:"steps"`
+	Inputs      map[string]InputResponse `json:"inputs,omitempty"`
+}
+
+// InputResponse describes a workflow input.
+type InputResponse struct {
+	Type        string   `json:"type,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Required    bool     `json:"required"`
+	Default     any      `json:"default,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
+}
+
+// StatsResponse contains aggregate metrics.
+type StatsResponse struct {
+	TotalProcesses   int     `json:"total_processes"`
+	RunningProcesses int     `json:"running_processes"`
+	CompletedProcesses int   `json:"completed_processes"`
+	FailedProcesses  int     `json:"failed_processes"`
+	TotalInputTokens  int    `json:"total_input_tokens"`
+	TotalOutputTokens int    `json:"total_output_tokens"`
+	TotalCostUSD     float64 `json:"total_cost_usd"`
+	TotalToolCalls   int     `json:"total_tool_calls"`
+	TotalErrors      int     `json:"total_errors"`
+	Uptime           string  `json:"uptime"`
+}
+
+// SpawnTreeNodeResponse is the API representation of a spawn tree node.
+type SpawnTreeNodeResponse struct {
+	ProcessID   string                   `json:"process_id"`
+	AgentName   string                   `json:"agent_name"`
+	Task        string                   `json:"task,omitempty"`
+	Status      string                   `json:"status"`
+	SpawnDepth  int                      `json:"spawn_depth"`
+	SpawnReason string                   `json:"spawn_reason,omitempty"`
+	StartedAt   time.Time                `json:"started_at"`
+	Children    []SpawnTreeNodeResponse  `json:"children,omitempty"`
+}
+
+// MCPServerResponse is the API representation of an MCP server.
+type MCPServerResponse struct {
+	Name      string   `json:"name"`
+	Connected bool     `json:"connected"`
+	Transport string   `json:"transport,omitempty"`
+	URL       string   `json:"url,omitempty"`
+	Command   string   `json:"command,omitempty"`
+	Tools     []string `json:"tools"`
+}
+
+// WorkflowRunRequest is the request to launch a workflow.
+type WorkflowRunRequest struct {
+	Inputs map[string]any `json:"inputs"`
+}
+
+// WorkflowRunResponse is returned when a workflow is launched.
+type WorkflowRunResponse struct {
+	RunID  string `json:"run_id"`
+	Status string `json:"status"`
+}
+
+// BrokerEvent is an event sent via SSE.
+type BrokerEvent struct {
+	Type      string `json:"type"`
+	ProcessID string `json:"process_id,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	Data      any    `json:"data,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// ErrorResponse is returned on API errors.
+type ErrorResponse struct {
+	Error   string `json:"error"`
+	Details string `json:"details,omitempty"`
+}
+
+// --- Population & Agent Composition Types ---
+
+// PopulationSearchResult is the API representation of a population search result.
+type PopulationSearchResult struct {
+	Kind        string   `json:"kind"`
+	Name        string   `json:"name"`
+	Version     string   `json:"version,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Score       float64  `json:"score,omitempty"`
+}
+
+// PopulationInfoResponse is the API representation of population item details.
+type PopulationInfoResponse struct {
+	Kind              string   `json:"kind"`
+	Name              string   `json:"name"`
+	Version           string   `json:"version,omitempty"`
+	Description       string   `json:"description,omitempty"`
+	Author            string   `json:"author,omitempty"`
+	Tags              []string `json:"tags,omitempty"`
+	Persona           string   `json:"persona,omitempty"`
+	Skills            []string `json:"skills,omitempty"`
+	RecommendedSkills []string `json:"recommended_skills,omitempty"`
+	SystemPrompt      string   `json:"system_prompt,omitempty"`
+	Installed         bool     `json:"installed"`
+	InstalledPath     string   `json:"installed_path,omitempty"`
+}
+
+// PopulationInstalledItem is the API representation of an installed population item.
+type PopulationInstalledItem struct {
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
+	Path    string `json:"path,omitempty"`
+}
+
+// PopulationInstallRequest is the request to install a population item.
+type PopulationInstallRequest struct {
+	Name string `json:"name"`
+}
+
+// CreateAgentRequest is the request to compose a new agent.
+type CreateAgentRequest struct {
+	Name        string   `json:"name"`
+	Model       string   `json:"model"`
+	Persona     string   `json:"persona,omitempty"`
+	Skills      []string `json:"skills,omitempty"`
+	Team        []string `json:"team,omitempty"`
+	System      string   `json:"system,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+}
+
+// CreateAgentResponse is returned when a new agent is composed.
+type CreateAgentResponse struct {
+	Name      string   `json:"name"`
+	Model     string   `json:"model"`
+	Tools     []string `json:"tools,omitempty"`
+	ProcessID string   `json:"process_id,omitempty"`
+}

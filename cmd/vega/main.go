@@ -19,6 +19,8 @@ var (
 )
 
 func main() {
+	loadEnvFile()
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -34,6 +36,8 @@ func main() {
 		validateCmd(args)
 	case "repl":
 		replCmd(args)
+	case "serve":
+		serveCmd(args)
 	case "version":
 		fmt.Printf("vega %s\n", version)
 	case "help", "-h", "--help":
@@ -55,6 +59,7 @@ Commands:
   run       Run a workflow from a .vega.yaml file
   validate  Validate a .vega.yaml file
   repl      Interactive REPL for exploring agents
+  serve     Start web dashboard and REST API server
   version   Print version information
   help      Show this help message
 
@@ -62,6 +67,8 @@ Examples:
   vega run team.vega.yaml --workflow code-review --task "Build a REST API"
   vega validate team.vega.yaml
   vega repl team.vega.yaml
+  vega serve
+  vega serve team.vega.yaml --addr :8080
 
 Run 'vega <command> --help' for more information on a command.`)
 }
@@ -492,6 +499,39 @@ Commands:
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// loadEnvFile reads ~/.vega/env and sets any key=value pairs as environment
+// variables. Existing env vars take precedence (won't be overwritten).
+// Lines starting with # are comments; blank lines are ignored.
+func loadEnvFile() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	f, err := os.Open(home + "/.vega/env")
+	if err != nil {
+		return // file doesn't exist, that's fine
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		// Don't overwrite existing env vars
+		if os.Getenv(key) == "" {
+			os.Setenv(key, val)
+		}
 	}
 }
 

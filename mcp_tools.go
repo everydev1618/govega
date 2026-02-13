@@ -202,6 +202,39 @@ func matchToolPattern(name, pattern string) bool {
 	return name == pattern
 }
 
+// MCPServerStatus describes the status of a connected MCP server.
+type MCPServerStatus struct {
+	Name      string   `json:"name"`
+	Connected bool     `json:"connected"`
+	Transport string   `json:"transport,omitempty"`
+	URL       string   `json:"url,omitempty"`
+	Command   string   `json:"command,omitempty"`
+	Tools     []string `json:"tools"`
+}
+
+// MCPServerStatuses returns the status of all configured MCP servers.
+func (t *Tools) MCPServerStatuses() []MCPServerStatus {
+	t.mu.RLock()
+	clients := t.mcpClients
+	t.mu.RUnlock()
+
+	statuses := make([]MCPServerStatus, 0, len(clients))
+	for _, entry := range clients {
+		s := MCPServerStatus{
+			Name:      entry.config.Name,
+			Connected: entry.client.Connected(),
+			Transport: string(entry.config.Transport),
+			URL:       entry.config.URL,
+			Command:   entry.config.Command,
+		}
+		for _, tool := range entry.client.Tools() {
+			s.Tools = append(s.Tools, tool.Name)
+		}
+		statuses = append(statuses, s)
+	}
+	return statuses
+}
+
 // MCPServerOption configures MCP server behavior.
 type MCPServerOption func(*mcpServerOptions)
 

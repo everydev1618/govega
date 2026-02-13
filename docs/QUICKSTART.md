@@ -279,12 +279,32 @@ vega> exit
 
 ---
 
+## Web Dashboard
+
+Monitor your agents in real-time with the built-in dashboard:
+
+```bash
+vega serve team.vega.yaml
+# Open http://localhost:3001
+```
+
+The dashboard shows live process status, spawn trees, event streams, cost tracking, and lets you launch workflows from the browser. All data is also available as a REST API:
+
+```bash
+curl localhost:3001/api/processes    # List processes
+curl localhost:3001/api/stats        # Aggregate metrics
+curl localhost:3001/api/events       # SSE event stream
+```
+
+---
+
 ## What's Next?
 
 - Read the [full DSL reference](DSL.md)
 - See [example projects](../examples/)
 - Learn about [supervision and fault tolerance](SUPERVISION.md)
 - Set up [budgets and cost control](SPEC.md#budgets--cost-control)
+- Explore the [web dashboard](SERVE.md)
 
 ---
 
