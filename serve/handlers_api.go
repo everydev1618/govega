@@ -96,8 +96,31 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 // --- Chat Handlers ---
 
+// chatAgentName returns a per-user agent name if X-Auth-User is set.
+// e.g. agent "dan" + user "etienne" → "dan:etienne".
+// It also ensures the per-user agent exists by cloning the base definition.
+func (s *Server) chatAgentName(baseAgent string, r *http.Request) string {
+	user := r.Header.Get("X-Auth-User")
+	if user == "" {
+		return baseAgent
+	}
+
+	name := baseAgent + ":" + user
+
+	// Ensure per-user agent exists (clone from base on first use).
+	if agents := s.interp.Agents(); agents[name] == nil {
+		doc := s.interp.Document()
+		if baseDef, ok := doc.Agents[baseAgent]; ok {
+			clone := *baseDef
+			s.interp.AddAgent(name, &clone)
+		}
+	}
+
+	return name
+}
+
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := s.chatAgentName(r.PathValue("name"), r)
 
 	var req struct {
 		Message string `json:"message"`
@@ -126,7 +149,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := s.chatAgentName(r.PathValue("name"), r)
 	msgs, err := s.store.ListChatMessages(name)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -139,7 +162,7 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleClearChat(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := s.chatAgentName(r.PathValue("name"), r)
 
 	// Clear DB messages.
 	if err := s.store.DeleteChatMessages(name); err != nil {
