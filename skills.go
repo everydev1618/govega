@@ -4,8 +4,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/everydev1618/govega/skills"
+	"github.com/everydev1618/govega/internal/skills"
 )
+
+// SkillMatch is a type alias for skills.SkillMatch, keeping it in the public API.
+type SkillMatch = skills.SkillMatch
 
 // SkillsPrompt wraps a base SystemPrompt and dynamically injects relevant skills.
 type SkillsPrompt struct {

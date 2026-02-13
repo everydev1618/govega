@@ -11,8 +11,19 @@ import (
 	"github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
-	"github.com/everydev1618/govega/skills"
+	"github.com/everydev1618/govega/internal/skills"
 )
+
+// InterpreterOption configures the interpreter.
+type InterpreterOption func(*Interpreter)
+
+// WithLazySpawn defers agent process creation until first use.
+// Useful for serve mode where agents are only needed when workflows run.
+func WithLazySpawn() InterpreterOption {
+	return func(i *Interpreter) {
+		i.lazySpawn = true
+	}
+}
 
 // Interpreter executes DSL workflows.
 type Interpreter struct {
@@ -21,13 +32,14 @@ type Interpreter struct {
 	agents       map[string]*vega.Process
 	tools        *vega.Tools
 	skillsLoader *skills.Loader
+	lazySpawn    bool
 	mu           sync.RWMutex
 }
 
 // NewInterpreter creates a new interpreter for a document.
-func NewInterpreter(doc *Document) (*Interpreter, error) {
+func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, error) {
 	// Create orchestrator with settings
-	opts := []vega.OrchestratorOption{}
+	orchOpts := []vega.OrchestratorOption{}
 
 	if doc.Settings != nil {
 		if doc.Settings.Sandbox != "" {
@@ -37,9 +49,9 @@ func NewInterpreter(doc *Document) (*Interpreter, error) {
 
 	// Create default LLM
 	anthropicLLM := llm.NewAnthropic()
-	opts = append(opts, vega.WithLLM(anthropicLLM))
+	orchOpts = append(orchOpts, vega.WithLLM(anthropicLLM))
 
-	orch := vega.NewOrchestrator(opts...)
+	orch := vega.NewOrchestrator(orchOpts...)
 
 	// Create tools
 	toolOpts := []vega.ToolsOption{}
@@ -100,10 +112,16 @@ func NewInterpreter(doc *Document) (*Interpreter, error) {
 		skillsLoader: skillsLoader,
 	}
 
-	// Spawn agents
-	for name, agentDef := range doc.Agents {
-		if err := interp.spawnAgent(name, agentDef); err != nil {
-			return nil, fmt.Errorf("spawn agent %s: %w", name, err)
+	for _, opt := range opts {
+		opt(interp)
+	}
+
+	// Spawn agents upfront unless lazy spawn is enabled.
+	if !interp.lazySpawn {
+		for name, agentDef := range doc.Agents {
+			if err := interp.spawnAgent(name, agentDef); err != nil {
+				return nil, fmt.Errorf("spawn agent %s: %w", name, err)
+			}
 		}
 	}
 
@@ -320,14 +338,35 @@ func (i *Interpreter) executeStep(ctx context.Context, step *Step, execCtx *Exec
 	}
 }
 
+// ensureAgent spawns an agent process on demand if it doesn't exist yet.
+func (i *Interpreter) ensureAgent(name string) (*vega.Process, error) {
+	i.mu.RLock()
+	proc, ok := i.agents[name]
+	i.mu.RUnlock()
+	if ok {
+		return proc, nil
+	}
+
+	agentDef, exists := i.doc.Agents[name]
+	if !exists {
+		return nil, fmt.Errorf("agent '%s' not found", name)
+	}
+
+	if err := i.spawnAgent(name, agentDef); err != nil {
+		return nil, fmt.Errorf("spawn agent %s: %w", name, err)
+	}
+
+	i.mu.RLock()
+	proc = i.agents[name]
+	i.mu.RUnlock()
+	return proc, nil
+}
+
 // executeAgentStep sends a message to an agent.
 func (i *Interpreter) executeAgentStep(ctx context.Context, step *Step, execCtx *ExecutionContext) (any, error) {
-	i.mu.RLock()
-	proc, ok := i.agents[step.Agent]
-	i.mu.RUnlock()
-
-	if !ok {
-		return nil, fmt.Errorf("agent '%s' not found", step.Agent)
+	proc, err := i.ensureAgent(step.Agent)
+	if err != nil {
+		return nil, err
 	}
 
 	// Interpolate the message
@@ -838,14 +877,80 @@ func (i *Interpreter) Execute(ctx context.Context, name string, inputs map[strin
 	return i.RunWorkflow(ctx, name, inputs)
 }
 
+// Orchestrator returns the underlying orchestrator.
+func (i *Interpreter) Orchestrator() *vega.Orchestrator {
+	return i.orch
+}
+
+// Document returns the parsed DSL document.
+func (i *Interpreter) Document() *Document {
+	return i.doc
+}
+
+// Tools returns the tool registry.
+func (i *Interpreter) Tools() *vega.Tools {
+	return i.tools
+}
+
+// Agents returns a copy of the active agent processes map.
+func (i *Interpreter) Agents() map[string]*vega.Process {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	copy := make(map[string]*vega.Process, len(i.agents))
+	for k, v := range i.agents {
+		copy[k] = v
+	}
+	return copy
+}
+
+// AddAgent adds and spawns a new agent at runtime.
+func (i *Interpreter) AddAgent(name string, def *Agent) error {
+	i.mu.RLock()
+	_, exists := i.agents[name]
+	i.mu.RUnlock()
+	if exists {
+		return fmt.Errorf("agent '%s' already exists", name)
+	}
+
+	// Register in document so it's visible to list APIs.
+	i.mu.Lock()
+	if i.doc.Agents == nil {
+		i.doc.Agents = make(map[string]*Agent)
+	}
+	i.doc.Agents[name] = def
+	i.mu.Unlock()
+
+	if err := i.spawnAgent(name, def); err != nil {
+		// Roll back document entry on failure.
+		i.mu.Lock()
+		delete(i.doc.Agents, name)
+		i.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// RemoveAgent stops and removes an agent at runtime.
+func (i *Interpreter) RemoveAgent(name string) error {
+	i.mu.Lock()
+	proc, ok := i.agents[name]
+	if !ok {
+		i.mu.Unlock()
+		return fmt.Errorf("agent '%s' not found", name)
+	}
+	delete(i.agents, name)
+	delete(i.doc.Agents, name)
+	i.mu.Unlock()
+
+	// Kill the process via orchestrator.
+	return i.orch.Kill(proc.ID)
+}
+
 // SendToAgent sends a message to a specific agent and returns the response.
 func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message string) (string, error) {
-	i.mu.RLock()
-	proc, ok := i.agents[agentName]
-	i.mu.RUnlock()
-
-	if !ok {
-		return "", fmt.Errorf("agent '%s' not found", agentName)
+	proc, err := i.ensureAgent(agentName)
+	if err != nil {
+		return "", err
 	}
 
 	response, err := proc.Send(ctx, message)

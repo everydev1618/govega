@@ -1,0 +1,112 @@
+# Reddit Digest Agent
+# Reads a subreddit and emails you a summary.
+#
+# Prerequisites:
+#   1. Reddit API credentials: https://www.reddit.com/prefs/apps
+#      Create a "script" app, grab client_id and client_secret.
+#      Export REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET.
+#
+#   2. Resend API key: https://resend.com (free tier: 100 emails/day)
+#      Verify your domain, grab the API key.
+#      Export RESEND_API_KEY and SENDER_EMAIL_ADDRESS.
+#
+# Usage:
+#   vega run reddit-digest.vega.yaml --workflow digest \
+#     --input '{"subreddit": "golang", "email": "you@example.com"}'
+#
+#   vega serve reddit-digest.vega.yaml
+#   # Then use the Workflow Launcher in the dashboard.
+
+name: Reddit Digest
+description: Reads a subreddit and emails a curated summary
+
+settings:
+  default_model: claude-sonnet-4-20250514
+
+  mcp:
+    servers:
+      - name: reddit
+        transport: stdio
+        command: npx
+        args: [-y, reddit-mcp]
+        timeout: 30s
+
+      - name: resend
+        transport: stdio
+        command: npx
+        args: [-y, resend-mcp]
+        timeout: 30s
+
+agents:
+  digest:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are a content curator. Your job is to read subreddit posts and
+      create concise, engaging email digests.
+
+      When summarizing posts:
+      - Lead with the most interesting or impactful story
+      - Include 5-8 top posts with 2-3 sentence summaries each
+      - Note comment counts and scores to indicate community engagement
+      - Group related posts together if there are common themes
+      - End with a "trending topics" section
+      - Keep the total digest under 500 words
+      - Use clean HTML formatting for the email body
+
+workflows:
+  digest:
+    description: Read a subreddit and email a digest
+    inputs:
+      subreddit:
+        type: string
+        description: Subreddit to read (without r/ prefix)
+        required: true
+      email:
+        type: string
+        description: Email address to send the digest to
+        required: true
+      count:
+        type: number
+        description: Number of posts to fetch
+        default: 20
+
+    steps:
+      - digest:
+          send: |
+            Search for the top {{count}} hot posts in r/{{subreddit}}.
+            Then compose a well-formatted HTML email digest summarizing
+            the most interesting posts and discussions.
+            Send the digest email to {{email}} with the subject
+            "r/{{subreddit}} Daily Digest".
+          save: result
+          timeout: 5m
+
+    output: "{{result}}"
+
+  multi-digest:
+    description: Read multiple subreddits and email a combined digest
+    inputs:
+      subreddits:
+        type: string
+        description: Comma-separated subreddit names
+        required: true
+      email:
+        type: string
+        description: Email address to send the digest to
+        required: true
+
+    steps:
+      - digest:
+          send: |
+            I need you to create a combined digest email from multiple subreddits.
+
+            For each of these subreddits: {{subreddits}}
+
+            1. Search for the top 10 hot posts in each
+            2. Pick the 3-5 most interesting posts from each subreddit
+            3. Compose one combined HTML email with sections per subreddit
+            4. Send it to {{email}} with subject "Multi-Sub Daily Digest"
+          save: result
+          timeout: 10m
+
+    output: "{{result}}"

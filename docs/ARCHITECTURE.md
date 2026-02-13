@@ -54,6 +54,17 @@ vega/
 │   ├── summarizing.go
 │   └── hybrid.go
 │
+├── serve/            # Web dashboard & REST API (vega serve)
+│   ├── server.go     # HTTP server, route registration, CORS
+│   ├── handlers_api.go   # REST endpoints (processes, agents, stats, etc.)
+│   ├── handlers_sse.go   # Server-Sent Events streaming
+│   ├── broker.go     # EventBroker pub/sub (fans out to SSE subscribers)
+│   ├── store.go      # Store interface for persistence
+│   ├── store_sqlite.go   # SQLite implementation (modernc.org/sqlite, pure Go)
+│   ├── types.go      # API request/response structs
+│   ├── embed.go      # //go:embed for SPA frontend
+│   └── frontend/     # React + Vite + Tailwind CSS dashboard
+│
 └── middleware/       # HTTP/framework integrations
     ├── gin.go
     └── http.go
@@ -453,6 +464,66 @@ func MyMiddleware() ToolMiddleware {
 
 tools.Use(MyMiddleware())
 ```
+
+## Serve Package (Web Dashboard)
+
+The `serve` package provides `vega serve` — an HTTP server with a web dashboard and REST API for monitoring and controlling agents.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     vega serve                                │
+├──────────────────────────────────────────────────────────────┤
+│  ┌────────────┐  ┌────────────┐  ┌────────────────────────┐  │
+│  │ HTTP Server│  │ SSE Broker │  │ SQLite Store           │  │
+│  │ (stdlib)   │  │ (pub/sub)  │  │ (modernc.org/sqlite)   │  │
+│  └────────────┘  └────────────┘  └────────────────────────┘  │
+├──────────────────────────────────────────────────────────────┤
+│  ┌────────────┐  ┌────────────┐  ┌────────────────────────┐  │
+│  │ REST API   │  │ Embedded   │  │ Orchestrator Callbacks │  │
+│  │ Handlers   │  │ React SPA  │  │ (start/complete/fail)  │  │
+│  └────────────┘  └────────────┘  └────────────────────────┘  │
+├──────────────────────────────────────────────────────────────┤
+│              dsl.Interpreter (accessor methods)               │
+│    Orchestrator() | Document() | Tools() | Agents()          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Decisions
+
+- **Accessor methods on Interpreter**: The `dsl.Interpreter` owns the `Orchestrator`, `Tools`, and agent processes as private fields. Rather than restructuring ownership, 4 accessor methods expose what the serve layer needs: `Orchestrator()`, `Document()`, `Tools()`, `Agents()`.
+
+- **Go 1.22+ stdlib router**: Uses `net/http.ServeMux` with method-pattern routing (`GET /api/processes/{id}`). No third-party router dependency.
+
+- **EventBroker pattern**: The `EventBroker` pub/sub hooks into `orch.OnProcessStarted/Complete/Failed` callbacks and fans out events to SSE subscribers. Events are also persisted to SQLite. Max 50 concurrent subscribers.
+
+- **Pure Go SQLite**: Uses `modernc.org/sqlite` (no CGo) for cross-compilation. Stores events, process snapshots, and workflow runs. WAL mode for concurrent reads.
+
+- **Embedded SPA**: The React frontend is compiled to static files and embedded into the Go binary via `//go:embed`. A fallback handler serves `index.html` for client-side routing.
+
+### REST API Routes
+
+```
+GET    /api/processes           → List all processes (live + historical)
+GET    /api/processes/{id}      → Process detail with conversation history
+DELETE /api/processes/{id}      → Kill a running process
+GET    /api/agents              → Agent definitions from .vega.yaml
+GET    /api/workflows           → Workflow list with input schemas
+POST   /api/workflows/{name}/run → Launch a workflow, returns run ID
+GET    /api/mcp/servers         → MCP server connection status + tools
+GET    /api/stats               → Aggregate metrics (cost, tokens, tool calls)
+GET    /api/spawn-tree          → Hierarchical parent-child tree
+GET    /api/events              → SSE event stream (text/event-stream)
+GET    /                        → Embedded React dashboard (SPA)
+```
+
+### SQLite Schema
+
+Three tables persist data across restarts:
+- **events** — All orchestration events (type, process_id, agent, timestamp, data JSON)
+- **process_snapshots** — Process state snapshots (status, metrics, parent, timestamps)
+- **workflow_runs** — Workflow execution history (name, inputs, status, result)
 
 ## Performance Considerations
 

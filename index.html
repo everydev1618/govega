@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todo List App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📝 Todo List</h1>
+            <p class="subtitle">Stay organized, get things done</p>
+        </header>
+
+        <main>
+            <div class="add-todo-section">
+                <div class="input-group">
+                    <input type="text" id="todoInput" placeholder="What needs to be done?" maxlength="100">
+                    <button id="addBtn" class="btn-primary">Add</button>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="active">Active</button>
+                    <button class="filter-btn" data-filter="completed">Completed</button>
+                </div>
+                <div class="stats">
+                    <span id="totalCount">0 items</span>
+                </div>
+            </div>
+
+            <div class="todo-list-container">
+                <ul id="todoList" class="todo-list"></ul>
+                <div id="emptyState" class="empty-state">
+                    <div class="empty-icon">✨</div>
+                    <p>No todos yet. Add one above!</p>
+                </div>
+            </div>
+
+            <div class="actions-section">
+                <button id="clearCompleted" class="btn-secondary">Clear Completed</button>
+                <button id="clearAll" class="btn-danger">Clear All</button>
+            </div>
+        </main>
+
+        <footer>
+            <p>Built with ❤️ | Data saved locally in your browser</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
