@@ -175,9 +175,11 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// If the agent has a team, register the delegate tool and enrich the prompt.
 	if len(req.Team) > 0 {
-		s.ensureDelegateTool()
+		dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
+			return s.interp.SendToAgent(ctx, agent, message)
+		})
 		toolNames = append(toolNames, "delegate")
-		system = buildTeamPrompt(system, req.Team)
+		system = dsl.BuildTeamPrompt(system, req.Team, nil)
 	}
 
 	// Build DSL agent definition.
@@ -233,56 +235,6 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	s.store.DeleteComposedAgent(name)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "name": name})
-}
-
-// ensureDelegateTool registers the global "delegate" tool if it doesn't exist yet.
-// The tool lets any agent send a task to another agent and get the response.
-func (s *Server) ensureDelegateTool() {
-	tools := s.interp.Tools()
-
-	// Only register once.
-	for _, ts := range tools.Schema() {
-		if ts.Name == "delegate" {
-			return
-		}
-	}
-
-	tools.Register("delegate", vega.ToolDef{
-		Description: "Delegate a task to another agent on your team and get their response. Use this to assign work to team members.",
-		Fn: func(ctx context.Context, params map[string]any) (string, error) {
-			agent, _ := params["agent"].(string)
-			message, _ := params["message"].(string)
-			if agent == "" || message == "" {
-				return "", fmt.Errorf("both agent and message are required")
-			}
-			return s.interp.SendToAgent(ctx, agent, message)
-		},
-		Params: map[string]vega.ParamDef{
-			"agent": {
-				Type:        "string",
-				Description: "Name of the team member agent to delegate to",
-				Required:    true,
-			},
-			"message": {
-				Type:        "string",
-				Description: "The task or question to send to the agent",
-				Required:    true,
-			},
-		},
-	})
-}
-
-// buildTeamPrompt appends team delegation instructions to a system prompt.
-func buildTeamPrompt(system string, team []string) string {
-	if len(team) == 0 {
-		return system
-	}
-	teamSection := "\n\n## Your Team\n\nYou lead a team of agents. Use the `delegate` tool to assign tasks to them and get their responses. Your team members:\n"
-	for _, name := range team {
-		teamSection += fmt.Sprintf("- **%s**\n", name)
-	}
-	teamSection += "\nDelegate strategically — break complex tasks into pieces and assign them to the right team member. You can delegate multiple times, iterate on their work, and synthesize their outputs into a final result."
-	return system + teamSection
 }
 
 // --- Skill Tool Parsing ---
@@ -409,9 +361,11 @@ func (s *Server) restoreComposedAgents() {
 
 		// If the agent has a team, register the delegate tool and enrich the prompt.
 		if len(a.Team) > 0 {
-			s.ensureDelegateTool()
+			dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
+				return s.interp.SendToAgent(ctx, agent, message)
+			})
 			toolNames = append(toolNames, "delegate")
-			system = buildTeamPrompt(system, a.Team)
+			system = dsl.BuildTeamPrompt(system, a.Team, nil)
 		}
 
 		agentDef := &dsl.Agent{

@@ -138,6 +138,15 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 		}
 	}
 
+	// Parse team list
+	if team, ok := m["team"].([]any); ok {
+		for _, t := range team {
+			if s, ok := t.(string); ok {
+				agent.Team = append(agent.Team, s)
+			}
+		}
+	}
+
 	// Parse supervision
 	if sup, ok := m["supervision"].(map[string]any); ok {
 		agent.Supervision = &SupervisionDef{}
@@ -612,6 +621,23 @@ func (p *Parser) validate(doc *Document) error {
 				return &ValidationError{
 					Field:   fmt.Sprintf("agents.%s.extends", name),
 					Message: fmt.Sprintf("agent '%s' not found", agent.Extends),
+					Hint:    fmt.Sprintf("Did you mean one of: %s?", strings.Join(agentNames(doc), ", ")),
+				}
+			}
+		}
+
+		// Check team references
+		for _, member := range agent.Team {
+			if member == name {
+				return &ValidationError{
+					Field:   fmt.Sprintf("agents.%s.team", name),
+					Message: "agent cannot be on its own team",
+				}
+			}
+			if _, ok := doc.Agents[member]; !ok {
+				return &ValidationError{
+					Field:   fmt.Sprintf("agents.%s.team", name),
+					Message: fmt.Sprintf("team member '%s' not found", member),
 					Hint:    fmt.Sprintf("Did you mean one of: %s?", strings.Join(agentNames(doc), ", ")),
 				}
 			}

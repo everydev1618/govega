@@ -130,8 +130,29 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 
 // spawnAgent creates a Vega process for a DSL agent.
 func (i *Interpreter) spawnAgent(name string, def *Agent) error {
+	// Build the base system string, enriching with team section if needed.
+	systemStr := def.System
+
+	if len(def.Team) > 0 {
+		RegisterDelegateTool(i.tools, func(ctx context.Context, agentName string, message string) (string, error) {
+			return i.SendToAgent(ctx, agentName, message)
+		})
+
+		descs := make(map[string]string, len(def.Team))
+		for _, member := range def.Team {
+			if memberDef, ok := i.doc.Agents[member]; ok {
+				if first, _, ok := strings.Cut(strings.TrimSpace(memberDef.System), "\n"); ok {
+					descs[member] = first
+				} else {
+					descs[member] = strings.TrimSpace(memberDef.System)
+				}
+			}
+		}
+		systemStr = BuildTeamPrompt(systemStr, def.Team, descs)
+	}
+
 	// Build base system prompt
-	var systemPrompt vega.SystemPrompt = vega.StaticPrompt(def.System)
+	var systemPrompt vega.SystemPrompt = vega.StaticPrompt(systemStr)
 
 	// Wrap with skills if configured
 	if def.Skills != nil {
@@ -160,7 +181,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 			if def.Skills.MaxActive > 0 {
 				opts = append(opts, vega.WithMaxActiveSkills(def.Skills.MaxActive))
 			}
-			systemPrompt = vega.NewSkillsPrompt(vega.StaticPrompt(def.System), loader, opts...)
+			systemPrompt = vega.NewSkillsPrompt(vega.StaticPrompt(systemStr), loader, opts...)
 		}
 	}
 
@@ -960,6 +981,13 @@ func (i *Interpreter) ResetAgent(name string) error {
 	i.mu.Unlock()
 
 	return i.orch.Kill(proc.ID)
+}
+
+// EnsureAgent ensures the named agent process is spawned and returns it.
+// If the process already exists it is returned immediately; otherwise the
+// agent is lazily spawned from its definition.
+func (i *Interpreter) EnsureAgent(name string) (*vega.Process, error) {
+	return i.ensureAgent(name)
 }
 
 // SendToAgent sends a message to a specific agent and returns the response.
