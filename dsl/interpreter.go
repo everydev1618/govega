@@ -946,6 +946,22 @@ func (i *Interpreter) RemoveAgent(name string) error {
 	return i.orch.Kill(proc.ID)
 }
 
+// ResetAgent kills the agent process and removes it from the active map,
+// but preserves the agent definition so it respawns fresh on next use.
+func (i *Interpreter) ResetAgent(name string) error {
+	i.mu.Lock()
+	proc, ok := i.agents[name]
+	if !ok {
+		i.mu.Unlock()
+		// Agent not spawned yet — nothing to reset.
+		return nil
+	}
+	delete(i.agents, name)
+	i.mu.Unlock()
+
+	return i.orch.Kill(proc.ID)
+}
+
 // SendToAgent sends a message to a specific agent and returns the response.
 func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message string) (string, error) {
 	proc, err := i.ensureAgent(agentName)
