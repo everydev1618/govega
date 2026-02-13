@@ -138,6 +138,24 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, msgs)
 }
 
+func (s *Server) handleClearChat(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	// Clear DB messages.
+	if err := s.store.DeleteChatMessages(name); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Reset in-memory agent process so it starts fresh.
+	if err := s.interp.ResetAgent(name); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
+}
+
 // --- Workflow Handlers ---
 
 func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {

@@ -140,6 +140,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Chat
 	mux.HandleFunc("GET /api/agents/{name}/chat", s.handleChatHistory)
 	mux.HandleFunc("POST /api/agents/{name}/chat", s.handleChat)
+	mux.HandleFunc("DELETE /api/agents/{name}/chat", s.handleClearChat)
 
 	// SSE
 	mux.HandleFunc("GET /api/events", s.handleSSE)
