@@ -27,6 +27,14 @@ type Agent struct {
 	Supervision *SupervisionDef   `yaml:"supervision"`
 	Retry       *RetryDef         `yaml:"retry"`
 	Skills      *SkillsDef        `yaml:"skills"`
+	Delegation  *DelegationDef    `yaml:"delegation"`
+}
+
+// DelegationDef configures context-aware delegation for an agent.
+type DelegationDef struct {
+	ContextWindow int      `yaml:"context_window"` // number of recent messages to forward
+	IncludeRoles  []string `yaml:"include_roles"`  // filter by role (user, assistant, system)
+	Blackboard    bool     `yaml:"blackboard"`     // enable shared blackboard for team
 }
 
 // SkillsDef configures skills for an agent.

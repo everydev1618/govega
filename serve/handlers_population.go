@@ -179,7 +179,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 			return s.interp.SendToAgent(ctx, agent, message)
 		})
 		toolNames = append(toolNames, "delegate")
-		system = dsl.BuildTeamPrompt(system, req.Team, nil)
+		system = dsl.BuildTeamPrompt(system, req.Team, nil, false)
 	}
 
 	// Build DSL agent definition.
@@ -365,7 +365,7 @@ func (s *Server) restoreComposedAgents() {
 				return s.interp.SendToAgent(ctx, agent, message)
 			})
 			toolNames = append(toolNames, "delegate")
-			system = dsl.BuildTeamPrompt(system, a.Team, nil)
+			system = dsl.BuildTeamPrompt(system, a.Team, nil, false)
 		}
 
 		agentDef := &dsl.Agent{
