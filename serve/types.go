@@ -126,6 +126,13 @@ type BrokerEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// MemoryResponse is the API representation of user memory.
+type MemoryResponse struct {
+	UserID  string       `json:"user_id"`
+	Agent   string       `json:"agent"`
+	Layers  []UserMemory `json:"layers"`
+}
+
 // ErrorResponse is returned on API errors.
 type ErrorResponse struct {
 	Error   string `json:"error"`

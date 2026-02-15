@@ -120,7 +120,12 @@ func (s *Server) chatAgentName(baseAgent string, r *http.Request) string {
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
-	name := s.chatAgentName(r.PathValue("name"), r)
+	baseAgent := r.PathValue("name")
+	name := s.chatAgentName(baseAgent, r)
+	userID := r.Header.Get("X-Auth-User")
+	if userID == "" {
+		userID = "default"
+	}
 
 	var req struct {
 		Message string `json:"message"`
@@ -128,6 +133,20 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
 		return
+	}
+
+	// Ensure the agent process is spawned so we can inject memory.
+	proc, err := s.interp.EnsureAgent(name)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Load and inject memory into the process before sending.
+	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
+		if memText := formatMemoryForInjection(memories); memText != "" {
+			proc.SetExtraSystem(memText)
+		}
 	}
 
 	// Persist user message.
@@ -145,7 +164,54 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Persist assistant response.
 	s.store.InsertChatMessage(name, "assistant", response)
 
+	// Fire async memory extraction.
+	go s.extractMemory(userID, baseAgent, req.Message, response)
+
 	writeJSON(w, http.StatusOK, map[string]string{"response": response})
+}
+
+func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
+	baseAgent := r.PathValue("name")
+	userID := r.URL.Query().Get("user")
+	if userID == "" {
+		userID = r.Header.Get("X-Auth-User")
+	}
+	if userID == "" {
+		userID = "default"
+	}
+
+	memories, err := s.store.GetUserMemory(userID, baseAgent)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if memories == nil {
+		memories = []UserMemory{}
+	}
+
+	writeJSON(w, http.StatusOK, MemoryResponse{
+		UserID: userID,
+		Agent:  baseAgent,
+		Layers: memories,
+	})
+}
+
+func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
+	baseAgent := r.PathValue("name")
+	userID := r.URL.Query().Get("user")
+	if userID == "" {
+		userID = r.Header.Get("X-Auth-User")
+	}
+	if userID == "" {
+		userID = "default"
+	}
+
+	if err := s.store.DeleteUserMemory(userID, baseAgent); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {

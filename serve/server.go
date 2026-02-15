@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/vega-population/population"
 )
 
@@ -26,6 +28,10 @@ type Server struct {
 	popClient *population.Client
 	cfg       Config
 	startedAt time.Time
+
+	// extractLLM is a separate LLM client used for memory extraction.
+	extractLLM   vega.LLM
+	extractLLMMu sync.Once
 }
 
 // New creates a new Server.
@@ -35,6 +41,14 @@ func New(interp *dsl.Interpreter, cfg Config) *Server {
 		broker: NewEventBroker(),
 		cfg:    cfg,
 	}
+}
+
+// getExtractLLM returns the lazily-initialized LLM client for memory extraction.
+func (s *Server) getExtractLLM() vega.LLM {
+	s.extractLLMMu.Do(func() {
+		s.extractLLM = llm.NewAnthropic(llm.WithModel("claude-haiku-3-20240307"))
+	})
+	return s.extractLLM
 }
 
 // Start initializes the store, wires callbacks, registers routes, and
@@ -142,6 +156,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{name}/chat", s.handleChat)
 	mux.HandleFunc("DELETE /api/agents/{name}/chat", s.handleClearChat)
 
+	// Memory
+	mux.HandleFunc("GET /api/agents/{name}/memory", s.handleGetMemory)
+	mux.HandleFunc("DELETE /api/agents/{name}/memory", s.handleDeleteMemory)
+
 	// SSE
 	mux.HandleFunc("GET /api/events", s.handleSSE)
 
@@ -238,7 +256,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Auth-User")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
