@@ -48,6 +48,25 @@ type Store interface {
 
 	// DeleteChatMessages removes all chat messages for an agent.
 	DeleteChatMessages(agent string) error
+
+	// UpsertUserMemory creates or updates a memory layer for a user+agent.
+	UpsertUserMemory(userID, agent, layer, content string) error
+
+	// GetUserMemory returns all memory layers for a user+agent.
+	GetUserMemory(userID, agent string) ([]UserMemory, error)
+
+	// DeleteUserMemory removes all memory for a user+agent.
+	DeleteUserMemory(userID, agent string) error
+}
+
+// UserMemory is a persisted memory layer for a user+agent pair.
+type UserMemory struct {
+	UserID    string    `json:"user_id"`
+	Agent     string    `json:"agent"`
+	Layer     string    `json:"layer"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ChatMessage is a persisted chat message.

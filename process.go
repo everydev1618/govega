@@ -99,6 +99,9 @@ type Process struct {
 	restartPolicy ChildRestart
 	spawnOpts     []SpawnOption
 
+	// extraSystem is additional system prompt content injected per-process.
+	extraSystem string
+
 	// Process group membership
 	groups map[string]*ProcessGroup
 
@@ -183,6 +186,15 @@ func (p *Process) Groups() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// SetExtraSystem sets additional system prompt content that is appended
+// after the main system prompt. Use this to inject per-process context
+// (e.g. user memory) without modifying the agent's shared System prompt.
+func (p *Process) SetExtraSystem(content string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.extraSystem = content
 }
 
 // Send sends a message and waits for a response.
@@ -454,9 +466,16 @@ func (p *Process) buildMessages() []Message {
 
 	// Add system prompt
 	if p.Agent.System != nil {
+		systemContent := p.Agent.System.Prompt()
+		p.mu.RLock()
+		extra := p.extraSystem
+		p.mu.RUnlock()
+		if extra != "" {
+			systemContent += "\n\n" + extra
+		}
 		messages = append(messages, Message{
 			Role:    RoleSystem,
-			Content: p.Agent.System.Prompt(),
+			Content: systemContent,
 		})
 	}
 

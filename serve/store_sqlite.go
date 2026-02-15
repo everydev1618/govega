@@ -84,6 +84,19 @@ func (s *SQLiteStore) Init() error {
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS user_memory (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id    TEXT NOT NULL,
+		agent      TEXT NOT NULL,
+		layer      TEXT NOT NULL,
+		content    TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_user_memory_unique
+		ON user_memory(user_id, agent, layer);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -308,6 +321,47 @@ func (s *SQLiteStore) ListChatMessages(agent string) ([]ChatMessage, error) {
 // DeleteChatMessages removes all chat messages for an agent.
 func (s *SQLiteStore) DeleteChatMessages(agent string) error {
 	_, err := s.db.Exec(`DELETE FROM chat_messages WHERE agent = ?`, agent)
+	return err
+}
+
+// UpsertUserMemory creates or replaces a memory layer for a user+agent.
+func (s *SQLiteStore) UpsertUserMemory(userID, agent, layer, content string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO user_memory (user_id, agent, layer, content, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		 ON CONFLICT(user_id, agent, layer)
+		 DO UPDATE SET content = excluded.content, updated_at = CURRENT_TIMESTAMP`,
+		userID, agent, layer, content,
+	)
+	return err
+}
+
+// GetUserMemory returns all memory layers for a user+agent.
+func (s *SQLiteStore) GetUserMemory(userID, agent string) ([]UserMemory, error) {
+	rows, err := s.db.Query(
+		`SELECT user_id, agent, layer, content, created_at, updated_at
+		 FROM user_memory WHERE user_id = ? AND agent = ? ORDER BY layer ASC`,
+		userID, agent,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var memories []UserMemory
+	for rows.Next() {
+		var m UserMemory
+		if err := rows.Scan(&m.UserID, &m.Agent, &m.Layer, &m.Content, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		memories = append(memories, m)
+	}
+	return memories, rows.Err()
+}
+
+// DeleteUserMemory removes all memory for a user+agent.
+func (s *SQLiteStore) DeleteUserMemory(userID, agent string) error {
+	_, err := s.db.Exec(`DELETE FROM user_memory WHERE user_id = ? AND agent = ?`, userID, agent)
 	return err
 }
 
