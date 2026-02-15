@@ -27,13 +27,14 @@ func WithLazySpawn() InterpreterOption {
 
 // Interpreter executes DSL workflows.
 type Interpreter struct {
-	doc          *Document
-	orch         *vega.Orchestrator
-	agents       map[string]*vega.Process
-	tools        *vega.Tools
-	skillsLoader *skills.Loader
-	lazySpawn    bool
-	mu           sync.RWMutex
+	doc               *Document
+	orch              *vega.Orchestrator
+	agents            map[string]*vega.Process
+	tools             *vega.Tools
+	skillsLoader      *skills.Loader
+	delegationConfigs map[string]*DelegationDef
+	lazySpawn         bool
+	mu                sync.RWMutex
 }
 
 // NewInterpreter creates a new interpreter for a document.
@@ -105,11 +106,12 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	}
 
 	interp := &Interpreter{
-		doc:          doc,
-		orch:         orch,
-		agents:       make(map[string]*vega.Process),
-		tools:        tools,
-		skillsLoader: skillsLoader,
+		doc:               doc,
+		orch:              orch,
+		agents:            make(map[string]*vega.Process),
+		tools:             tools,
+		skillsLoader:      skillsLoader,
+		delegationConfigs: make(map[string]*DelegationDef),
 	}
 
 	for _, opt := range opts {
@@ -134,10 +136,29 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	systemStr := def.System
 
 	if len(def.Team) > 0 {
+		// Store delegation config for this agent.
+		if def.Delegation != nil {
+			i.mu.Lock()
+			i.delegationConfigs[name] = def.Delegation
+			i.mu.Unlock()
+		}
+
 		RegisterDelegateTool(i.tools, func(ctx context.Context, agentName string, message string) (string, error) {
+			// Enrich the message with caller context if configured.
+			callerProc := vega.ProcessFromContext(ctx)
+			if callerProc != nil && callerProc.Agent != nil {
+				i.mu.RLock()
+				delConfig := i.delegationConfigs[callerProc.Agent.Name]
+				i.mu.RUnlock()
+				if delConfig != nil && delConfig.ContextWindow > 0 {
+					dc := ExtractCallerContext(callerProc, delConfig)
+					message = FormatDelegationContext(dc, message)
+				}
+			}
 			return i.SendToAgent(ctx, agentName, message)
 		})
 
+		bbEnabled := def.Delegation != nil && def.Delegation.Blackboard
 		descs := make(map[string]string, len(def.Team))
 		for _, member := range def.Team {
 			if memberDef, ok := i.doc.Agents[member]; ok {
@@ -148,7 +169,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 				}
 			}
 		}
-		systemStr = BuildTeamPrompt(systemStr, def.Team, descs)
+		systemStr = BuildTeamPrompt(systemStr, def.Team, descs, bbEnabled)
 	}
 
 	// Build base system prompt
@@ -241,7 +262,64 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	i.agents[name] = proc
 	i.mu.Unlock()
 
+	// Auto-create team group and join leader process.
+	if len(def.Team) > 0 {
+		groupName := "team:" + name
+		group := i.orch.GetOrCreateGroup(groupName)
+		group.Join(proc)
+
+		// Register blackboard tools if enabled (idempotent via name check).
+		if def.Delegation != nil && def.Delegation.Blackboard {
+			resolver := i.teamGroupResolver(groupName)
+			i.registerToolIfAbsent("bb_read", NewBlackboardReadTool(resolver))
+			i.registerToolIfAbsent("bb_write", NewBlackboardWriteTool(resolver))
+			i.registerToolIfAbsent("bb_list", NewBlackboardListTool(resolver))
+		}
+	}
+
+	// Check if this agent is a team member of another agent and join that group.
+	for leaderName, leaderDef := range i.doc.Agents {
+		for _, member := range leaderDef.Team {
+			if member == name {
+				groupName := "team:" + leaderName
+				group := i.orch.GetOrCreateGroup(groupName)
+				group.Join(proc)
+			}
+		}
+	}
+
 	return nil
+}
+
+// teamGroupResolver returns a GroupResolver that finds the team group for the calling process.
+func (i *Interpreter) teamGroupResolver(defaultGroup string) GroupResolver {
+	return func(ctx context.Context) *vega.ProcessGroup {
+		proc := vega.ProcessFromContext(ctx)
+		if proc != nil {
+			// Check if the process belongs to any team group.
+			for _, gName := range proc.Groups() {
+				if len(gName) > 5 && gName[:5] == "team:" {
+					group, ok := i.orch.GetGroup(gName)
+					if ok {
+						return group
+					}
+				}
+			}
+		}
+		// Fallback to the default group.
+		group, _ := i.orch.GetGroup(defaultGroup)
+		return group
+	}
+}
+
+// registerToolIfAbsent registers a tool only if no tool with that name exists.
+func (i *Interpreter) registerToolIfAbsent(name string, def vega.ToolDef) {
+	for _, ts := range i.tools.Schema() {
+		if ts.Name == name {
+			return
+		}
+	}
+	i.tools.Register(name, def)
 }
 
 // RunWorkflow executes a workflow by name.

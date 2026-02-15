@@ -3,6 +3,7 @@ package dsl
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	vega "github.com/everydev1618/govega"
 )
@@ -12,7 +13,8 @@ type SendFunc func(ctx context.Context, agent string, message string) (string, e
 
 // BuildTeamPrompt appends team delegation instructions to a system prompt.
 // agentDescriptions is optional — if a member has a description it is shown.
-func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]string) string {
+// When blackboardEnabled is true, instructions about bb_read/bb_write/bb_list tools are appended.
+func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]string, blackboardEnabled bool) string {
 	if len(team) == 0 {
 		return system
 	}
@@ -25,6 +27,13 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 		}
 	}
 	teamSection += "\nDelegate strategically — break complex tasks into pieces and assign them to the right team member. You can delegate multiple times, iterate on their work, and synthesize their outputs into a final result."
+	if blackboardEnabled {
+		teamSection += "\n\n## Shared Blackboard\n\nYou and your team share a blackboard for passing structured data between agents. Use these tools:\n"
+		teamSection += "- `bb_write` — Write a key/value pair to the shared blackboard\n"
+		teamSection += "- `bb_read` — Read a value by key from the shared blackboard\n"
+		teamSection += "- `bb_list` — List all keys on the shared blackboard\n"
+		teamSection += "\nUse the blackboard to share context, decisions, and intermediate results with your team."
+	}
 	return system + teamSection
 }
 
@@ -66,4 +75,80 @@ func RegisterDelegateTool(tools *vega.Tools, sendFn SendFunc) bool {
 	}
 	tools.Register("delegate", NewDelegateTool(sendFn))
 	return true
+}
+
+// DelegationContext holds extracted caller context for enriched delegation.
+type DelegationContext struct {
+	CallerAgent string
+	Messages    []vega.Message
+}
+
+// ExtractCallerContext reads the last N messages from the caller process,
+// optionally filtering by role. Returns nil if no messages match.
+func ExtractCallerContext(callerProc *vega.Process, config *DelegationDef) *DelegationContext {
+	if callerProc == nil || config == nil || config.ContextWindow <= 0 {
+		return nil
+	}
+
+	msgs := callerProc.Messages()
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	// Filter by role if specified
+	if len(config.IncludeRoles) > 0 {
+		roleSet := make(map[string]bool, len(config.IncludeRoles))
+		for _, r := range config.IncludeRoles {
+			roleSet[r] = true
+		}
+		filtered := make([]vega.Message, 0, len(msgs))
+		for _, m := range msgs {
+			if roleSet[string(m.Role)] {
+				filtered = append(filtered, m)
+			}
+		}
+		msgs = filtered
+	}
+
+	// Take last N messages
+	if len(msgs) > config.ContextWindow {
+		msgs = msgs[len(msgs)-config.ContextWindow:]
+	}
+
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	agentName := ""
+	if callerProc.Agent != nil {
+		agentName = callerProc.Agent.Name
+	}
+
+	return &DelegationContext{
+		CallerAgent: agentName,
+		Messages:    msgs,
+	}
+}
+
+// FormatDelegationContext wraps the original message with caller context as XML.
+func FormatDelegationContext(dc *DelegationContext, message string) string {
+	if dc == nil || len(dc.Messages) == 0 {
+		return message
+	}
+
+	var b strings.Builder
+	b.WriteString("<delegation_context>\n<from>")
+	b.WriteString(dc.CallerAgent)
+	b.WriteString("</from>\n<recent_conversation>\n")
+	for _, m := range dc.Messages {
+		b.WriteString("[")
+		b.WriteString(string(m.Role))
+		b.WriteString("]: ")
+		b.WriteString(m.Content)
+		b.WriteString("\n")
+	}
+	b.WriteString("</recent_conversation>\n</delegation_context>\n\n<task>\n")
+	b.WriteString(message)
+	b.WriteString("\n</task>")
+	return b.String()
 }

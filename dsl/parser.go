@@ -201,6 +201,24 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 		}
 	}
 
+	// Parse delegation
+	if del, ok := m["delegation"].(map[string]any); ok {
+		agent.Delegation = &DelegationDef{}
+		if v, ok := del["context_window"].(int); ok {
+			agent.Delegation.ContextWindow = v
+		}
+		if v, ok := del["blackboard"].(bool); ok {
+			agent.Delegation.Blackboard = v
+		}
+		if roles, ok := del["include_roles"].([]any); ok {
+			for _, r := range roles {
+				if s, ok := r.(string); ok {
+					agent.Delegation.IncludeRoles = append(agent.Delegation.IncludeRoles, s)
+				}
+			}
+		}
+	}
+
 	return agent, nil
 }
 

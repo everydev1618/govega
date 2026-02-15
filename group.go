@@ -16,6 +16,10 @@ type ProcessGroup struct {
 	// Callbacks for membership changes
 	onJoin  []func(*Process)
 	onLeave []func(*Process)
+
+	// Shared blackboard for team collaboration
+	blackboard map[string]any
+	bbMu       sync.RWMutex
 }
 
 // GroupMember contains information about a group member.
@@ -30,8 +34,9 @@ type GroupMember struct {
 // Groups are typically accessed via the orchestrator's Join/Leave methods.
 func NewGroup(name string) *ProcessGroup {
 	return &ProcessGroup{
-		name:    name,
-		members: make(map[string]*Process),
+		name:       name,
+		members:    make(map[string]*Process),
+		blackboard: make(map[string]any),
 	}
 }
 
@@ -176,6 +181,52 @@ func (g *ProcessGroup) Broadcast(ctx context.Context, message string) map[string
 
 	wg.Wait()
 	return results
+}
+
+// --- Blackboard Methods ---
+
+// BBSet writes a key/value pair to the group's shared blackboard.
+func (g *ProcessGroup) BBSet(key string, value any) {
+	g.bbMu.Lock()
+	defer g.bbMu.Unlock()
+	g.blackboard[key] = value
+}
+
+// BBGet reads a value from the group's shared blackboard.
+func (g *ProcessGroup) BBGet(key string) (any, bool) {
+	g.bbMu.RLock()
+	defer g.bbMu.RUnlock()
+	v, ok := g.blackboard[key]
+	return v, ok
+}
+
+// BBDelete removes a key from the group's shared blackboard.
+func (g *ProcessGroup) BBDelete(key string) {
+	g.bbMu.Lock()
+	defer g.bbMu.Unlock()
+	delete(g.blackboard, key)
+}
+
+// BBKeys returns all keys on the group's shared blackboard.
+func (g *ProcessGroup) BBKeys() []string {
+	g.bbMu.RLock()
+	defer g.bbMu.RUnlock()
+	keys := make([]string, 0, len(g.blackboard))
+	for k := range g.blackboard {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// BBSnapshot returns a shallow copy of the entire blackboard.
+func (g *ProcessGroup) BBSnapshot() map[string]any {
+	g.bbMu.RLock()
+	defer g.bbMu.RUnlock()
+	snap := make(map[string]any, len(g.blackboard))
+	for k, v := range g.blackboard {
+		snap[k] = v
+	}
+	return snap
 }
 
 // --- Orchestrator Group Methods ---
