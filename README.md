@@ -4,35 +4,71 @@
 
 Vega makes it easy to build reliable AI agent systems with Erlang-style supervision. Use the YAML DSL for rapid prototyping or the Go library for full control.
 
-```yaml
-name: Code Review Team
+## Chat
 
-agents:
-  coder:
-    model: claude-sonnet-4-20250514
-    system: You write clean, well-documented code.
-
-  reviewer:
-    model: claude-sonnet-4-20250514
-    system: You review code for bugs and improvements.
-
-workflows:
-  review:
-    steps:
-      - coder:
-          send: "{{task}}"
-          save: code
-      - reviewer:
-          send: "Review this code:\n{{code}}"
-          save: review
-    output:
-      code: "{{code}}"
-      review: "{{review}}"
-```
+The fastest way to use Vega is the built-in chat interface. Responses stream token-by-token, and tool calls appear inline as collapsible panels with arguments, results, and execution time.
 
 ```bash
-vega run team.vega.yaml --workflow review --task "Write a function to validate emails"
+vega serve team.vega.yaml
+# Open http://localhost:3001 → pick an agent → start chatting
 ```
+
+No YAML file? `vega serve` starts with a default assistant.
+
+### Streaming API
+
+Chat is also available as an SSE endpoint for programmatic use:
+
+```bash
+curl -N -X POST localhost:3001/api/agents/assistant/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "Search for recent Go releases"}'
+```
+
+```
+event: text_delta
+data: {"type":"text_delta","delta":"Let me "}
+
+event: tool_start
+data: {"type":"tool_start","tool_call_id":"tc_1","tool_name":"web_search","arguments":{"query":"Go releases 2026"}}
+
+event: tool_end
+data: {"type":"tool_end","tool_call_id":"tc_1","tool_name":"web_search","result":"Found 3 results...","duration_ms":1250}
+
+event: text_delta
+data: {"type":"text_delta","delta":"Based on the results..."}
+
+event: done
+data: {"type":"done"}
+```
+
+| Event | Fields | Description |
+|-------|--------|-------------|
+| `text_delta` | `delta` | Incremental text content |
+| `tool_start` | `tool_call_id`, `tool_name`, `arguments` | Tool execution began |
+| `tool_end` | `tool_call_id`, `tool_name`, `result`, `duration_ms` | Tool execution finished |
+| `error` | `error` | An error occurred |
+| `done` | | Stream complete |
+
+A blocking (non-streaming) endpoint is also available at `POST /api/agents/{name}/chat`.
+
+### Go Library
+
+```go
+stream, _ := proc.SendStreamRich(ctx, "Search for recent Go releases")
+for event := range stream.Events() {
+    switch event.Type {
+    case vega.ChatEventTextDelta:
+        fmt.Print(event.Delta)
+    case vega.ChatEventToolStart:
+        fmt.Printf("\n[calling %s]\n", event.ToolName)
+    case vega.ChatEventToolEnd:
+        fmt.Printf("[done in %dms]\n", event.DurationMs)
+    }
+}
+```
+
+Use `SendStream` for simple text-only streaming, or `Send` for a blocking call.
 
 ---
 
@@ -359,6 +395,10 @@ tools:
 Tool implementations support `{{.param}}` template interpolation for dynamic values.
 
 ### Streaming Responses
+
+See the [Chat](#chat) section at the top for `SendStreamRich` (structured events with tool visibility).
+
+For simple text-only streaming:
 
 ```go
 stream, err := proc.SendStream(ctx, "Tell me a story")
@@ -704,6 +744,7 @@ vega serve team.vega.yaml
 ```
 
 The dashboard provides:
+- **Chat** — Real-time streaming chat with inline tool call panels (see top of README)
 - **Overview** — Live stats, recent events, active processes
 - **Process Explorer** — Sortable process list with conversation history
 - **Spawn Tree** — Hierarchical view of parent-child process relationships
@@ -728,6 +769,11 @@ curl localhost:3001/api/events       # SSE event stream
 curl -X POST localhost:3001/api/workflows/review/run \
   -H 'Content-Type: application/json' \
   -d '{"task": "Write a sort function"}'
+
+# Chat (see Streaming API section at top of README)
+curl -X POST localhost:3001/api/agents/assistant/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "Hello!"}'
 ```
 
 **Flags:**
@@ -1028,14 +1074,49 @@ const (
 
 ## Why Vega?
 
+### Erlang-Inspired Process Model
+
+Most agent frameworks treat LLM calls as stateless functions. Vega models agents as **processes** with a full lifecycle (`pending → running → completed/failed/timeout`), managed by an **Orchestrator**. The key concepts ported from Erlang/OTP:
+
+- **Process Linking** — Bidirectional links between processes. If one dies, the linked one dies too (unless it traps exits). This is how you build robust agent topologies where dependent agents fail together.
+- **Monitors** — Unidirectional observation: watch another process and get notified when it exits, without dying yourself.
+- **TrapExit** — A process can opt to receive exit signals as messages instead of dying. This is exactly how supervisors survive their children crashing.
+- **Supervision Trees** — Strategies (`Restart`, `Stop`, `Escalate`, `RestartAll`) with configurable backoff (exponential, linear, constant with jitter) and windowed restart counting.
+
+Just as Erlang/OTP made it possible to build telecom-grade systems by making processes and supervision cheap and composable, Vega applies the same philosophy to AI agent systems that need to run in production without falling over.
+
+### Agent = Blueprint, Process = Running Instance
+
+The separation of `Agent` (a struct defining model, tools, system prompt, budget) from `Process` (a running instance with state, messages, metrics) means you can spawn multiple processes from the same agent definition, each with its own conversation history and lifecycle. This is the actor model applied to LLMs.
+
+### Intelligent Error Classification
+
+Errors are automatically classified into 7 categories (`RateLimit`, `Overloaded`, `Timeout`, `Temporary`, `InvalidRequest`, `Authentication`, `BudgetExceeded`) with smart retry decisions. Rate limits and overloaded errors get retried with backoff; auth errors and bad requests don't. Production-grade reliability is built into the framework, not bolted on.
+
+### Team Delegation with Shared Blackboard
+
+Agents can delegate to team members via a `delegate` tool with context-aware message enrichment — recent conversation history is forwarded so delegates understand the full picture. A **shared blackboard** (`bb_read`, `bb_write`, `bb_list`) gives team members structured shared state, not just text passed back and forth.
+
+### Dual Interface: Go Library + YAML DSL
+
+The Go library gives full programmatic control, while the YAML DSL lets non-programmers define multi-agent workflows with control flow (`if/then/else`, `for-each`, `parallel`, `try/catch`), variable interpolation, and expression filters. The DSL interpreter is a proper workflow engine — not a thin config wrapper.
+
+### Everything is Observable
+
+Built-in web dashboard with SSE streaming, process explorer, spawn tree visualization, cost tracking, and a chat UI with inline tool call panels. Processes emit structured events (`text_delta`, `tool_start`, `tool_end`), and the `ChatStream` API makes it straightforward to build rich streaming interfaces.
+
+### Feature Comparison
+
 | Feature | Raw SDK | Other Frameworks | Vega |
 |---------|---------|------------------|------|
 | Supervision trees | Manual | ❌ | ✅ Built-in |
+| Process linking & monitors | ❌ | ❌ | ✅ Erlang-style |
 | Automatic retries | Manual | Partial | ✅ Smart (error-classified) |
 | Rate limiting | Manual | Manual | ✅ Built-in |
 | Cost tracking | Manual | Partial | ✅ Built-in |
 | MCP server support | Manual | Partial | ✅ Built-in |
 | Web dashboard | ❌ | ❌ | ✅ Built-in |
+| Team delegation & blackboard | ❌ | ❌ | ✅ Built-in |
 | Dynamic skills | ❌ | ❌ | ✅ Built-in |
 | Conversation history | Manual | Manual | ✅ WithMessages, persistence helpers |
 | Context compaction | ❌ | ❌ | ✅ Auto-summarization |
