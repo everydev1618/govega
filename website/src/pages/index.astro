@@ -43,16 +43,33 @@ const features = [
   },
 ]
 
-const comparison = [
-  ['Supervision trees',       false, false, true ],
-  ['Process linking',         false, false, true ],
-  ['Smart error retry',       false, 'partial', true ],
-  ['Rate limiting',           false, false, true ],
-  ['Cost tracking',           false, 'partial', true ],
-  ['MCP server support',      false, 'partial', true ],
-  ['Web dashboard',           false, false, true ],
-  ['YAML DSL',                false, false, true ],
-  ['Telegram channel',        false, false, true ],
+const ocVega = [
+  // [label, openclaw, vega, note?]
+  ['Target use',            'Personal AI assistant',    'Backend agent services',       ''],
+  ['Language / runtime',    'TypeScript · Node.js',     'Go',                           ''],
+  ['LLM providers',         'Claude, OpenAI, Gemini, Bedrock…', 'Anthropic only (for now)', 'vega-gap'],
+  ['Messaging channels',    '10+ (WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Matrix…)', 'Telegram', 'oc-strength'],
+  ['Device integration',    'iOS · Android · macOS apps', '—',                          'oc-strength'],
+  ['Browser automation',    '✓ Playwright',             '—',                            'oc-strength'],
+  ['Fault tolerance',       'Session recovery',         'Erlang-style supervision trees', 'vega-strength'],
+  ['Process linking',       '—',                        '✓ Links · monitors · trap-exit', 'vega-strength'],
+  ['Smart error retry',     '—',                        '✓ 7 error classes',            'vega-strength'],
+  ['Per-process cost caps', '—',                        '✓ Budget per agent',           'vega-strength'],
+  ['Workflow engine',       '—',                        '✓ YAML DSL with if/else, loops, parallel', 'vega-strength'],
+  ['Built-in dashboard',    '—',                        '✓ Process explorer, spawn tree, cost graph', 'vega-strength'],
+  ['Multi-agent teams',     'Via session tools',        '✓ Process groups + shared blackboard', 'vega-strength'],
+  ['MCP server support',    'Via mcporter bridge',      '✓ Native client',              ''],
+  ['Vector memory',         '✓ LanceDB plugin',         '—',                            'vega-gap'],
+  ['Multi-host clustering', '—',                        '—',                            ''],
+]
+
+const vegaGaps = [
+  ['Anthropic only', 'No OpenAI, Gemini, or local model support yet. The LLM interface makes this possible to add, but it doesn\'t exist today.'],
+  ['In-memory process registry', 'All process state lives in a single process. No clustering, no multi-host coordination, no hand-off across restarts.'],
+  ['Crude token estimation', 'Context trimming uses ~4 chars per token — not actual tokenisation. Works well enough in practice, but it\'s an approximation.'],
+  ['Limited DSL expressions', 'The YAML expression language has no custom functions and global-only variable scope. Complex logic still needs Go code.'],
+  ['Basic sandboxing', 'Tool sandboxing is path-based only. No memory limits, I/O quotas, or capability restrictions beyond file paths.'],
+  ['No companion apps', 'No mobile or desktop apps. Vega is a server-side library and CLI, not an end-user product.'],
 ]
 ---
 
@@ -218,36 +235,82 @@ const comparison = [
     </div>
   </section>
 
-  <!-- Comparison -->
+  <!-- Why Vega -->
   <section class="max-w-5xl mx-auto px-6 pb-24">
     <p class="section-label text-center">Why Vega?</p>
-    <div class="overflow-x-auto rounded-xl border border-white/10">
+
+    <!-- Framing -->
+    <p class="text-slate-400 text-sm leading-relaxed max-w-2xl mx-auto text-center mb-12">
+      A fair comparison requires an honest framing. Vega and
+      <a href="https://openclaw.dev" target="_blank" class="text-indigo-400 hover:text-indigo-300 transition-colors">OpenClaw</a>
+      are both AI agent projects from the same author, but they solve fundamentally different problems.
+      Neither is a substitute for the other.
+    </p>
+
+    <!-- Positioning cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+      <div class="rounded-xl border border-white/10 bg-space-900 p-6">
+        <p class="font-mono text-xs text-slate-500 mb-1">OpenClaw</p>
+        <p class="font-semibold text-white mb-3">A personal AI assistant for end users</p>
+        <p class="text-sm text-slate-400 leading-relaxed">
+          OpenClaw runs as a daemon on your devices and connects to messaging channels you already use —
+          WhatsApp, Telegram, Slack, Discord, iMessage, and more. It pairs with your phone and Mac so the
+          agent can take real-world actions: browse the web, run shell commands, control your screen.
+          It is built for one person, local-first, and privacy-centric.
+        </p>
+      </div>
+      <div class="rounded-xl border border-indigo-500/30 bg-space-900 p-6">
+        <p class="font-mono text-xs text-indigo-400 mb-1">Vega</p>
+        <p class="font-semibold text-white mb-3">A framework for building backend agent services</p>
+        <p class="text-sm text-slate-400 leading-relaxed">
+          Vega is a Go library and CLI for developers who need to run multi-agent systems reliably in
+          production. Its core concern is fault tolerance: processes restart automatically, errors are
+          classified and retried intelligently, costs are tracked per agent, and everything is observable
+          through a built-in dashboard. It is not an end-user product.
+        </p>
+      </div>
+    </div>
+
+    <!-- Detailed comparison table -->
+    <div class="overflow-x-auto rounded-xl border border-white/10 mb-12">
       <table class="w-full text-sm font-mono">
         <thead>
           <tr class="border-b border-white/10 bg-space-800">
-            <th class="text-left px-5 py-3 text-slate-400 font-normal">Feature</th>
-            <th class="text-center px-4 py-3 text-slate-400 font-normal">Raw SDK</th>
-            <th class="text-center px-4 py-3 text-slate-400 font-normal">Other frameworks</th>
-            <th class="text-center px-4 py-3 text-indigo-400 font-semibold">Vega</th>
+            <th class="text-left px-5 py-3 text-slate-400 font-normal w-1/3">Dimension</th>
+            <th class="text-left px-4 py-3 text-slate-400 font-normal w-1/3">OpenClaw</th>
+            <th class="text-left px-4 py-3 text-indigo-400 font-semibold w-1/3">Vega</th>
           </tr>
         </thead>
         <tbody>
-          {comparison.map(([label, raw, other, vega], i) => (
+          {ocVega.map(([label, oc, vega, cls], i) => (
             <tr class={`border-b border-white/5 ${i % 2 === 0 ? 'bg-space-900' : 'bg-space-950'}`}>
-              <td class="px-5 py-2.5 text-slate-300">{label}</td>
-              <td class="text-center px-4 py-2.5">
-                {raw === false ? <span class="text-slate-600">—</span> : raw === 'partial' ? <span class="text-yellow-500">partial</span> : <span class="text-emerald-400">✓</span>}
+              <td class="px-5 py-3 text-slate-400 align-top">{label}</td>
+              <td class={`px-4 py-3 align-top leading-snug ${cls === 'oc-strength' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                {oc === '—' ? <span class="text-slate-600">—</span> : oc}
               </td>
-              <td class="text-center px-4 py-2.5">
-                {other === false ? <span class="text-slate-600">—</span> : other === 'partial' ? <span class="text-yellow-500">partial</span> : <span class="text-emerald-400">✓</span>}
-              </td>
-              <td class="text-center px-4 py-2.5">
-                {vega === false ? <span class="text-slate-600">—</span> : <span class="text-emerald-400 font-semibold">✓</span>}
+              <td class={`px-4 py-3 align-top leading-snug ${cls === 'vega-strength' ? 'text-indigo-300' : cls === 'vega-gap' ? 'text-amber-400' : 'text-slate-300'}`}>
+                {vega === '—' ? <span class="text-slate-600">—</span> : vega}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+
+    <!-- Vega current gaps -->
+    <div>
+      <p class="font-mono text-sm text-slate-400 mb-2 text-center">Current limitations in Vega</p>
+      <p class="text-slate-500 text-xs text-center mb-6 max-w-xl mx-auto">
+        These are real gaps, not roadmap promises. We'd rather you know them upfront than discover them after adopting the project.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {vegaGaps.map(([title, desc]) => (
+          <div class="rounded-lg border border-amber-500/15 bg-amber-500/5 px-5 py-4">
+            <p class="font-mono text-xs text-amber-400 mb-1">{title}</p>
+            <p class="text-xs text-slate-400 leading-relaxed">{desc}</p>
+          </div>
+        ))}
+      </div>
     </div>
   </section>
 
