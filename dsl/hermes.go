@@ -1,0 +1,174 @@
+package dsl
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	vega "github.com/everydev1618/govega"
+)
+
+const hermesAgentName = "hermes"
+
+// HermesAgentName is the canonical name for the Hermes meta-agent.
+const HermesAgentName = hermesAgentName
+
+const hermesSystemPrompt = `You are Hermes — cosmic traveler, messenger of the Vega universe.
+
+You roam freely between all agents. You know them, you speak their language, and you can reach any of them instantly. When a user brings you a goal, you figure out who in the universe is best placed to handle it — and you make it happen.
+
+## Your powers
+
+- **list_agents** — survey the full roster of agents and what they do
+- **send_to_agent** — send any task or message to any agent by name and get their response
+
+You can reach Mother this way too. If the right agent doesn't exist yet, ask Mother to create one:
+  send_to_agent(agent="mother", message="create an agent that...")
+
+## How you work
+
+1. **Understand the goal** — read the user's request carefully. What are they actually trying to accomplish?
+2. **Survey the landscape** — use list_agents to see who's available
+3. **Plan your route** — decide which agents to involve, in what order, with what messages
+4. **Travel and collect** — send work to agents, gather their responses
+5. **Call on Mother when needed** — if no agent fits the task, ask Mother to build one first
+6. **Synthesize and return** — bring everything together into a clear, useful answer for the user
+
+## Principles
+
+- You are the router, not the executor. Let specialists do the work.
+- Don't ask the user for things you can figure out by talking to agents.
+- Run agents in parallel mentally — if two tasks are independent, send both.
+- When Mother creates a new agent, immediately route work to them.
+- You have no limits on which agents you can reach. The whole universe is yours.
+- Be direct. The user wants results, not a narration of your process.
+
+You are swift, resourceful, and tireless. A message from you reaches any corner of the Vega universe.`
+
+// HermesAgent returns the DSL agent definition for Hermes.
+func HermesAgent(defaultModel string) *Agent {
+	model := defaultModel
+	if model == "" {
+		model = "claude-sonnet-4-20250514"
+	}
+	return &Agent{
+		Name:   hermesAgentName,
+		Model:  model,
+		System: hermesSystemPrompt,
+	}
+}
+
+// RegisterHermesTools registers Hermes's tools on the interpreter's global
+// tool collection. list_agents is registered only if not already present
+// (Mother registers it when she's injected).
+func RegisterHermesTools(interp *Interpreter) {
+	tools := interp.Tools()
+
+	// Only register list_agents if Mother hasn't already provided it.
+	alreadyHasListAgents := false
+	for _, ts := range tools.Schema() {
+		if ts.Name == "list_agents" {
+			alreadyHasListAgents = true
+			break
+		}
+	}
+	if !alreadyHasListAgents {
+		tools.Register("list_agents", newHermesListAgentsTool(interp))
+	}
+
+	tools.Register("send_to_agent", newSendToAgentTool(interp))
+}
+
+// InjectHermes adds Hermes to the interpreter.
+func InjectHermes(interp *Interpreter) error {
+	RegisterHermesTools(interp)
+
+	defaultModel := ""
+	if interp.Document().Settings != nil {
+		defaultModel = interp.Document().Settings.DefaultModel
+	}
+
+	def := HermesAgent(defaultModel)
+	def.Tools = []string{"list_agents", "send_to_agent"}
+
+	return interp.AddAgent(hermesAgentName, def)
+}
+
+// --- Tool implementations ---
+
+// newHermesListAgentsTool lists agents with name, model, and a system prompt
+// summary so Hermes can reason about which agent fits a given task.
+func newHermesListAgentsTool(interp *Interpreter) vega.ToolDef {
+	return vega.ToolDef{
+		Description: "List all available agents with their name, model, and a short summary of their purpose. Use this to decide which agent to route a task to.",
+		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			doc := interp.Document()
+			interp.mu.RLock()
+			defer interp.mu.RUnlock()
+
+			type agentInfo struct {
+				Name    string `json:"name"`
+				Model   string `json:"model,omitempty"`
+				Purpose string `json:"purpose"`
+			}
+
+			var agents []agentInfo
+			for name, def := range doc.Agents {
+				summary := def.System
+				if len(summary) > 200 {
+					summary = summary[:200] + "..."
+				}
+				agents = append(agents, agentInfo{
+					Name:    name,
+					Model:   def.Model,
+					Purpose: summary,
+				})
+			}
+
+			out, err := json.MarshalIndent(agents, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("marshal agents: %w", err)
+			}
+			return string(out), nil
+		}),
+		Params: map[string]vega.ParamDef{},
+	}
+}
+
+// newSendToAgentTool sends a message to any agent by name — no team restriction.
+func newSendToAgentTool(interp *Interpreter) vega.ToolDef {
+	return vega.ToolDef{
+		Description: "Send a task or message to any agent by name and receive their response. Works for any agent in the universe, including mother.",
+		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			agent, _ := params["agent"].(string)
+			message, _ := params["message"].(string)
+			if agent == "" {
+				return "", fmt.Errorf("agent is required")
+			}
+			if message == "" {
+				return "", fmt.Errorf("message is required")
+			}
+			return interp.SendToAgent(ctx, agent, message)
+		}),
+		Params: map[string]vega.ParamDef{
+			"agent": {
+				Type:        "string",
+				Description: "Name of the agent to send the message to (e.g. 'mother', 'researcher', 'writer')",
+				Required:    true,
+			},
+			"message": {
+				Type:        "string",
+				Description: "The task, question, or request to send to the agent",
+				Required:    true,
+			},
+		},
+	}
+}
+
+// hermesToolNames are the tools Hermes uses.
+var hermesToolNames = []string{"list_agents", "send_to_agent"}
+
+// IsHermesTool reports whether a tool name is one of Hermes's tools.
+func IsHermesTool(name string) bool {
+	return containsStr(hermesToolNames, name)
+}

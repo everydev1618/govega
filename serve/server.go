@@ -87,25 +87,6 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("init database: %w", err)
 	}
 
-	// Start Telegram bot if configured.
-	if s.cfg.TelegramToken != "" {
-		agentName := s.cfg.TelegramAgent
-		if agentName == "" {
-			for name := range s.interp.Document().Agents {
-				agentName = name
-				break
-			}
-		}
-		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store)
-		if err != nil {
-			slog.Warn("telegram bot init failed", "error", err)
-		} else {
-			s.telegram = tb
-			go tb.Start(ctx)
-			slog.Info("telegram bot started", "agent", agentName)
-		}
-	}
-
 	// Initialize population client.
 	popClient, err := population.NewClient()
 	if err != nil {
@@ -121,6 +102,25 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Inject Mother — the built-in meta-agent for creating agents via chat.
 	s.injectMother()
+
+	// Inject Hermes — the cosmic orchestrator that routes goals across all agents.
+	s.injectHermes()
+
+	// Start Telegram bot if configured (after meta-agents are injected).
+	if s.cfg.TelegramToken != "" {
+		agentName := s.cfg.TelegramAgent
+		if agentName == "" {
+			agentName = dsl.HermesAgentName // default to Hermes
+		}
+		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store)
+		if err != nil {
+			slog.Warn("telegram bot init failed", "error", err)
+		} else {
+			s.telegram = tb
+			go tb.Start(ctx)
+			slog.Info("telegram bot started", "agent", agentName)
+		}
+	}
 
 	// Wire orchestrator callbacks to broker + store.
 	s.wireCallbacks()
@@ -341,6 +341,13 @@ func (s *Server) injectMother() {
 
 	if err := dsl.InjectMother(s.interp, cb); err != nil {
 		slog.Warn("failed to inject Mother agent", "error", err)
+	}
+}
+
+// injectHermes adds Hermes, the cosmic orchestrator, to the interpreter.
+func (s *Server) injectHermes() {
+	if err := dsl.InjectHermes(s.interp); err != nil {
+		slog.Warn("failed to inject Hermes agent", "error", err)
 	}
 }
 
