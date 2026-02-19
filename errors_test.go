@@ -3,6 +3,8 @@ package vega
 import (
 	"errors"
 	"testing"
+
+	"github.com/everydev1618/govega/tools"
 )
 
 func TestStandardErrors(t *testing.T) {
@@ -17,7 +19,7 @@ func TestStandardErrors(t *testing.T) {
 		{"ErrBudgetExceeded", ErrBudgetExceeded, "budget exceeded"},
 		{"ErrRateLimited", ErrRateLimited, "rate limited"},
 		{"ErrCircuitOpen", ErrCircuitOpen, "circuit breaker is open"},
-		{"ErrToolNotFound", ErrToolNotFound, "tool not found"},
+		{"ErrToolNotFound", tools.ErrToolNotFound, "tool not found"},
 		{"ErrSandboxViolation", ErrSandboxViolation, "sandbox violation: path escapes allowed directory"},
 		{"ErrMaxProcessesReached", ErrMaxProcessesReached, "maximum number of processes reached"},
 		{"ErrProcessNotFound", ErrProcessNotFound, "process not found"},
@@ -60,7 +62,7 @@ func TestProcessError(t *testing.T) {
 }
 
 func TestToolError(t *testing.T) {
-	err := &ToolError{
+	err := &tools.ToolError{
 		ToolName: "read_file",
 		Err:      ErrSandboxViolation,
 	}

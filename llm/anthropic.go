@@ -12,8 +12,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/everydev1618/govega"
 )
 
 // AnthropicLLM is an LLM implementation using the Anthropic API.
@@ -129,7 +127,7 @@ type anthropicResponse struct {
 }
 
 // Generate sends a request and returns the complete response.
-func (a *AnthropicLLM) Generate(ctx context.Context, messages []vega.Message, tools []vega.ToolSchema) (*vega.LLMResponse, error) {
+func (a *AnthropicLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
 	start := time.Now()
 
 	// Build request
@@ -146,25 +144,25 @@ func (a *AnthropicLLM) Generate(ctx context.Context, messages []vega.Message, to
 }
 
 // GenerateStream sends a request and returns a channel of streaming events.
-func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []vega.Message, tools []vega.ToolSchema) (<-chan vega.StreamEvent, error) {
+func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
 	// Build request
 	req := a.buildRequest(messages, tools, true)
 
 	// Make streaming request
-	eventCh := make(chan vega.StreamEvent, 100)
+	eventCh := make(chan StreamEvent, 100)
 
 	go func() {
 		defer close(eventCh)
 
 		httpReq, err := a.createHTTPRequest(ctx, req)
 		if err != nil {
-			eventCh <- vega.StreamEvent{Type: vega.StreamEventError, Error: err}
+			eventCh <- StreamEvent{Type: StreamEventError, Error: err}
 			return
 		}
 
 		httpResp, err := a.httpClient.Do(httpReq)
 		if err != nil {
-			eventCh <- vega.StreamEvent{Type: vega.StreamEventError, Error: err}
+			eventCh <- StreamEvent{Type: StreamEventError, Error: err}
 			return
 		}
 		defer httpResp.Body.Close()
@@ -172,14 +170,14 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []vega.Messa
 		if httpResp.StatusCode != http.StatusOK {
 			body, readErr := io.ReadAll(httpResp.Body)
 			if readErr != nil {
-				eventCh <- vega.StreamEvent{
-					Type:  vega.StreamEventError,
+				eventCh <- StreamEvent{
+					Type:  StreamEventError,
 					Error: fmt.Errorf("API error %d (failed to read body: %v)", httpResp.StatusCode, readErr),
 				}
 				return
 			}
-			eventCh <- vega.StreamEvent{
-				Type:  vega.StreamEventError,
+			eventCh <- StreamEvent{
+				Type:  StreamEventError,
 				Error: fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body)),
 			}
 			return
@@ -191,7 +189,7 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []vega.Messa
 	return eventCh, nil
 }
 
-func (a *AnthropicLLM) buildRequest(messages []vega.Message, tools []vega.ToolSchema, stream bool) *anthropicRequest {
+func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stream bool) *anthropicRequest {
 	req := &anthropicRequest{
 		Model:     a.model,
 		MaxTokens: 8192,
@@ -201,7 +199,7 @@ func (a *AnthropicLLM) buildRequest(messages []vega.Message, tools []vega.ToolSc
 	// Extract system message and convert others
 	var anthropicMsgs []anthropicMsg
 	for _, msg := range messages {
-		if msg.Role == vega.RoleSystem {
+		if msg.Role == RoleSystem {
 			req.System = msg.Content
 			continue
 		}
@@ -418,26 +416,26 @@ func (a *AnthropicLLM) doRequest(ctx context.Context, req *anthropicRequest) (*a
 	return &resp, nil
 }
 
-func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Duration) (*vega.LLMResponse, error) {
-	result := &vega.LLMResponse{
+func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Duration) (*LLMResponse, error) {
+	result := &LLMResponse{
 		InputTokens:  resp.Usage.InputTokens,
 		OutputTokens: resp.Usage.OutputTokens,
 		LatencyMs:    latency.Milliseconds(),
 	}
 
 	// Calculate cost
-	result.CostUSD = vega.CalculateCost(resp.Model, result.InputTokens, result.OutputTokens)
+	result.CostUSD = CalculateCost(resp.Model, result.InputTokens, result.OutputTokens)
 
 	// Parse stop reason
 	switch resp.StopReason {
 	case "end_turn":
-		result.StopReason = vega.StopReasonEnd
+		result.StopReason = StopReasonEnd
 	case "tool_use":
-		result.StopReason = vega.StopReasonToolUse
+		result.StopReason = StopReasonToolUse
 	case "max_tokens":
-		result.StopReason = vega.StopReasonLength
+		result.StopReason = StopReasonLength
 	case "stop_sequence":
-		result.StopReason = vega.StopReasonStop
+		result.StopReason = StopReasonStop
 	}
 
 	// Parse content blocks
@@ -446,7 +444,7 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 		case "text":
 			result.Content += block.Text
 		case "tool_use":
-			result.ToolCalls = append(result.ToolCalls, vega.ToolCall{
+			result.ToolCalls = append(result.ToolCalls, ToolCall{
 				ID:        block.ID,
 				Name:      block.Name,
 				Arguments: block.Input,
@@ -457,7 +455,7 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 	return result, nil
 }
 
-func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- vega.StreamEvent) {
+func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent) {
 	scanner := bufio.NewScanner(reader)
 	var currentEvent string
 	var currentData strings.Builder
@@ -484,7 +482,7 @@ func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- vega.StreamEven
 	}
 }
 
-func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- vega.StreamEvent) {
+func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- StreamEvent) {
 	switch eventType {
 	case "message_start":
 		var msg struct {
@@ -495,31 +493,31 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- ve
 			} `json:"message"`
 		}
 		json.Unmarshal([]byte(data), &msg)
-		eventCh <- vega.StreamEvent{
-			Type:        vega.StreamEventMessageStart,
+		eventCh <- StreamEvent{
+			Type:        StreamEventMessageStart,
 			InputTokens: msg.Message.Usage.InputTokens,
 		}
 
 	case "content_block_start":
 		var block struct {
 			ContentBlock struct {
-				Type  string `json:"type"`
-				ID    string `json:"id"`
-				Name  string `json:"name"`
+				Type string `json:"type"`
+				ID   string `json:"id"`
+				Name string `json:"name"`
 			} `json:"content_block"`
 		}
 		json.Unmarshal([]byte(data), &block)
 		if block.ContentBlock.Type == "tool_use" {
-			eventCh <- vega.StreamEvent{
-				Type: vega.StreamEventToolStart,
-				ToolCall: &vega.ToolCall{
+			eventCh <- StreamEvent{
+				Type: StreamEventToolStart,
+				ToolCall: &ToolCall{
 					ID:        block.ContentBlock.ID,
 					Name:      block.ContentBlock.Name,
 					Arguments: make(map[string]any),
 				},
 			}
 		} else {
-			eventCh <- vega.StreamEvent{Type: vega.StreamEventContentStart}
+			eventCh <- StreamEvent{Type: StreamEventContentStart}
 		}
 
 	case "content_block_delta":
@@ -533,19 +531,19 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- ve
 		json.Unmarshal([]byte(data), &delta)
 		switch delta.Delta.Type {
 		case "text_delta":
-			eventCh <- vega.StreamEvent{
-				Type:  vega.StreamEventContentDelta,
+			eventCh <- StreamEvent{
+				Type:  StreamEventContentDelta,
 				Delta: delta.Delta.Text,
 			}
 		case "input_json_delta":
-			eventCh <- vega.StreamEvent{
-				Type:  vega.StreamEventToolDelta,
+			eventCh <- StreamEvent{
+				Type:  StreamEventToolDelta,
 				Delta: delta.Delta.PartialJSON,
 			}
 		}
 
 	case "content_block_stop":
-		eventCh <- vega.StreamEvent{Type: vega.StreamEventContentEnd}
+		eventCh <- StreamEvent{Type: StreamEventContentEnd}
 
 	case "message_delta":
 		var delta struct {
@@ -554,8 +552,8 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- ve
 			} `json:"usage"`
 		}
 		json.Unmarshal([]byte(data), &delta)
-		eventCh <- vega.StreamEvent{
-			Type:         vega.StreamEventMessageEnd,
+		eventCh <- StreamEvent{
+			Type:         StreamEventMessageEnd,
 			OutputTokens: delta.Usage.OutputTokens,
 		}
 
@@ -569,8 +567,8 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- ve
 			} `json:"error"`
 		}
 		json.Unmarshal([]byte(data), &errResp)
-		eventCh <- vega.StreamEvent{
-			Type:  vega.StreamEventError,
+		eventCh <- StreamEvent{
+			Type:  StreamEventError,
 			Error: fmt.Errorf("stream error: %s", errResp.Error.Message),
 		}
 	}

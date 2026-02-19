@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/mcp"
+	"github.com/everydev1618/govega/tools"
 )
 
 const motherAgentName = "mother"
@@ -86,15 +86,15 @@ func MotherAgent(defaultModel string) *Agent {
 // RegisterMotherTools registers Mother's meta-tools on the interpreter's global
 // tool collection. The callbacks are optional — when nil, no persistence hooks fire.
 func RegisterMotherTools(interp *Interpreter, cb *MotherCallbacks) {
-	tools := interp.Tools()
+	t := interp.Tools()
 
-	tools.Register("create_agent", newCreateAgentTool(interp, cb))
-	tools.Register("update_agent", newUpdateAgentTool(interp, cb))
-	tools.Register("delete_agent", newDeleteAgentTool(interp, cb))
-	tools.Register("list_agents", newListAgentsTool(interp))
-	tools.Register("list_available_tools", newListAvailableToolsTool(interp))
-	tools.Register("list_available_skills", newListAvailableSkillsTool(interp))
-	tools.Register("list_mcp_registry", newListMCPRegistryTool())
+	t.Register("create_agent", newCreateAgentTool(interp, cb))
+	t.Register("update_agent", newUpdateAgentTool(interp, cb))
+	t.Register("delete_agent", newDeleteAgentTool(interp, cb))
+	t.Register("list_agents", newListAgentsTool(interp))
+	t.Register("list_available_tools", newListAvailableToolsTool(interp))
+	t.Register("list_available_skills", newListAvailableSkillsTool(interp))
+	t.Register("list_mcp_registry", newListMCPRegistryTool())
 }
 
 // InjectMother adds the Mother agent to the interpreter.
@@ -121,10 +121,10 @@ func InjectMother(interp *Interpreter, cb *MotherCallbacks) error {
 
 // --- Tool implementations ---
 
-func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
-	return vega.ToolDef{
+func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "Create a new agent with the given configuration. Returns confirmation with the agent name.",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			name, _ := params["name"].(string)
 			if name == "" {
 				return "", fmt.Errorf("name is required")
@@ -135,7 +135,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 
 			model, _ := params["model"].(string)
 			system, _ := params["system"].(string)
-			tools := toStringSlice(params["tools"])
+			toolNames := toStringSlice(params["tools"])
 			team := toStringSlice(params["team"])
 			knowledge := toStringSlice(params["knowledge"])
 			skillsDirs := toStringSlice(params["skills_dirs"])
@@ -144,7 +144,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 				Name:      name,
 				Model:     model,
 				System:    system,
-				Tools:     tools,
+				Tools:     toolNames,
 				Team:      team,
 				Knowledge: knowledge,
 			}
@@ -168,12 +168,12 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 			}
 
 			if cb != nil && cb.OnAgentCreated != nil {
-				cb.OnAgentCreated(name, model, system, tools, team)
+				cb.OnAgentCreated(name, model, system, toolNames, team)
 			}
 
 			return fmt.Sprintf("Agent %q created successfully. The user can now switch to it in the sidebar.", name), nil
 		}),
-		Params: map[string]vega.ParamDef{
+		Params: map[string]tools.ParamDef{
 			"name": {
 				Type:        "string",
 				Description: "Unique name for the agent (lowercase, no spaces)",
@@ -208,10 +208,10 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 	}
 }
 
-func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
-	return vega.ToolDef{
+func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "Update an existing agent's configuration. Removes and re-creates the agent with merged settings.",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			name, _ := params["name"].(string)
 			if name == "" {
 				return "", fmt.Errorf("name is required")
@@ -283,7 +283,7 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 
 			return fmt.Sprintf("Agent %q updated successfully.", name), nil
 		}),
-		Params: map[string]vega.ParamDef{
+		Params: map[string]tools.ParamDef{
 			"name": {
 				Type:        "string",
 				Description: "Name of the agent to update",
@@ -317,10 +317,10 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 	}
 }
 
-func newDeleteAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
-	return vega.ToolDef{
+func newDeleteAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "Delete an agent by name. Stops its process and removes it completely.",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			name, _ := params["name"].(string)
 			if name == "" {
 				return "", fmt.Errorf("name is required")
@@ -339,7 +339,7 @@ func newDeleteAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 
 			return fmt.Sprintf("Agent %q deleted.", name), nil
 		}),
-		Params: map[string]vega.ParamDef{
+		Params: map[string]tools.ParamDef{
 			"name": {
 				Type:        "string",
 				Description: "Name of the agent to delete",
@@ -349,10 +349,10 @@ func newDeleteAgentTool(interp *Interpreter, cb *MotherCallbacks) vega.ToolDef {
 	}
 }
 
-func newListAgentsTool(interp *Interpreter) vega.ToolDef {
-	return vega.ToolDef{
+func newListAgentsTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "List all agents with their configuration (name, model, tools, team).",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			doc := interp.Document()
 			interp.mu.RLock()
 			defer interp.mu.RUnlock()
@@ -377,14 +377,14 @@ func newListAgentsTool(interp *Interpreter) vega.ToolDef {
 			out, _ := json.MarshalIndent(agents, "", "  ")
 			return string(out), nil
 		}),
-		Params: map[string]vega.ParamDef{},
+		Params: map[string]tools.ParamDef{},
 	}
 }
 
-func newListAvailableToolsTool(interp *Interpreter) vega.ToolDef {
-	return vega.ToolDef{
+func newListAvailableToolsTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "List all registered tool names and descriptions.",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			schemas := interp.Tools().Schema()
 
 			type toolInfo struct {
@@ -392,7 +392,7 @@ func newListAvailableToolsTool(interp *Interpreter) vega.ToolDef {
 				Description string `json:"description"`
 			}
 
-			var tools []toolInfo
+			var toolInfos []toolInfo
 			for _, s := range schemas {
 				// Skip Mother's own tools from the listing to avoid confusion.
 				switch s.Name {
@@ -401,23 +401,23 @@ func newListAvailableToolsTool(interp *Interpreter) vega.ToolDef {
 					"list_mcp_registry":
 					continue
 				}
-				tools = append(tools, toolInfo{
+				toolInfos = append(toolInfos, toolInfo{
 					Name:        s.Name,
 					Description: s.Description,
 				})
 			}
 
-			out, _ := json.MarshalIndent(tools, "", "  ")
+			out, _ := json.MarshalIndent(toolInfos, "", "  ")
 			return string(out), nil
 		}),
-		Params: map[string]vega.ParamDef{},
+		Params: map[string]tools.ParamDef{},
 	}
 }
 
-func newListAvailableSkillsTool(interp *Interpreter) vega.ToolDef {
-	return vega.ToolDef{
+func newListAvailableSkillsTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "List available skill packs (name, description, tags, declared tools).",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			loader := interp.SkillsLoader()
 			if loader == nil {
 				return "[]", nil
@@ -445,14 +445,14 @@ func newListAvailableSkillsTool(interp *Interpreter) vega.ToolDef {
 			out, _ := json.MarshalIndent(skills, "", "  ")
 			return string(out), nil
 		}),
-		Params: map[string]vega.ParamDef{},
+		Params: map[string]tools.ParamDef{},
 	}
 }
 
-func newListMCPRegistryTool() vega.ToolDef {
-	return vega.ToolDef{
+func newListMCPRegistryTool() tools.ToolDef {
+	return tools.ToolDef{
 		Description: "List MCP servers available in the built-in registry (name, description, required env vars).",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			type mcpInfo struct {
 				Name        string   `json:"name"`
 				Description string   `json:"description"`
@@ -471,7 +471,7 @@ func newListMCPRegistryTool() vega.ToolDef {
 			out, _ := json.MarshalIndent(servers, "", "  ")
 			return string(out), nil
 		}),
-		Params: map[string]vega.ParamDef{},
+		Params: map[string]tools.ParamDef{},
 	}
 }
 

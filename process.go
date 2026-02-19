@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/everydev1618/govega/llm"
 )
 
 // contextKey is a type for context keys used by vega.
@@ -60,13 +62,13 @@ type Process struct {
 	cancel context.CancelFunc
 
 	// messages is the conversation history
-	messages []Message
+	messages []llm.Message
 
 	// iteration count
 	iteration int
 
 	// llm is the backend to use
-	llm LLM
+	llm llm.LLM
 
 	// orchestrator reference for child spawning
 	orchestrator *Orchestrator
@@ -211,7 +213,7 @@ func (p *Process) Send(ctx context.Context, message string) (string, error) {
 	p.mu.Unlock()
 
 	// Add user message to context
-	p.addMessage(Message{Role: RoleUser, Content: message})
+	p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
 
 	// Execute the LLM call loop (may involve tool calls)
 	response, callMetrics, err := p.executeLLMLoop(ctx, message)
@@ -238,7 +240,7 @@ func (p *Process) Send(ctx context.Context, message string) (string, error) {
 	p.mu.Unlock()
 
 	// Add assistant response to context
-	p.addMessage(Message{Role: RoleAssistant, Content: response})
+	p.addMessage(llm.Message{Role: llm.RoleAssistant, Content: response})
 
 	return response, nil
 }
@@ -287,7 +289,7 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 	p.mu.Unlock()
 
 	// Add user message to context
-	p.addMessage(Message{Role: RoleUser, Content: message})
+	p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
 
 	// Create stream
 	stream := &Stream{
@@ -308,7 +310,7 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 
 		// Add assistant response to context
 		if err == nil {
-			p.addMessage(Message{Role: RoleAssistant, Content: response})
+			p.addMessage(llm.Message{Role: llm.RoleAssistant, Content: response})
 		}
 	}()
 
@@ -328,7 +330,7 @@ func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStre
 	p.metrics.LastActiveAt = time.Now()
 	p.mu.Unlock()
 
-	p.addMessage(Message{Role: RoleUser, Content: message})
+	p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
 
 	stream := newChatStream()
 
@@ -343,7 +345,7 @@ func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStre
 		stream.mu.Unlock()
 
 		if err == nil {
-			p.addMessage(Message{Role: RoleAssistant, Content: response})
+			p.addMessage(llm.Message{Role: llm.RoleAssistant, Content: response})
 		}
 	}()
 
@@ -462,10 +464,10 @@ func (p *Process) Fail(err error) {
 }
 
 // Messages returns a copy of the conversation history.
-func (p *Process) Messages() []Message {
+func (p *Process) Messages() []llm.Message {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	msgs := make([]Message, len(p.messages))
+	msgs := make([]llm.Message, len(p.messages))
 	copy(msgs, p.messages)
 	return msgs
 }
@@ -478,7 +480,7 @@ func (p *Process) Result() string {
 }
 
 // addMessage adds a message to the conversation history.
-func (p *Process) addMessage(msg Message) {
+func (p *Process) addMessage(msg llm.Message) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -489,8 +491,8 @@ func (p *Process) addMessage(msg Message) {
 }
 
 // buildMessages builds the message list for LLM call.
-func (p *Process) buildMessages() []Message {
-	var messages []Message
+func (p *Process) buildMessages() []llm.Message {
+	var messages []llm.Message
 
 	// Set skill context if using SkillsPrompt
 	if sp, ok := p.Agent.System.(*SkillsPrompt); ok {
@@ -498,7 +500,7 @@ func (p *Process) buildMessages() []Message {
 		if len(p.messages) > 0 {
 			// Find the last user message
 			for i := len(p.messages) - 1; i >= 0; i-- {
-				if p.messages[i].Role == RoleUser {
+				if p.messages[i].Role == llm.RoleUser {
 					sp.SetContext(p.messages[i].Content)
 					break
 				}
@@ -516,8 +518,8 @@ func (p *Process) buildMessages() []Message {
 		if extra != "" {
 			systemContent += "\n\n" + extra
 		}
-		messages = append(messages, Message{
-			Role:    RoleSystem,
+		messages = append(messages, llm.Message{
+			Role:    llm.RoleSystem,
 			Content: systemContent,
 		})
 	}
@@ -536,7 +538,7 @@ func (p *Process) buildMessages() []Message {
 	}
 
 	// Filter out any messages with empty content to prevent API errors
-	filtered := make([]Message, 0, len(messages))
+	filtered := make([]llm.Message, 0, len(messages))
 	for _, msg := range messages {
 		if strings.TrimSpace(msg.Content) != "" {
 			filtered = append(filtered, msg)

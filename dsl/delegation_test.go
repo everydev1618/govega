@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/llm"
 )
 
 // ---------- BuildTeamPrompt ----------
@@ -131,12 +132,12 @@ func TestExtractCallerContextWithMessages(t *testing.T) {
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 	defer orch.Shutdown(context.Background())
 
-	history := []vega.Message{
-		{Role: vega.RoleUser, Content: "msg1"},
-		{Role: vega.RoleAssistant, Content: "msg2"},
-		{Role: vega.RoleUser, Content: "msg3"},
-		{Role: vega.RoleAssistant, Content: "msg4"},
-		{Role: vega.RoleUser, Content: "msg5"},
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "msg1"},
+		{Role: llm.RoleAssistant, Content: "msg2"},
+		{Role: llm.RoleUser, Content: "msg3"},
+		{Role: llm.RoleAssistant, Content: "msg4"},
+		{Role: llm.RoleUser, Content: "msg5"},
 	}
 
 	agent := vega.Agent{
@@ -173,8 +174,8 @@ func TestExtractCallerContextWindowLargerThanHistory(t *testing.T) {
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 	defer orch.Shutdown(context.Background())
 
-	history := []vega.Message{
-		{Role: vega.RoleUser, Content: "only-msg"},
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "only-msg"},
 	}
 
 	agent := vega.Agent{Name: "a", Model: "test", System: vega.StaticPrompt("test")}
@@ -198,10 +199,10 @@ func TestExtractCallerContextWindowExact(t *testing.T) {
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 	defer orch.Shutdown(context.Background())
 
-	history := []vega.Message{
-		{Role: vega.RoleUser, Content: "a"},
-		{Role: vega.RoleAssistant, Content: "b"},
-		{Role: vega.RoleUser, Content: "c"},
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "a"},
+		{Role: llm.RoleAssistant, Content: "b"},
+		{Role: llm.RoleUser, Content: "c"},
 	}
 	agent := vega.Agent{Name: "a", Model: "test", System: vega.StaticPrompt("test")}
 	proc, err := orch.Spawn(agent, vega.WithMessages(history))
@@ -227,12 +228,12 @@ func TestExtractCallerContextRoleFilter(t *testing.T) {
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 	defer orch.Shutdown(context.Background())
 
-	history := []vega.Message{
-		{Role: vega.RoleUser, Content: "u1"},
-		{Role: vega.RoleAssistant, Content: "a1"},
-		{Role: vega.RoleUser, Content: "u2"},
-		{Role: vega.RoleAssistant, Content: "a2"},
-		{Role: vega.RoleUser, Content: "u3"},
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{Role: llm.RoleAssistant, Content: "a1"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+		{Role: llm.RoleUser, Content: "u3"},
 	}
 
 	agent := vega.Agent{Name: "dan", Model: "test", System: vega.StaticPrompt("test")}
@@ -266,9 +267,9 @@ func TestExtractCallerContextRoleFilterFiltersAll(t *testing.T) {
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 	defer orch.Shutdown(context.Background())
 
-	history := []vega.Message{
-		{Role: vega.RoleUser, Content: "u1"},
-		{Role: vega.RoleUser, Content: "u2"},
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{Role: llm.RoleUser, Content: "u2"},
 	}
 
 	agent := vega.Agent{Name: "a", Model: "test", System: vega.StaticPrompt("test")}
@@ -292,7 +293,7 @@ func TestExtractCallerContextAgentName(t *testing.T) {
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 	defer orch.Shutdown(context.Background())
 
-	history := []vega.Message{{Role: vega.RoleUser, Content: "hi"}}
+	history := []llm.Message{{Role: llm.RoleUser, Content: "hi"}}
 
 	// Agent with explicit name
 	agent := vega.Agent{Name: "dan", Model: "test", System: vega.StaticPrompt("test")}
@@ -317,7 +318,7 @@ func TestFormatDelegationContextNil(t *testing.T) {
 }
 
 func TestFormatDelegationContextEmptyMessages(t *testing.T) {
-	dc := &DelegationContext{CallerAgent: "dan", Messages: []vega.Message{}}
+	dc := &DelegationContext{CallerAgent: "dan", Messages: []llm.Message{}}
 	result := FormatDelegationContext(dc, "Do the thing")
 	if result != "Do the thing" {
 		t.Errorf("empty messages should return original, got %q", result)
@@ -327,7 +328,7 @@ func TestFormatDelegationContextEmptyMessages(t *testing.T) {
 func TestFormatDelegationContextSingleMessage(t *testing.T) {
 	dc := &DelegationContext{
 		CallerAgent: "dan",
-		Messages:    []vega.Message{{Role: vega.RoleUser, Content: "Help me."}},
+		Messages:    []llm.Message{{Role: llm.RoleUser, Content: "Help me."}},
 	}
 	result := FormatDelegationContext(dc, "Do it")
 
@@ -351,10 +352,10 @@ func TestFormatDelegationContextSingleMessage(t *testing.T) {
 func TestFormatDelegationContextMultipleMessages(t *testing.T) {
 	dc := &DelegationContext{
 		CallerAgent: "dan",
-		Messages: []vega.Message{
-			{Role: vega.RoleUser, Content: "I'm struggling to delegate."},
-			{Role: vega.RoleAssistant, Content: "Classic. You're in the Operator's Trap."},
-			{Role: vega.RoleUser, Content: "What should I do?"},
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "I'm struggling to delegate."},
+			{Role: llm.RoleAssistant, Content: "Classic. You're in the Operator's Trap."},
+			{Role: llm.RoleUser, Content: "What should I do?"},
 		},
 	}
 	result := FormatDelegationContext(dc, "Schedule a follow-up with Marcus")
@@ -376,7 +377,7 @@ func TestFormatDelegationContextMultipleMessages(t *testing.T) {
 func TestFormatDelegationContextEmptyCallerAgent(t *testing.T) {
 	dc := &DelegationContext{
 		CallerAgent: "",
-		Messages:    []vega.Message{{Role: vega.RoleUser, Content: "hi"}},
+		Messages:    []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
 	}
 	result := FormatDelegationContext(dc, "task")
 	if !strings.Contains(result, "<from></from>") {
@@ -387,7 +388,7 @@ func TestFormatDelegationContextEmptyCallerAgent(t *testing.T) {
 func TestFormatDelegationContextPreservesTask(t *testing.T) {
 	dc := &DelegationContext{
 		CallerAgent: "x",
-		Messages:    []vega.Message{{Role: vega.RoleUser, Content: "ctx"}},
+		Messages:    []llm.Message{{Role: llm.RoleUser, Content: "ctx"}},
 	}
 	task := "Schedule meeting with <special> chars & stuff"
 	result := FormatDelegationContext(dc, task)
@@ -557,14 +558,14 @@ type stubLLM struct {
 	response string
 }
 
-func (m *stubLLM) Generate(ctx context.Context, messages []vega.Message, tools []vega.ToolSchema) (*vega.LLMResponse, error) {
-	return &vega.LLMResponse{Content: m.response}, nil
+func (m *stubLLM) Generate(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
+	return &llm.LLMResponse{Content: m.response}, nil
 }
 
-func (m *stubLLM) GenerateStream(ctx context.Context, messages []vega.Message, tools []vega.ToolSchema) (<-chan vega.StreamEvent, error) {
-	ch := make(chan vega.StreamEvent, 1)
+func (m *stubLLM) GenerateStream(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, 1)
 	go func() {
-		ch <- vega.StreamEvent{Delta: m.response}
+		ch <- llm.StreamEvent{Delta: m.response}
 		close(ch)
 	}()
 	return ch, nil

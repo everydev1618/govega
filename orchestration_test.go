@@ -8,6 +8,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/tools"
 )
 
 // =============================================================================
@@ -17,17 +20,17 @@ import (
 // toolCallingLLM simulates an LLM that makes tool calls
 type toolCallingLLM struct {
 	// responses is a queue of responses to return
-	responses []*LLMResponse
+	responses []*llm.LLMResponse
 	// current index
 	idx int
 	mu  sync.Mutex
 	// calls tracks all Generate calls made
-	calls [][]Message
+	calls [][]llm.Message
 	// generateDelay adds latency to simulate real LLM calls
 	generateDelay time.Duration
 }
 
-func (m *toolCallingLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
+func (m *toolCallingLLM) Generate(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
 	if m.generateDelay > 0 {
 		select {
 		case <-ctx.Done():
@@ -50,7 +53,7 @@ func (m *toolCallingLLM) Generate(ctx context.Context, messages []Message, tools
 	m.calls = append(m.calls, messages)
 
 	if m.idx >= len(m.responses) {
-		return &LLMResponse{Content: "default response", InputTokens: 10, OutputTokens: 5}, nil
+		return &llm.LLMResponse{Content: "default response", InputTokens: 10, OutputTokens: 5}, nil
 	}
 
 	resp := m.responses[m.idx]
@@ -58,16 +61,16 @@ func (m *toolCallingLLM) Generate(ctx context.Context, messages []Message, tools
 	return resp, nil
 }
 
-func (m *toolCallingLLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, 10)
+func (m *toolCallingLLM) GenerateStream(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, 10)
 	go func() {
 		defer close(ch)
 		resp, err := m.Generate(ctx, messages, tools)
 		if err != nil {
-			ch <- StreamEvent{Error: err}
+			ch <- llm.StreamEvent{Error: err}
 			return
 		}
-		ch <- StreamEvent{Type: StreamEventContentDelta, Delta: resp.Content}
+		ch <- llm.StreamEvent{Type: llm.StreamEventContentDelta, Delta: resp.Content}
 	}()
 	return ch, nil
 }
@@ -79,28 +82,28 @@ type failingLLM struct {
 	successResp  string
 }
 
-func (m *failingLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
+func (m *failingLLM) Generate(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
 	count := atomic.AddInt32(&m.currentCount, 1)
 	if count <= m.failCount {
 		return nil, errors.New("simulated LLM failure")
 	}
-	return &LLMResponse{
+	return &llm.LLMResponse{
 		Content:      m.successResp,
 		InputTokens:  10,
 		OutputTokens: 5,
 	}, nil
 }
 
-func (m *failingLLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, 1)
+func (m *failingLLM) GenerateStream(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, 1)
 	go func() {
 		defer close(ch)
 		resp, err := m.Generate(ctx, messages, tools)
 		if err != nil {
-			ch <- StreamEvent{Error: err}
+			ch <- llm.StreamEvent{Error: err}
 			return
 		}
-		ch <- StreamEvent{Type: StreamEventContentDelta, Delta: resp.Content}
+		ch <- llm.StreamEvent{Type: llm.StreamEventContentDelta, Delta: resp.Content}
 	}()
 	return ch, nil
 }
@@ -423,19 +426,19 @@ func TestStrategyString(t *testing.T) {
 func TestAgenticToolExecution(t *testing.T) {
 	t.Run("executes tool and continues loop", func(t *testing.T) {
 		// Create tools
-		tools := NewTools()
+		ts := tools.NewTools()
 		var toolCalled bool
-		tools.Register("get_weather", func(location string) string {
+		ts.Register("get_weather", func(location string) string {
 			toolCalled = true
 			return "Sunny, 72°F"
 		})
 
 		// LLM that first calls a tool, then responds
 		llm := &toolCallingLLM{
-			responses: []*LLMResponse{
+			responses: []*llm.LLMResponse{
 				{
 					Content: "Let me check the weather",
-					ToolCalls: []ToolCall{
+					ToolCalls: []llm.ToolCall{
 						{ID: "call-1", Name: "get_weather", Arguments: map[string]any{"location": "Seattle"}},
 					},
 					InputTokens:  10,
@@ -450,7 +453,7 @@ func TestAgenticToolExecution(t *testing.T) {
 		}
 
 		o := NewOrchestrator(WithLLM(llm))
-		agent := Agent{Name: "weather-agent", Tools: tools}
+		agent := Agent{Name: "weather-agent", Tools: ts}
 		proc, err := o.Spawn(agent)
 		if err != nil {
 			t.Fatalf("Spawn failed: %v", err)
@@ -478,28 +481,28 @@ func TestAgenticToolExecution(t *testing.T) {
 	})
 
 	t.Run("handles multiple tool calls in sequence", func(t *testing.T) {
-		tools := NewTools()
+		ts := tools.NewTools()
 		var callOrder []string
-		tools.Register("tool_a", func(input string) string {
+		ts.Register("tool_a", func(input string) string {
 			callOrder = append(callOrder, "a")
 			return "result_a"
 		})
-		tools.Register("tool_b", func(input string) string {
+		ts.Register("tool_b", func(input string) string {
 			callOrder = append(callOrder, "b")
 			return "result_b"
 		})
 
 		llm := &toolCallingLLM{
-			responses: []*LLMResponse{
+			responses: []*llm.LLMResponse{
 				{
 					Content: "Calling tool A",
-					ToolCalls: []ToolCall{
+					ToolCalls: []llm.ToolCall{
 						{ID: "call-1", Name: "tool_a", Arguments: map[string]any{"input": "test"}},
 					},
 				},
 				{
 					Content: "Now calling tool B",
-					ToolCalls: []ToolCall{
+					ToolCalls: []llm.ToolCall{
 						{ID: "call-2", Name: "tool_b", Arguments: map[string]any{"input": "test"}},
 					},
 				},
@@ -510,7 +513,7 @@ func TestAgenticToolExecution(t *testing.T) {
 		}
 
 		o := NewOrchestrator(WithLLM(llm))
-		agent := Agent{Name: "multi-tool-agent", Tools: tools}
+		agent := Agent{Name: "multi-tool-agent", Tools: ts}
 		proc, _ := o.Spawn(agent)
 
 		response, err := proc.Send(context.Background(), "Use both tools")
@@ -528,21 +531,21 @@ func TestAgenticToolExecution(t *testing.T) {
 	})
 
 	t.Run("handles tool errors gracefully", func(t *testing.T) {
-		tools := NewTools()
-		tools.Register("failing_tool", ToolDef{
+		ts := tools.NewTools()
+		ts.Register("failing_tool", tools.ToolDef{
 			Description: "A tool that fails",
 			Fn: func(ctx context.Context, params map[string]any) (string, error) {
 				return "", errors.New("tool execution failed")
 			},
-			Params: map[string]ParamDef{},
+			Params: map[string]tools.ParamDef{},
 		})
 
 		// LLM calls the failing tool, gets error, then responds
-		llm := &toolCallingLLM{
-			responses: []*LLMResponse{
+		callingLLM := &toolCallingLLM{
+			responses: []*llm.LLMResponse{
 				{
 					Content: "Let me try this tool",
-					ToolCalls: []ToolCall{
+					ToolCalls: []llm.ToolCall{
 						{ID: "call-1", Name: "failing_tool", Arguments: map[string]any{}},
 					},
 				},
@@ -552,8 +555,8 @@ func TestAgenticToolExecution(t *testing.T) {
 			},
 		}
 
-		o := NewOrchestrator(WithLLM(llm))
-		agent := Agent{Name: "error-handler", Tools: tools}
+		o := NewOrchestrator(WithLLM(callingLLM))
+		agent := Agent{Name: "error-handler", Tools: ts}
 		proc, _ := o.Spawn(agent)
 
 		response, err := proc.Send(context.Background(), "Try the tool")
@@ -566,13 +569,13 @@ func TestAgenticToolExecution(t *testing.T) {
 		}
 
 		// Verify error was sent back to LLM
-		if len(llm.calls) < 2 {
+		if len(callingLLM.calls) < 2 {
 			t.Fatal("Expected at least 2 LLM calls")
 		}
-		lastCall := llm.calls[1]
+		lastCall := callingLLM.calls[1]
 		foundErrorResult := false
 		for _, msg := range lastCall {
-			if msg.Role == RoleUser && contains(msg.Content, "Error:") {
+			if msg.Role == llm.RoleUser && contains(msg.Content, "Error:") {
 				foundErrorResult = true
 				break
 			}
@@ -583,29 +586,29 @@ func TestAgenticToolExecution(t *testing.T) {
 	})
 
 	t.Run("tool with context receives valid context", func(t *testing.T) {
-		tools := NewTools()
+		ts := tools.NewTools()
 		var receivedCtx context.Context
-		tools.Register("ctx_tool", ToolDef{
+		ts.Register("ctx_tool", tools.ToolDef{
 			Description: "Tool that checks context",
 			Fn: func(ctx context.Context, params map[string]any) (string, error) {
 				receivedCtx = ctx
 				return "ok", nil
 			},
-			Params: map[string]ParamDef{},
+			Params: map[string]tools.ParamDef{},
 		})
 
 		llm := &toolCallingLLM{
-			responses: []*LLMResponse{
+			responses: []*llm.LLMResponse{
 				{
 					Content:   "Calling context tool",
-					ToolCalls: []ToolCall{{ID: "call-1", Name: "ctx_tool", Arguments: map[string]any{}}},
+					ToolCalls: []llm.ToolCall{{ID: "call-1", Name: "ctx_tool", Arguments: map[string]any{}}},
 				},
 				{Content: "Done"},
 			},
 		}
 
 		o := NewOrchestrator(WithLLM(llm))
-		agent := Agent{Name: "ctx-agent", Tools: tools}
+		agent := Agent{Name: "ctx-agent", Tools: ts}
 		proc, _ := o.Spawn(agent)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -621,10 +624,10 @@ func TestAgenticToolExecution(t *testing.T) {
 
 func TestToolMiddleware(t *testing.T) {
 	t.Run("middleware wraps tool execution", func(t *testing.T) {
-		tools := NewTools()
+		ts := tools.NewTools()
 		var middlewareOrder []string
 
-		tools.Use(func(next ToolFunc) ToolFunc {
+		ts.Use(func(next tools.ToolFunc) tools.ToolFunc {
 			return func(ctx context.Context, params map[string]any) (string, error) {
 				middlewareOrder = append(middlewareOrder, "before-outer")
 				result, err := next(ctx, params)
@@ -633,7 +636,7 @@ func TestToolMiddleware(t *testing.T) {
 			}
 		})
 
-		tools.Use(func(next ToolFunc) ToolFunc {
+		ts.Use(func(next tools.ToolFunc) tools.ToolFunc {
 			return func(ctx context.Context, params map[string]any) (string, error) {
 				middlewareOrder = append(middlewareOrder, "before-inner")
 				result, err := next(ctx, params)
@@ -642,12 +645,12 @@ func TestToolMiddleware(t *testing.T) {
 			}
 		})
 
-		tools.Register("test_tool", func(input string) string {
+		ts.Register("test_tool", func(input string) string {
 			middlewareOrder = append(middlewareOrder, "tool")
 			return "result"
 		})
 
-		_, err := tools.Execute(context.Background(), "test_tool", map[string]any{"input": "test"})
+		_, err := ts.Execute(context.Background(), "test_tool", map[string]any{"input": "test"})
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}
@@ -666,20 +669,20 @@ func TestToolMiddleware(t *testing.T) {
 
 func TestToolSandbox(t *testing.T) {
 	t.Run("rewrites paths within sandbox", func(t *testing.T) {
-		tools := NewTools(WithSandbox("/sandbox"))
+		ts := tools.NewTools(tools.WithSandbox("/sandbox"))
 		var receivedPath string
-		tools.Register("read_path", ToolDef{
+		ts.Register("read_path", tools.ToolDef{
 			Description: "Reads a path",
 			Fn: func(ctx context.Context, params map[string]any) (string, error) {
 				receivedPath = params["path"].(string)
 				return "ok", nil
 			},
-			Params: map[string]ParamDef{
+			Params: map[string]tools.ParamDef{
 				"path": {Type: "string", Required: true},
 			},
 		})
 
-		tools.Execute(context.Background(), "read_path", map[string]any{"path": "test.txt"})
+		ts.Execute(context.Background(), "read_path", map[string]any{"path": "test.txt"})
 
 		if receivedPath != "/sandbox/test.txt" {
 			t.Errorf("Path = %q, want /sandbox/test.txt", receivedPath)
@@ -1312,24 +1315,24 @@ func TestEndToEndAgenticWorkflow(t *testing.T) {
 	// 3. Agent uses tools to accomplish the task
 	// 4. Agent reports completion
 
-	tools := NewTools()
+	ts := tools.NewTools()
 	var taskCompleted atomic.Bool
-	tools.Register("complete_task", ToolDef{
+	ts.Register("complete_task", tools.ToolDef{
 		Description: "Mark a task as completed",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			taskCompleted.Store(true)
 			return "Task marked complete", nil
 		},
-		Params: map[string]ParamDef{
+		Params: map[string]tools.ParamDef{
 			"task_id": {Type: "string", Required: true},
 		},
 	})
 
 	llm := &toolCallingLLM{
-		responses: []*LLMResponse{
+		responses: []*llm.LLMResponse{
 			{
 				Content: "I'll complete this task",
-				ToolCalls: []ToolCall{
+				ToolCalls: []llm.ToolCall{
 					{ID: "call-1", Name: "complete_task", Arguments: map[string]any{"task_id": "task-123"}},
 				},
 			},
@@ -1359,7 +1362,7 @@ func TestEndToEndAgenticWorkflow(t *testing.T) {
 	agent := Agent{
 		Name:   "task-agent",
 		System: StaticPrompt("You are a task completion assistant."),
-		Tools:  tools,
+		Tools:  ts,
 	}
 
 	proc, err := o.Spawn(agent, WithTask("Complete task-123"))
@@ -1515,10 +1518,10 @@ func TestAgentWithTimeout(t *testing.T) {
 
 func TestAgentContextCancellation(t *testing.T) {
 	// Create an LLM that checks context cancellation during delay
-	llm := &contextAwareLLM{
+	testLLM := &contextAwareLLM{
 		delay: 500 * time.Millisecond,
 	}
-	o := NewOrchestrator(WithLLM(llm))
+	o := NewOrchestrator(WithLLM(testLLM))
 
 	agent := Agent{Name: "cancellable-agent"}
 	proc, _ := o.Spawn(agent)
@@ -1547,25 +1550,25 @@ type contextAwareLLM struct {
 	delay time.Duration
 }
 
-func (m *contextAwareLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
+func (m *contextAwareLLM) Generate(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(m.delay):
-		return &LLMResponse{Content: "response", InputTokens: 10, OutputTokens: 5}, nil
+		return &llm.LLMResponse{Content: "response", InputTokens: 10, OutputTokens: 5}, nil
 	}
 }
 
-func (m *contextAwareLLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, 1)
+func (m *contextAwareLLM) GenerateStream(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, 1)
 	go func() {
 		defer close(ch)
 		resp, err := m.Generate(ctx, messages, tools)
 		if err != nil {
-			ch <- StreamEvent{Error: err}
+			ch <- llm.StreamEvent{Error: err}
 			return
 		}
-		ch <- StreamEvent{Type: StreamEventContentDelta, Delta: resp.Content}
+		ch <- llm.StreamEvent{Type: llm.StreamEventContentDelta, Delta: resp.Content}
 	}()
 	return ch, nil
 }
@@ -1606,8 +1609,8 @@ func TestAsyncWorkflow(t *testing.T) {
 }
 
 func TestStreamingWorkflow(t *testing.T) {
-	llm := &streamingLLM{chunks: []string{"Hello", " ", "World", "!"}}
-	o := NewOrchestrator(WithLLM(llm))
+	testLLM := &streamingLLM{chunks: []string{"Hello", " ", "World", "!"}}
+	o := NewOrchestrator(WithLLM(testLLM))
 
 	agent := Agent{Name: "streaming-agent"}
 	proc, _ := o.Spawn(agent)
@@ -1643,20 +1646,20 @@ type streamingLLM struct {
 	chunks []string
 }
 
-func (m *streamingLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
+func (m *streamingLLM) Generate(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
 	var content string
 	for _, c := range m.chunks {
 		content += c
 	}
-	return &LLMResponse{Content: content, InputTokens: 10, OutputTokens: 5}, nil
+	return &llm.LLMResponse{Content: content, InputTokens: 10, OutputTokens: 5}, nil
 }
 
-func (m *streamingLLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, len(m.chunks)+1)
+func (m *streamingLLM) GenerateStream(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, len(m.chunks)+1)
 	go func() {
 		defer close(ch)
 		for _, chunk := range m.chunks {
-			ch <- StreamEvent{Type: StreamEventContentDelta, Delta: chunk}
+			ch <- llm.StreamEvent{Type: llm.StreamEventContentDelta, Delta: chunk}
 		}
 	}()
 	return ch, nil

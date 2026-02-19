@@ -1,4 +1,4 @@
-package vega
+package llm
 
 import "context"
 
@@ -10,6 +10,21 @@ type LLM interface {
 	// GenerateStream sends a request and returns a channel of streaming events.
 	GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error)
 }
+
+// Message represents a conversation message.
+type Message struct {
+	Role    Role
+	Content string
+}
+
+// Role identifies the message sender.
+type Role string
+
+const (
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+	RoleSystem    Role = "system"
+)
 
 // LLMResponse is the response from an LLM call.
 type LLMResponse struct {
@@ -109,9 +124,9 @@ var modelPricing = map[string]struct {
 	InputPer1M  float64
 	OutputPer1M float64
 }{
-	"claude-sonnet-4-20250514":  {3.00, 15.00},
-	"claude-opus-4-20250514":    {15.00, 75.00},
-	"claude-haiku-3-20240307":   {0.25, 1.25},
+	"claude-sonnet-4-20250514":   {3.00, 15.00},
+	"claude-opus-4-20250514":     {15.00, 75.00},
+	"claude-haiku-3-20240307":    {0.25, 1.25},
 	"claude-3-5-sonnet-20241022": {3.00, 15.00},
 	"claude-3-opus-20240229":     {15.00, 75.00},
 	"claude-3-sonnet-20240229":   {3.00, 15.00},

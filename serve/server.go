@@ -45,7 +45,7 @@ type Server struct {
 	startedAt time.Time
 
 	// extractLLM is a separate LLM client used for memory extraction.
-	extractLLM   vega.LLM
+	extractLLM   llm.LLM
 	extractLLMMu sync.Once
 
 	// streams tracks active chat streams that run server-side, decoupled
@@ -65,7 +65,7 @@ func New(interp *dsl.Interpreter, cfg Config) *Server {
 }
 
 // getExtractLLM returns the lazily-initialized LLM client for memory extraction.
-func (s *Server) getExtractLLM() vega.LLM {
+func (s *Server) getExtractLLM() llm.LLM {
 	s.extractLLMMu.Do(func() {
 		s.extractLLM = llm.NewAnthropic(llm.WithModel("claude-haiku-4-5-20251001"))
 	})

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/tools"
 )
 
 func newMotherTestInterpreter(t *testing.T) *Interpreter {
@@ -22,14 +23,14 @@ func newMotherTestInterpreter(t *testing.T) *Interpreter {
 	mockLLM := &stubLLM{response: "ok"}
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 
-	tools := vega.NewTools()
-	tools.RegisterBuiltins()
+	toolSet := tools.NewTools()
+	toolSet.RegisterBuiltins()
 
 	return &Interpreter{
 		doc:               doc,
 		orch:              orch,
 		agents:            make(map[string]*vega.Process),
-		tools:             tools,
+		tools:             toolSet,
 		delegationConfigs: make(map[string]*DelegationDef),
 	}
 }

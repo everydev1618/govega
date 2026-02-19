@@ -32,7 +32,7 @@
 //
 // Tools are automatically converted to the Anthropic tool format:
 //
-//	tools := vega.NewTools()
+//	tools := tools.NewTools()
 //	tools.Register("search", searchFunc)
 //
 //	agent := vega.Agent{
@@ -59,7 +59,7 @@
 //
 // # Implementing Custom Backends
 //
-// To implement a custom LLM backend, implement the vega.LLM interface:
+// To implement a custom LLM backend, implement the llm.LLM interface:
 //
 //	type LLM interface {
 //	    Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error)

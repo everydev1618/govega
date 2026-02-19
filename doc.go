@@ -57,7 +57,7 @@
 //
 // Register tools for agents to use:
 //
-//	tools := vega.NewTools()
+//	tools := tools.NewTools()
 //	tools.RegisterBuiltins() // read_file, write_file, run_command
 //
 //	tools.Register("greet", func(name string) string {

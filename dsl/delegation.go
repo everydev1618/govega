@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/tools"
 )
 
 // SendFunc sends a message to a named agent and returns the response.
@@ -37,10 +39,10 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 	return system + teamSection
 }
 
-// NewDelegateTool returns a vega.ToolDef for the delegate tool.
+// NewDelegateTool returns a tools.ToolDef for the delegate tool.
 // sendFn is called when the tool is invoked to relay a message to another agent.
-func NewDelegateTool(sendFn SendFunc) vega.ToolDef {
-	return vega.ToolDef{
+func NewDelegateTool(sendFn SendFunc) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "Delegate a task to another agent on your team and get their response. Use this to assign work to team members.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			agent, _ := params["agent"].(string)
@@ -50,7 +52,7 @@ func NewDelegateTool(sendFn SendFunc) vega.ToolDef {
 			}
 			return sendFn(ctx, agent, message)
 		},
-		Params: map[string]vega.ParamDef{
+		Params: map[string]tools.ParamDef{
 			"agent": {
 				Type:        "string",
 				Description: "Name of the team member agent to delegate to",
@@ -67,20 +69,20 @@ func NewDelegateTool(sendFn SendFunc) vega.ToolDef {
 
 // RegisterDelegateTool registers the delegate tool on the given Tools instance
 // if it is not already registered. Returns true if registration happened.
-func RegisterDelegateTool(tools *vega.Tools, sendFn SendFunc) bool {
-	for _, ts := range tools.Schema() {
+func RegisterDelegateTool(t *tools.Tools, sendFn SendFunc) bool {
+	for _, ts := range t.Schema() {
 		if ts.Name == "delegate" {
 			return false
 		}
 	}
-	tools.Register("delegate", NewDelegateTool(sendFn))
+	t.Register("delegate", NewDelegateTool(sendFn))
 	return true
 }
 
 // DelegationContext holds extracted caller context for enriched delegation.
 type DelegationContext struct {
 	CallerAgent string
-	Messages    []vega.Message
+	Messages    []llm.Message
 }
 
 // ExtractCallerContext reads the last N messages from the caller process,
@@ -101,7 +103,7 @@ func ExtractCallerContext(callerProc *vega.Process, config *DelegationDef) *Dele
 		for _, r := range config.IncludeRoles {
 			roleSet[r] = true
 		}
-		filtered := make([]vega.Message, 0, len(msgs))
+		filtered := make([]llm.Message, 0, len(msgs))
 		for _, m := range msgs {
 			if roleSet[string(m.Role)] {
 				filtered = append(filtered, m)

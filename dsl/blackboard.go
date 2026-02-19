@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/tools"
 )
 
 // GroupResolver returns the team ProcessGroup for the calling process.
 type GroupResolver func(ctx context.Context) *vega.ProcessGroup
 
 // NewBlackboardReadTool creates a tool that reads a key from the team blackboard.
-func NewBlackboardReadTool(getGroup GroupResolver) vega.ToolDef {
-	return vega.ToolDef{
+func NewBlackboardReadTool(getGroup GroupResolver) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "Read a value from the shared team blackboard by key.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			key, _ := params["key"].(string)
@@ -35,7 +36,7 @@ func NewBlackboardReadTool(getGroup GroupResolver) vega.ToolDef {
 			}
 			return string(b), nil
 		},
-		Params: map[string]vega.ParamDef{
+		Params: map[string]tools.ParamDef{
 			"key": {
 				Type:        "string",
 				Description: "The key to read from the blackboard",
@@ -46,8 +47,8 @@ func NewBlackboardReadTool(getGroup GroupResolver) vega.ToolDef {
 }
 
 // NewBlackboardWriteTool creates a tool that writes a key/value pair to the team blackboard.
-func NewBlackboardWriteTool(getGroup GroupResolver) vega.ToolDef {
-	return vega.ToolDef{
+func NewBlackboardWriteTool(getGroup GroupResolver) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "Write a key/value pair to the shared team blackboard.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			key, _ := params["key"].(string)
@@ -65,7 +66,7 @@ func NewBlackboardWriteTool(getGroup GroupResolver) vega.ToolDef {
 			group.BBSet(key, value)
 			return fmt.Sprintf("wrote %q to blackboard", key), nil
 		},
-		Params: map[string]vega.ParamDef{
+		Params: map[string]tools.ParamDef{
 			"key": {
 				Type:        "string",
 				Description: "The key to write",
@@ -81,8 +82,8 @@ func NewBlackboardWriteTool(getGroup GroupResolver) vega.ToolDef {
 }
 
 // NewBlackboardListTool creates a tool that lists all keys on the team blackboard.
-func NewBlackboardListTool(getGroup GroupResolver) vega.ToolDef {
-	return vega.ToolDef{
+func NewBlackboardListTool(getGroup GroupResolver) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "List all keys on the shared team blackboard.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			group := getGroup(ctx)
@@ -95,6 +96,6 @@ func NewBlackboardListTool(getGroup GroupResolver) vega.ToolDef {
 			}
 			return strings.Join(keys, "\n"), nil
 		},
-		Params: map[string]vega.ParamDef{},
+		Params: map[string]tools.ParamDef{},
 	}
 }

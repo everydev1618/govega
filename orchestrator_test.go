@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/everydev1618/govega/llm"
 )
 
 // mockLLM is a simple mock for testing
@@ -12,11 +14,11 @@ type mockLLM struct {
 	err      error
 }
 
-func (m *mockLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
+func (m *mockLLM) Generate(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	return &LLMResponse{
+	return &llm.LLMResponse{
 		Content:      m.response,
 		InputTokens:  10,
 		OutputTokens: 5,
@@ -24,10 +26,10 @@ func (m *mockLLM) Generate(ctx context.Context, messages []Message, tools []Tool
 	}, nil
 }
 
-func (m *mockLLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, 1)
+func (m *mockLLM) GenerateStream(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, 1)
 	go func() {
-		ch <- StreamEvent{Delta: m.response}
+		ch <- llm.StreamEvent{Delta: m.response}
 		close(ch)
 	}()
 	return ch, nil
@@ -724,8 +726,8 @@ func TestAutomaticRestartWithSupervision(t *testing.T) {
 // --- WithMessages Tests ---
 
 func TestWithMessages(t *testing.T) {
-	llm := &mockLLM{response: "I remember that!"}
-	o := NewOrchestrator(WithLLM(llm))
+	mockObj := &mockLLM{response: "I remember that!"}
+	o := NewOrchestrator(WithLLM(mockObj))
 
 	agent := Agent{
 		Name:   "test-agent",
@@ -733,9 +735,9 @@ func TestWithMessages(t *testing.T) {
 	}
 
 	// Spawn with existing conversation history
-	history := []Message{
-		{Role: RoleUser, Content: "What is the capital of France?"},
-		{Role: RoleAssistant, Content: "The capital of France is Paris."},
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "What is the capital of France?"},
+		{Role: llm.RoleAssistant, Content: "The capital of France is Paris."},
 	}
 
 	proc, err := o.Spawn(agent, WithMessages(history))
@@ -751,18 +753,18 @@ func TestWithMessages(t *testing.T) {
 	if proc.messages[0].Content != "What is the capital of France?" {
 		t.Errorf("First message content mismatch")
 	}
-	if proc.messages[1].Role != RoleAssistant {
+	if proc.messages[1].Role != llm.RoleAssistant {
 		t.Errorf("Second message role mismatch")
 	}
 	proc.mu.RUnlock()
 }
 
 func TestWithMessagesEmpty(t *testing.T) {
-	llm := &mockLLM{response: "Hello!"}
-	o := NewOrchestrator(WithLLM(llm))
+	mockObj := &mockLLM{response: "Hello!"}
+	o := NewOrchestrator(WithLLM(mockObj))
 
 	agent := Agent{Name: "test"}
-	proc, err := o.Spawn(agent, WithMessages([]Message{}))
+	proc, err := o.Spawn(agent, WithMessages([]llm.Message{}))
 	if err != nil {
 		t.Fatalf("Spawn() returned error: %v", err)
 	}
@@ -793,12 +795,12 @@ func TestWithMessagesNil(t *testing.T) {
 }
 
 func TestWithMessagesCopiesSlice(t *testing.T) {
-	llm := &mockLLM{response: "Hello!"}
-	o := NewOrchestrator(WithLLM(llm))
+	mockObj := &mockLLM{response: "Hello!"}
+	o := NewOrchestrator(WithLLM(mockObj))
 
 	agent := Agent{Name: "test"}
-	original := []Message{
-		{Role: RoleUser, Content: "Hello"},
+	original := []llm.Message{
+		{Role: llm.RoleUser, Content: "Hello"},
 	}
 
 	proc, _ := o.Spawn(agent, WithMessages(original))

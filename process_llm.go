@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+
+	"github.com/everydev1618/govega/llm"
 )
 
 // executeLLMLoop runs the LLM call loop, handling tool calls.
@@ -17,7 +19,7 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 	messages := p.buildMessages()
 
 	// Get tools schema if agent has tools
-	var toolSchemas []ToolSchema
+	var toolSchemas []llm.ToolSchema
 	if p.Agent.Tools != nil {
 		toolSchemas = p.Agent.Tools.Schema()
 	}
@@ -58,7 +60,7 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
 		}
 		if strings.TrimSpace(assistantContent) != "" {
-			messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
+			messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: assistantContent})
 		}
 
 		// Create context with process for tool execution
@@ -78,8 +80,8 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 			toolResults.WriteString("\n")
 		}
 		if toolResults.Len() > 0 {
-			messages = append(messages, Message{
-				Role:    RoleUser,
+			messages = append(messages, llm.Message{
+				Role:    llm.RoleUser,
 				Content: strings.TrimSpace(toolResults.String()),
 			})
 		}
@@ -92,7 +94,7 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 func (p *Process) executeLLMStream(ctx context.Context, message string, chunks chan<- string) (string, error) {
 	messages := p.buildMessages()
 
-	var toolSchemas []ToolSchema
+	var toolSchemas []llm.ToolSchema
 	if p.Agent.Tools != nil {
 		toolSchemas = p.Agent.Tools.Schema()
 	}
@@ -117,8 +119,8 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 
 		// Collect response and tool calls from this iteration
 		var iterResponse string
-		var toolCalls []ToolCall
-		var currentToolCall *ToolCall
+		var toolCalls []llm.ToolCall
+		var currentToolCall *llm.ToolCall
 		var currentToolJSON string
 
 		for event := range eventCh {
@@ -127,26 +129,26 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 			}
 
 			switch event.Type {
-			case StreamEventContentDelta:
+			case llm.StreamEventContentDelta:
 				if event.Delta != "" {
 					chunks <- event.Delta
 					iterResponse += event.Delta
 					fullResponse += event.Delta
 				}
-			case StreamEventToolStart:
+			case llm.StreamEventToolStart:
 				if event.ToolCall != nil {
-					currentToolCall = &ToolCall{
+					currentToolCall = &llm.ToolCall{
 						ID:        event.ToolCall.ID,
 						Name:      event.ToolCall.Name,
 						Arguments: make(map[string]any),
 					}
 					currentToolJSON = ""
 				}
-			case StreamEventToolDelta:
+			case llm.StreamEventToolDelta:
 				if currentToolCall != nil {
 					currentToolJSON += event.Delta
 				}
-			case StreamEventContentEnd:
+			case llm.StreamEventContentEnd:
 				// If we were building a tool call, finalize it
 				if currentToolCall != nil {
 					if currentToolJSON != "" {
@@ -170,7 +172,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
 		}
 		if strings.TrimSpace(assistantContent) != "" {
-			messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
+			messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: assistantContent})
 		}
 
 		// Create context with process for tool execution
@@ -192,8 +194,8 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 			toolResults.WriteString("\n")
 		}
 		if toolResults.Len() > 0 {
-			messages = append(messages, Message{
-				Role:    RoleUser,
+			messages = append(messages, llm.Message{
+				Role:    llm.RoleUser,
 				Content: strings.TrimSpace(toolResults.String()),
 			})
 		}
@@ -207,7 +209,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 func (p *Process) executeLLMStreamRich(ctx context.Context, message string, events chan<- ChatEvent) (string, error) {
 	messages := p.buildMessages()
 
-	var toolSchemas []ToolSchema
+	var toolSchemas []llm.ToolSchema
 	if p.Agent.Tools != nil {
 		toolSchemas = p.Agent.Tools.Schema()
 	}
@@ -231,8 +233,8 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		}
 
 		var iterResponse string
-		var toolCalls []ToolCall
-		var currentToolCall *ToolCall
+		var toolCalls []llm.ToolCall
+		var currentToolCall *llm.ToolCall
 		var currentToolJSON string
 
 		for ev := range eventCh {
@@ -241,26 +243,26 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 			}
 
 			switch ev.Type {
-			case StreamEventContentDelta:
+			case llm.StreamEventContentDelta:
 				if ev.Delta != "" {
 					events <- ChatEvent{Type: ChatEventTextDelta, Delta: ev.Delta}
 					iterResponse += ev.Delta
 					fullResponse += ev.Delta
 				}
-			case StreamEventToolStart:
+			case llm.StreamEventToolStart:
 				if ev.ToolCall != nil {
-					currentToolCall = &ToolCall{
+					currentToolCall = &llm.ToolCall{
 						ID:        ev.ToolCall.ID,
 						Name:      ev.ToolCall.Name,
 						Arguments: make(map[string]any),
 					}
 					currentToolJSON = ""
 				}
-			case StreamEventToolDelta:
+			case llm.StreamEventToolDelta:
 				if currentToolCall != nil {
 					currentToolJSON += ev.Delta
 				}
-			case StreamEventContentEnd:
+			case llm.StreamEventContentEnd:
 				if currentToolCall != nil {
 					if currentToolJSON != "" {
 						json.Unmarshal([]byte(currentToolJSON), &currentToolCall.Arguments)
@@ -289,7 +291,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
 		}
 		if strings.TrimSpace(assistantContent) != "" {
-			messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
+			messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: assistantContent})
 		}
 
 		toolCtx := ContextWithProcess(ctx, p)
@@ -320,8 +322,8 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 			toolResults.WriteString("\n")
 		}
 		if toolResults.Len() > 0 {
-			messages = append(messages, Message{
-				Role:    RoleUser,
+			messages = append(messages, llm.Message{
+				Role:    llm.RoleUser,
 				Content: strings.TrimSpace(toolResults.String()),
 			})
 		}
@@ -331,7 +333,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 }
 
 // callLLMWithRetry calls the LLM with retry logic based on agent's RetryPolicy.
-func (p *Process) callLLMWithRetry(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
+func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
 	policy := p.Agent.Retry
 	maxAttempts := 1
 	if policy != nil && policy.MaxAttempts > 0 {

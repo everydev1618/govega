@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/tools"
 )
 
 // ---------- Integration: Parser → Interpreter wiring ----------
@@ -340,10 +342,10 @@ agents:
 	}
 
 	// Create a process with pre-populated messages to test enrichment
-	history := []vega.Message{
-		{Role: vega.RoleUser, Content: "I struggle with delegation"},
-		{Role: vega.RoleAssistant, Content: "Classic Operator's Trap"},
-		{Role: vega.RoleUser, Content: "What should I do?"},
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "I struggle with delegation"},
+		{Role: llm.RoleAssistant, Content: "Classic Operator's Trap"},
+		{Role: llm.RoleUser, Content: "What should I do?"},
 	}
 	agent := vega.Agent{Name: "dan", Model: "test", System: vega.StaticPrompt("test")}
 	proc, err := interp.orch.Spawn(agent, vega.WithMessages(history))
@@ -544,17 +546,17 @@ agents:
 	defer interp.Shutdown()
 
 	// Register a tool
-	interp.registerToolIfAbsent("test_tool", vega.ToolDef{
+	interp.registerToolIfAbsent("test_tool", tools.ToolDef{
 		Description: "first",
 		Fn:          func(ctx context.Context, params map[string]any) (string, error) { return "first", nil },
-		Params:      map[string]vega.ParamDef{},
+		Params:      map[string]tools.ParamDef{},
 	})
 
 	// Register again with same name — should be no-op
-	interp.registerToolIfAbsent("test_tool", vega.ToolDef{
+	interp.registerToolIfAbsent("test_tool", tools.ToolDef{
 		Description: "second",
 		Fn:          func(ctx context.Context, params map[string]any) (string, error) { return "second", nil },
-		Params:      map[string]vega.ParamDef{},
+		Params:      map[string]tools.ParamDef{},
 	})
 
 	// Verify only one tool with that name exists
@@ -622,14 +624,14 @@ func newTestInterpreter(t *testing.T, doc *Document) *Interpreter {
 	mockLLM := &stubLLM{response: "ok"}
 	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
 
-	tools := vega.NewTools()
-	tools.RegisterBuiltins()
+	toolSet := tools.NewTools()
+	toolSet.RegisterBuiltins()
 
 	interp := &Interpreter{
 		doc:               doc,
 		orch:              orch,
 		agents:            make(map[string]*vega.Process),
-		tools:             tools,
+		tools:             toolSet,
 		delegationConfigs: make(map[string]*DelegationDef),
 	}
 

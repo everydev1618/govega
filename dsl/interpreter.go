@@ -13,6 +13,7 @@ import (
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/govega/internal/skills"
+	"github.com/everydev1618/govega/tools"
 )
 
 // InterpreterOption configures the interpreter.
@@ -31,7 +32,7 @@ type Interpreter struct {
 	doc               *Document
 	orch              *vega.Orchestrator
 	agents            map[string]*vega.Process
-	tools             *vega.Tools
+	tools             *tools.Tools
 	skillsLoader      *skills.Loader
 	delegationConfigs map[string]*DelegationDef
 	lazySpawn         bool
@@ -56,9 +57,9 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	orch := vega.NewOrchestrator(orchOpts...)
 
 	// Create tools
-	toolOpts := []vega.ToolsOption{}
+	toolOpts := []tools.ToolsOption{}
 	if doc.Settings != nil && doc.Settings.Sandbox != "" {
-		toolOpts = append(toolOpts, vega.WithSandbox(doc.Settings.Sandbox))
+		toolOpts = append(toolOpts, tools.WithSandbox(doc.Settings.Sandbox))
 	}
 
 	// Add MCP servers if configured
@@ -106,18 +107,18 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 				}
 			}
 
-			toolOpts = append(toolOpts, vega.WithMCPServer(config))
+			toolOpts = append(toolOpts, tools.WithMCPServer(config))
 		}
 	}
 
-	tools := vega.NewTools(toolOpts...)
-	tools.RegisterBuiltins()
+	t := tools.NewTools(toolOpts...)
+	t.RegisterBuiltins()
 
 	// Connect MCP servers
 	if doc.Settings != nil && doc.Settings.MCP != nil && len(doc.Settings.MCP.Servers) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := tools.ConnectMCP(ctx); err != nil {
+		if err := t.ConnectMCP(ctx); err != nil {
 			// Log warning but continue
 			_ = err
 		}
@@ -136,7 +137,7 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 		doc:               doc,
 		orch:              orch,
 		agents:            make(map[string]*vega.Process),
-		tools:             tools,
+		tools:             t,
 		skillsLoader:      skillsLoader,
 		delegationConfigs: make(map[string]*DelegationDef),
 	}
@@ -361,7 +362,7 @@ func (i *Interpreter) teamGroupResolver(defaultGroup string) GroupResolver {
 }
 
 // registerToolIfAbsent registers a tool only if no tool with that name exists.
-func (i *Interpreter) registerToolIfAbsent(name string, def vega.ToolDef) {
+func (i *Interpreter) registerToolIfAbsent(name string, def tools.ToolDef) {
 	for _, ts := range i.tools.Schema() {
 		if ts.Name == name {
 			return
@@ -1044,7 +1045,7 @@ func (i *Interpreter) Document() *Document {
 }
 
 // Tools returns the tool registry.
-func (i *Interpreter) Tools() *vega.Tools {
+func (i *Interpreter) Tools() *tools.Tools {
 	return i.tools
 }
 
