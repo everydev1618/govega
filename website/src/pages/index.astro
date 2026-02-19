@@ -239,6 +239,16 @@ const vegaGaps = [
   <section class="max-w-5xl mx-auto px-6 pb-24">
     <p class="section-label text-center">Why Vega?</p>
 
+    <!-- WIP notice -->
+    <div class="rounded-xl border border-rose-500/30 bg-rose-500/5 px-6 py-5 max-w-2xl mx-auto mb-10 text-center">
+      <p class="font-mono text-xs text-rose-400 mb-1">Not ready for production</p>
+      <p class="text-sm text-slate-400 leading-relaxed">
+        Vega is an early-stage project and very much a work in progress. APIs will break, features are
+        incomplete, and it has not been hardened under real production load. Use it to learn, experiment,
+        and contribute — but not yet to run anything you depend on.
+      </p>
+    </div>
+
     <!-- Framing -->
     <p class="text-slate-400 text-sm leading-relaxed max-w-2xl mx-auto text-center mb-12">
       A fair comparison requires an honest framing. Vega and
@@ -310,6 +320,76 @@ const vegaGaps = [
             <p class="text-xs text-slate-400 leading-relaxed">{desc}</p>
           </div>
         ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- About the author -->
+  <section class="max-w-5xl mx-auto px-6 pb-24">
+    <p class="section-label text-center">About the author</p>
+
+    <div class="max-w-2xl mx-auto">
+      <!-- Avatar + name -->
+      <div class="flex flex-col items-center mb-8">
+        <img
+          src="https://avatars.githubusercontent.com/u/9138982?s=160&v=4"
+          alt="Etienne de Bruin"
+          class="w-20 h-20 rounded-full border-2 border-white/10 mb-4"
+          loading="lazy"
+        />
+        <p class="font-semibold text-white text-lg">Etienne de Bruin</p>
+        <p class="text-slate-500 text-sm font-mono">
+          <a href="https://github.com/everydev1618" target="_blank" class="hover:text-slate-300 transition-colors">@everydev1618</a>
+          &nbsp;·&nbsp;
+          <a href="https://x.com/etdebruin" target="_blank" class="hover:text-slate-300 transition-colors">@etdebruin</a>
+          &nbsp;·&nbsp;
+          <a href="https://everydev.com" target="_blank" class="hover:text-slate-300 transition-colors">everydev.com</a>
+        </p>
+      </div>
+
+      <!-- Bio -->
+      <div class="rounded-xl border border-white/10 bg-space-900 p-7 mb-6">
+        <p class="text-sm text-slate-400 leading-relaxed mb-4">
+          I'm a software developer with a long background in building developer tools and communities.
+          Vega is my attempt to understand agent orchestration from the inside — by building it myself,
+          making mistakes in public, and learning from people who are doing this at a far greater depth
+          and scale than I am.
+        </p>
+        <p class="text-sm text-slate-400 leading-relaxed">
+          I think of myself as a student of this space more than an expert in it. The Erlang supervision
+          model has been quietly solving distributed reliability problems for forty years, and it struck
+          me that almost nobody in the AI agent world has reached for it yet. Vega is that experiment.
+          Whether the idea is right is still an open question.
+        </p>
+      </div>
+
+      <!-- Heroes -->
+      <p class="font-mono text-xs text-slate-500 text-center mb-4">People I learn from</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="rounded-lg border border-white/8 bg-space-900 px-5 py-4">
+          <p class="font-mono text-xs text-indigo-400 mb-0.5">Joe Armstrong</p>
+          <p class="text-xs text-slate-500 leading-relaxed">Creator of Erlang. Proved that distributed, fault-tolerant systems are achievable by design, not just by hope. The supervision tree concept at the heart of Vega is entirely his.</p>
+        </div>
+        <div class="rounded-lg border border-white/8 bg-space-900 px-5 py-4">
+          <p class="font-mono text-xs text-indigo-400 mb-0.5">Andrej Karpathy</p>
+          <p class="text-xs text-slate-500 leading-relaxed">His patient, first-principles approach to explaining AI has shaped how I think about LLMs. The idea of software written in natural language rather than code feels increasingly like the right frame.</p>
+        </div>
+        <div class="rounded-lg border border-white/8 bg-space-900 px-5 py-4">
+          <p class="font-mono text-xs text-indigo-400 mb-0.5">Harrison Chase</p>
+          <p class="text-xs text-slate-500 leading-relaxed">Founder of LangChain. Showed that the developer community was hungry for higher-level agent abstractions. Even where Vega disagrees with the approach, LangChain opened the conversation.</p>
+        </div>
+        <div class="rounded-lg border border-white/8 bg-space-900 px-5 py-4">
+          <p class="font-mono text-xs text-indigo-400 mb-0.5">Andrew Ng</p>
+          <p class="text-xs text-slate-500 leading-relaxed">A relentless advocate for agentic workflows as the next meaningful frontier. His framing of agents as loops with tools and memory has been a useful mental model throughout this project.</p>
+        </div>
+        <div class="rounded-lg border border-white/8 bg-space-900 px-5 py-4">
+          <p class="font-mono text-xs text-indigo-400 mb-0.5">Dario Amodei</p>
+          <p class="text-xs text-slate-500 leading-relaxed">CEO of Anthropic. The care Anthropic puts into the reliability and honesty of Claude has made it the right foundation to build on. The API is a joy to work with.</p>
+        </div>
+        <div class="rounded-lg border border-white/8 bg-space-900 px-5 py-4">
+          <p class="font-mono text-xs text-indigo-400 mb-0.5">You</p>
+          <p class="text-xs text-slate-500 leading-relaxed">If you've used Vega, filed an issue, or had a conversation with me about agent design — you've shaped this project. This is still early enough that every conversation leaves a mark.</p>
+        </div>
       </div>
     </div>
   </section>
