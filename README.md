@@ -1,5 +1,10 @@
 # Vega
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/everydev1618/govega.svg)](https://pkg.go.dev/github.com/everydev1618/govega)
+[![Latest Release](https://img.shields.io/github/v/release/everydev1618/govega)](https://github.com/everydev1618/govega/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/everydev1618/govega)](go.mod)
+
 **Fault-tolerant AI agent orchestration for Go.**
 
 Vega makes it easy to build reliable AI agent systems with Erlang-style supervision. Use the YAML DSL for rapid prototyping or the Go library for full control.
