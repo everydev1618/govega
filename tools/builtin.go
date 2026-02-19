@@ -8,9 +8,41 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// absPathRe matches absolute path tokens inside shell command strings.
+// Stops at whitespace and common shell meta-characters.
+var absPathRe = regexp.MustCompile(`(/[^\s"'<>|&;(){}\[\]\\]+)`)
+
+// rewriteCommandPaths rewrites absolute paths in a shell command that escape
+// the sandbox, redirecting them to sandbox/basename.
+func rewriteCommandPaths(command, sandbox string) string {
+	return absPathRe.ReplaceAllStringFunc(command, func(match string) string {
+		clean := filepath.Clean(match)
+		rel, err := filepath.Rel(sandbox, clean)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return filepath.Join(sandbox, filepath.Base(clean))
+		}
+		return match
+	})
+}
+
+// sandboxEnv returns the current environment with HOME and TMPDIR pointed at
+// the sandbox, preventing shell expansions like ~ from escaping.
+func sandboxEnv(sandbox string) []string {
+	env := os.Environ()
+	result := make([]string, 0, len(env)+2)
+	for _, e := range env {
+		if strings.HasPrefix(e, "HOME=") || strings.HasPrefix(e, "TMPDIR=") {
+			continue
+		}
+		result = append(result, e)
+	}
+	return append(result, "HOME="+sandbox, "TMPDIR="+sandbox)
+}
 
 // RegisterBuiltins adds the built-in tools.
 func (t *Tools) RegisterBuiltins() {
@@ -119,8 +151,17 @@ func (t *Tools) RegisterBuiltins() {
 			execCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
+			// Rewrite any absolute paths in the command that escape the sandbox,
+			// and isolate HOME/TMPDIR so ~ doesn't point outside.
+			if t.sandbox != "" {
+				command = rewriteCommandPaths(command, t.sandbox)
+			}
+
 			cmd := exec.CommandContext(execCtx, "sh", "-c", command)
 			cmd.Dir = workdir
+			if t.sandbox != "" {
+				cmd.Env = sandboxEnv(t.sandbox)
+			}
 
 			var buf bytes.Buffer
 			cmd.Stdout = &buf
