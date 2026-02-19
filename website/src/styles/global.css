@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: #05050d;
+    color: #e2e8f0;
+  }
+}
+
+@layer components {
+  .star-arm-n  { color: #67e8f9; } /* cyan-400  */
+  .star-arm-s  { color: #34d399; } /* emerald-400 */
+  .star-arm-e  { color: #a78bfa; } /* violet-400  */
+  .star-arm-w  { color: #f87171; } /* rose-400    */
+  .star-arm-ne { color: #818cf8; } /* indigo-400  */
+  .star-arm-sw { color: #fb923c; } /* orange-400  */
+  .star-center { color: #fcd34d; } /* amber-300   */
+  .star-dot    { color: #93c5fd; } /* blue-300    */
+  .star-tip    { color: #c084fc; } /* purple-400  */
+
+  .code-block {
+    @apply bg-space-800 border border-white/10 rounded-xl p-5 font-mono text-sm overflow-x-auto;
+  }
+
+  .section-label {
+    @apply text-xs font-mono tracking-widest uppercase text-indigo-400 mb-3;
+  }
+
+  .feature-card {
+    @apply bg-space-800 border border-white/10 rounded-xl p-5 hover:border-indigo-500/40 transition-colors;
+  }
+}
