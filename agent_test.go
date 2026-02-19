@@ -3,6 +3,9 @@ package vega
 import (
 	"testing"
 	"time"
+
+	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/memory"
 )
 
 func TestStaticPrompt(t *testing.T) {
@@ -86,14 +89,14 @@ func TestErrorClass(t *testing.T) {
 }
 
 func TestRole(t *testing.T) {
-	if RoleUser != "user" {
-		t.Errorf("RoleUser = %q, want %q", RoleUser, "user")
+	if llm.RoleUser != "user" {
+		t.Errorf("RoleUser = %q, want %q", llm.RoleUser, "user")
 	}
-	if RoleAssistant != "assistant" {
-		t.Errorf("RoleAssistant = %q, want %q", RoleAssistant, "assistant")
+	if llm.RoleAssistant != "assistant" {
+		t.Errorf("RoleAssistant = %q, want %q", llm.RoleAssistant, "assistant")
 	}
-	if RoleSystem != "system" {
-		t.Errorf("RoleSystem = %q, want %q", RoleSystem, "system")
+	if llm.RoleSystem != "system" {
+		t.Errorf("RoleSystem = %q, want %q", llm.RoleSystem, "system")
 	}
 }
 
@@ -194,13 +197,13 @@ func TestCircuitBreakerConfiguration(t *testing.T) {
 }
 
 func TestMessageConstruction(t *testing.T) {
-	msg := Message{
-		Role:    RoleUser,
+	msg := llm.Message{
+		Role:    llm.RoleUser,
 		Content: "Hello, world!",
 	}
 
-	if msg.Role != RoleUser {
-		t.Errorf("Message.Role = %q, want %q", msg.Role, RoleUser)
+	if msg.Role != llm.RoleUser {
+		t.Errorf("Message.Role = %q, want %q", msg.Role, llm.RoleUser)
 	}
 
 	if msg.Content != "Hello, world!" {
@@ -210,7 +213,7 @@ func TestMessageConstruction(t *testing.T) {
 
 func TestMemoryItem(t *testing.T) {
 	now := time.Now()
-	item := MemoryItem{
+	item := memory.MemoryItem{
 		Key:       "test-key",
 		Value:     "test-value",
 		Metadata:  map[string]any{"tag": "important"},

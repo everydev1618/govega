@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/tools"
 	"github.com/everydev1618/vega-population/population"
 	"gopkg.in/yaml.v3"
 )
@@ -293,16 +293,16 @@ func (s *Server) registerSkillTools(skillName string) ([]string, error) {
 		return nil, fmt.Errorf("parsing skill manifest: %w", err)
 	}
 
-	tools := s.interp.Tools()
+	toolReg := s.interp.Tools()
 	var names []string
 	for _, t := range manifest.Tools {
 		if t.Run == "" {
 			continue
 		}
 
-		params := make([]vega.DynamicParamDef, 0, len(t.Params))
+		params := make([]tools.DynamicParamDef, 0, len(t.Params))
 		for pname, pdef := range t.Params {
-			params = append(params, vega.DynamicParamDef{
+			params = append(params, tools.DynamicParamDef{
 				Name:        pname,
 				Type:        pdef.Type,
 				Description: pdef.Description,
@@ -311,17 +311,17 @@ func (s *Server) registerSkillTools(skillName string) ([]string, error) {
 			})
 		}
 
-		def := vega.DynamicToolDef{
+		def := tools.DynamicToolDef{
 			Name:        t.Name,
 			Description: t.Description,
 			Params:      params,
-			Implementation: vega.DynamicToolImpl{
+			Implementation: tools.DynamicToolImpl{
 				Type:    "exec",
 				Command: t.Run,
 			},
 		}
 
-		if err := tools.RegisterDynamicTool(def); err != nil {
+		if err := toolReg.RegisterDynamicTool(def); err != nil {
 			slog.Warn("failed to register tool", "tool", t.Name, "error", err)
 			continue
 		}

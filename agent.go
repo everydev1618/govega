@@ -1,6 +1,12 @@
 package vega
 
-import "time"
+import (
+	"time"
+
+	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/memory"
+	"github.com/everydev1618/govega/tools"
+)
 
 // Agent defines an AI agent. It's a blueprint, not a running process.
 // Spawn an Agent with an Orchestrator to get a running Process.
@@ -15,13 +21,13 @@ type Agent struct {
 	System SystemPrompt
 
 	// Tools available to this agent
-	Tools *Tools
+	Tools *tools.Tools
 
 	// Memory provides persistent storage (optional)
-	Memory Memory
+	Memory memory.Memory
 
 	// Context manages conversation history (optional)
-	Context ContextManager
+	Context memory.ContextManager
 
 	// Budget sets cost limits (optional)
 	Budget *Budget
@@ -36,7 +42,7 @@ type Agent struct {
 	CircuitBreaker *CircuitBreaker
 
 	// LLM is the backend to use (optional, uses default if not set)
-	LLM LLM
+	LLM llm.LLM
 
 	// Temperature for generation (0.0-1.0, optional)
 	Temperature *float64
@@ -191,17 +197,3 @@ type CircuitBreaker struct {
 	OnClose func()
 }
 
-// Message represents a conversation message.
-type Message struct {
-	Role    Role
-	Content string
-}
-
-// Role identifies the message sender.
-type Role string
-
-const (
-	RoleUser      Role = "user"
-	RoleAssistant Role = "assistant"
-	RoleSystem    Role = "system"
-)

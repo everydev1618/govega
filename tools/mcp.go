@@ -1,4 +1,4 @@
-package vega
+package tools
 
 import (
 	"context"
@@ -47,13 +47,13 @@ func (t *Tools) ConnectMCP(ctx context.Context) error {
 			return fmt.Errorf("connect MCP server %s: %w", entry.config.Name, err)
 		}
 
-		tools, err := entry.client.DiscoverTools(ctx)
+		mcpTools, err := entry.client.DiscoverTools(ctx)
 		if err != nil {
 			return fmt.Errorf("discover tools from %s: %w", entry.config.Name, err)
 		}
 
-		// Register each MCP tool as a Vega tool
-		for _, mcpTool := range tools {
+		// Register each MCP tool as a tool
+		for _, mcpTool := range mcpTools {
 			t.registerMCPTool(entry.client, mcpTool)
 		}
 	}
@@ -111,7 +111,7 @@ func (t *Tools) DisconnectMCP() error {
 	return lastErr
 }
 
-// registerMCPTool registers a single MCP tool as a Vega tool.
+// registerMCPTool registers a single MCP tool as a tool.
 func (t *Tools) registerMCPTool(client *mcp.Client, mcpTool mcp.MCPTool) {
 	// Create prefixed name: server__toolname
 	name := client.Name() + "__" + mcpTool.Name
@@ -160,8 +160,8 @@ func extractParamsFromSchema(schema map[string]any) map[string]ParamDef {
 			Required: required[name],
 		}
 
-		if t, ok := prop["type"].(string); ok {
-			param.Type = t
+		if tp, ok := prop["type"].(string); ok {
+			param.Type = tp
 		} else {
 			param.Type = "string"
 		}
@@ -279,8 +279,8 @@ func (t *Tools) MCPServerStatuses() []MCPServerStatus {
 			URL:       entry.config.URL,
 			Command:   entry.config.Command,
 		}
-		for _, tool := range entry.client.Tools() {
-			s.Tools = append(s.Tools, tool.Name)
+		for _, mcpTool := range entry.client.Tools() {
+			s.Tools = append(s.Tools, mcpTool.Name)
 		}
 		statuses = append(statuses, s)
 	}

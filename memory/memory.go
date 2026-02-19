@@ -1,10 +1,12 @@
-package vega
+package memory
 
 import (
 	"context"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/everydev1618/govega/llm"
 )
 
 // Memory provides persistent storage for agent knowledge.
@@ -35,10 +37,10 @@ type MemoryItem struct {
 // ContextManager manages conversation history and token budgets.
 type ContextManager interface {
 	// Add appends a message to the context
-	Add(msg Message)
+	Add(msg llm.Message)
 
 	// Messages returns messages that fit within maxTokens
-	Messages(maxTokens int) []Message
+	Messages(maxTokens int) []llm.Message
 
 	// Clear resets the context
 	Clear()
@@ -54,7 +56,7 @@ type CompactableContext interface {
 
 	// Compact summarizes older messages to reduce token count.
 	// The LLM is used to generate summaries.
-	Compact(llm LLM) error
+	Compact(l llm.LLM) error
 
 	// NeedsCompaction returns true if the context exceeds the threshold.
 	NeedsCompaction(threshold int) bool
@@ -62,7 +64,7 @@ type CompactableContext interface {
 
 // SlidingWindowContext implements ContextManager with a sliding window and optional compaction.
 type SlidingWindowContext struct {
-	messages       []Message
+	messages       []llm.Message
 	maxMessages    int
 	compactedCount int
 	summary        string
@@ -73,13 +75,13 @@ type SlidingWindowContext struct {
 // maxMessages is the number of recent messages to keep (0 = unlimited).
 func NewSlidingWindowContext(maxMessages int) *SlidingWindowContext {
 	return &SlidingWindowContext{
-		messages:    make([]Message, 0),
+		messages:    make([]llm.Message, 0),
 		maxMessages: maxMessages,
 	}
 }
 
 // Add appends a message to the context.
-func (c *SlidingWindowContext) Add(msg Message) {
+func (c *SlidingWindowContext) Add(msg llm.Message) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -95,16 +97,16 @@ func (c *SlidingWindowContext) Add(msg Message) {
 }
 
 // Messages returns messages that fit within maxTokens.
-func (c *SlidingWindowContext) Messages(maxTokens int) []Message {
+func (c *SlidingWindowContext) Messages(maxTokens int) []llm.Message {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	result := make([]Message, 0, len(c.messages)+1)
+	result := make([]llm.Message, 0, len(c.messages)+1)
 
 	// Include summary as system message if we have one
 	if c.summary != "" {
-		result = append(result, Message{
-			Role:    RoleSystem,
+		result = append(result, llm.Message{
+			Role:    llm.RoleSystem,
 			Content: "Previous conversation summary:\n" + c.summary,
 		})
 	}
@@ -120,7 +122,7 @@ func (c *SlidingWindowContext) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.messages = make([]Message, 0)
+	c.messages = make([]llm.Message, 0)
 	c.compactedCount = 0
 	c.summary = ""
 }
@@ -146,7 +148,7 @@ func (c *SlidingWindowContext) NeedsCompaction(threshold int) bool {
 }
 
 // Compact summarizes older messages using the provided LLM.
-func (c *SlidingWindowContext) Compact(llm LLM) error {
+func (c *SlidingWindowContext) Compact(l llm.LLM) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -174,8 +176,8 @@ func (c *SlidingWindowContext) Compact(llm LLM) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resp, err := llm.Generate(ctx, []Message{
-		{Role: RoleUser, Content: content.String()},
+	resp, err := l.Generate(ctx, []llm.Message{
+		{Role: llm.RoleUser, Content: content.String()},
 	}, nil)
 	if err != nil {
 		return err

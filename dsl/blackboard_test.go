@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/tools"
 )
 
 // ---------- Blackboard Tool: Basic CRUD ----------
@@ -268,7 +269,7 @@ func TestBlackboardToolDefStructure(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		tool   vega.ToolDef
+		tool   tools.ToolDef
 		params []string
 	}{
 		{"bb_read", NewBlackboardReadTool(resolver), []string{"key"}},

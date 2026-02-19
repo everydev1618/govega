@@ -1,7 +1,9 @@
-package vega
+package memory
 
 import (
 	"testing"
+
+	"github.com/everydev1618/govega/llm"
 )
 
 func TestTokenBudgetContext_Add(t *testing.T) {
@@ -9,8 +11,8 @@ func TestTokenBudgetContext_Add(t *testing.T) {
 	ctx := NewTokenBudgetContext(100)
 
 	// Add some messages
-	ctx.Add(Message{Role: RoleUser, Content: "Hello, how are you?"})
-	ctx.Add(Message{Role: RoleAssistant, Content: "I'm doing well, thanks!"})
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "Hello, how are you?"})
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "I'm doing well, thanks!"})
 
 	msgs := ctx.Messages(0)
 	if len(msgs) != 2 {
@@ -23,9 +25,9 @@ func TestTokenBudgetContext_TrimsOldest(t *testing.T) {
 	ctx := NewTokenBudgetContext(25)
 
 	// Add messages that exceed budget
-	ctx.Add(Message{Role: RoleUser, Content: "This is message one with some text"})       // ~9 tokens
-	ctx.Add(Message{Role: RoleAssistant, Content: "This is message two with some text"})  // ~9 tokens
-	ctx.Add(Message{Role: RoleUser, Content: "This is message three with some text"})     // ~10 tokens
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "This is message one with some text"})      // ~9 tokens
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "This is message two with some text"}) // ~9 tokens
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "This is message three with some text"})    // ~10 tokens
 
 	msgs := ctx.Messages(0)
 
@@ -45,9 +47,9 @@ func TestTokenBudgetContext_MessagesRespectsMaxTokens(t *testing.T) {
 
 	// Add several messages with known sizes
 	// Each message is ~50 chars = ~13 tokens
-	ctx.Add(Message{Role: RoleUser, Content: "This is the first message with enough content here"})
-	ctx.Add(Message{Role: RoleAssistant, Content: "This is second message with enough content here"})
-	ctx.Add(Message{Role: RoleUser, Content: "This is the third message with enough content here"})
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "This is the first message with enough content here"})
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "This is second message with enough content here"})
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "This is the third message with enough content here"})
 
 	// Request with very small token limit (only 1 message worth)
 	msgs := ctx.Messages(15)
@@ -66,8 +68,8 @@ func TestTokenBudgetContext_MessagesRespectsMaxTokens(t *testing.T) {
 func TestTokenBudgetContext_Clear(t *testing.T) {
 	ctx := NewTokenBudgetContext(1000)
 
-	ctx.Add(Message{Role: RoleUser, Content: "Hello"})
-	ctx.Add(Message{Role: RoleAssistant, Content: "Hi there"})
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "Hello"})
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "Hi there"})
 
 	ctx.Clear()
 
@@ -85,9 +87,9 @@ func TestTokenBudgetContext_Load(t *testing.T) {
 	ctx := NewTokenBudgetContext(1000)
 
 	// Load existing messages
-	existing := []Message{
-		{Role: RoleUser, Content: "Previous question"},
-		{Role: RoleAssistant, Content: "Previous answer"},
+	existing := []llm.Message{
+		{Role: llm.RoleUser, Content: "Previous question"},
+		{Role: llm.RoleAssistant, Content: "Previous answer"},
 	}
 	ctx.Load(existing)
 
@@ -106,10 +108,10 @@ func TestTokenBudgetContext_LoadTrimsIfOverBudget(t *testing.T) {
 	ctx := NewTokenBudgetContext(20)
 
 	// Load messages that exceed budget
-	existing := []Message{
-		{Role: RoleUser, Content: "This is a long first message!"},
-		{Role: RoleAssistant, Content: "This is long second message!"},
-		{Role: RoleUser, Content: "This is a long third message!"},
+	existing := []llm.Message{
+		{Role: llm.RoleUser, Content: "This is a long first message!"},
+		{Role: llm.RoleAssistant, Content: "This is long second message!"},
+		{Role: llm.RoleUser, Content: "This is a long third message!"},
 	}
 	ctx.Load(existing)
 
@@ -129,8 +131,8 @@ func TestTokenBudgetContext_LoadTrimsIfOverBudget(t *testing.T) {
 func TestTokenBudgetContext_Snapshot(t *testing.T) {
 	ctx := NewTokenBudgetContext(1000)
 
-	ctx.Add(Message{Role: RoleUser, Content: "Hello"})
-	ctx.Add(Message{Role: RoleAssistant, Content: "Hi"})
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "Hello"})
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "Hi"})
 
 	snapshot := ctx.Snapshot()
 
@@ -155,7 +157,7 @@ func TestTokenBudgetContext_TokenCount(t *testing.T) {
 	}
 
 	// "Hello" = 5 chars = ~2 tokens (rounded up: (5+3)/4 = 2)
-	ctx.Add(Message{Role: RoleUser, Content: "Hello"})
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "Hello"})
 
 	if ctx.TokenCount() != 2 {
 		t.Errorf("expected token count 2, got %d", ctx.TokenCount())
@@ -163,10 +165,10 @@ func TestTokenBudgetContext_TokenCount(t *testing.T) {
 }
 
 func TestMarshalUnmarshalMessages(t *testing.T) {
-	original := []Message{
-		{Role: RoleUser, Content: "Hello"},
-		{Role: RoleAssistant, Content: "Hi there"},
-		{Role: RoleUser, Content: "How are you?"},
+	original := []llm.Message{
+		{Role: llm.RoleUser, Content: "Hello"},
+		{Role: llm.RoleAssistant, Content: "Hi there"},
+		{Role: llm.RoleUser, Content: "How are you?"},
 	}
 
 	// Marshal

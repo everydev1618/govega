@@ -1,14 +1,16 @@
-package vega
+package memory
 
 import (
 	"encoding/json"
 	"sync"
+
+	"github.com/everydev1618/govega/llm"
 )
 
 // TokenBudgetContext manages conversation history within a token budget.
 // When adding messages would exceed the budget, oldest messages are removed.
 type TokenBudgetContext struct {
-	messages   []Message
+	messages   []llm.Message
 	maxTokens  int
 	tokenCount int
 	mu         sync.RWMutex
@@ -18,7 +20,7 @@ type TokenBudgetContext struct {
 // Uses ~4 chars per token as a rough estimate.
 func NewTokenBudgetContext(maxTokens int) *TokenBudgetContext {
 	return &TokenBudgetContext{
-		messages:  make([]Message, 0),
+		messages:  make([]llm.Message, 0),
 		maxTokens: maxTokens,
 	}
 }
@@ -30,7 +32,7 @@ func estimateTokens(content string) int {
 
 // Add appends a message to the context.
 // If the new message would exceed the budget, oldest messages are removed.
-func (c *TokenBudgetContext) Add(msg Message) {
+func (c *TokenBudgetContext) Add(msg llm.Message) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -48,7 +50,7 @@ func (c *TokenBudgetContext) Add(msg Message) {
 
 // Messages returns messages that fit within maxTokens.
 // If the requested maxTokens is lower than our budget, we return fewer messages.
-func (c *TokenBudgetContext) Messages(maxTokens int) []Message {
+func (c *TokenBudgetContext) Messages(maxTokens int) []llm.Message {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -59,14 +61,14 @@ func (c *TokenBudgetContext) Messages(maxTokens int) []Message {
 	}
 
 	// Return messages from newest to oldest until we hit the limit
-	result := make([]Message, 0, len(c.messages))
+	result := make([]llm.Message, 0, len(c.messages))
 	tokens := 0
 	for i := len(c.messages) - 1; i >= 0; i-- {
 		msgTokens := estimateTokens(c.messages[i].Content)
 		if tokens+msgTokens > effectiveMax {
 			break
 		}
-		result = append([]Message{c.messages[i]}, result...)
+		result = append([]llm.Message{c.messages[i]}, result...)
 		tokens += msgTokens
 	}
 	return result
@@ -90,10 +92,10 @@ func (c *TokenBudgetContext) TokenCount() int {
 // Load initializes the context with existing messages.
 // This is useful for restoring conversation history from persistence.
 // If the loaded messages exceed the budget, oldest messages are trimmed.
-func (c *TokenBudgetContext) Load(messages []Message) {
+func (c *TokenBudgetContext) Load(messages []llm.Message) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.messages = make([]Message, 0, len(messages))
+	c.messages = make([]llm.Message, 0, len(messages))
 	c.tokenCount = 0
 
 	for _, msg := range messages {
@@ -110,22 +112,22 @@ func (c *TokenBudgetContext) Load(messages []Message) {
 }
 
 // Snapshot returns a copy of all messages for persistence.
-func (c *TokenBudgetContext) Snapshot() []Message {
+func (c *TokenBudgetContext) Snapshot() []llm.Message {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	result := make([]Message, len(c.messages))
+	result := make([]llm.Message, len(c.messages))
 	copy(result, c.messages)
 	return result
 }
 
 // MarshalMessages serializes messages to JSON.
-func MarshalMessages(messages []Message) ([]byte, error) {
+func MarshalMessages(messages []llm.Message) ([]byte, error) {
 	return json.Marshal(messages)
 }
 
 // UnmarshalMessages deserializes messages from JSON.
-func UnmarshalMessages(data []byte) ([]Message, error) {
-	var messages []Message
+func UnmarshalMessages(data []byte) ([]llm.Message, error) {
+	var messages []llm.Message
 	err := json.Unmarshal(data, &messages)
 	return messages, err
 }

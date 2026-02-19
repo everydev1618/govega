@@ -1,4 +1,4 @@
-package vega
+package tools
 
 import (
 	"bytes"
@@ -19,10 +19,10 @@ import (
 
 // DynamicToolDef is a YAML tool definition.
 type DynamicToolDef struct {
-	Name           string          `yaml:"name"`
-	Description    string          `yaml:"description"`
+	Name           string            `yaml:"name"`
+	Description    string            `yaml:"description"`
 	Params         []DynamicParamDef `yaml:"params"`
-	Implementation DynamicToolImpl `yaml:"implementation"`
+	Implementation DynamicToolImpl   `yaml:"implementation"`
 }
 
 // DynamicParamDef is a YAML parameter definition.

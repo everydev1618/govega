@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/everydev1618/govega/internal/container"
+	"github.com/everydev1618/govega/llm"
 )
 
 // Orchestrator manages multiple processes.
@@ -30,7 +31,7 @@ type Orchestrator struct {
 
 	// Configuration
 	maxProcesses  int
-	defaultLLM    LLM
+	defaultLLM    llm.LLM
 	persistence   Persistence
 	healthMonitor *HealthMonitor
 	recovery      bool
@@ -118,9 +119,9 @@ func WithMaxProcesses(n int) OrchestratorOption {
 }
 
 // WithLLM sets the default LLM backend.
-func WithLLM(llm LLM) OrchestratorOption {
+func WithLLM(l llm.LLM) OrchestratorOption {
 	return func(o *Orchestrator) {
-		o.defaultLLM = llm
+		o.defaultLLM = l
 	}
 }
 
@@ -247,10 +248,10 @@ func WithProject(name string) SpawnOption {
 
 // WithMessages initializes the process with existing conversation history.
 // This is useful for resuming conversations or providing context from previous interactions.
-func WithMessages(messages []Message) SpawnOption {
+func WithMessages(messages []llm.Message) SpawnOption {
 	return func(p *Process) {
 		p.mu.Lock()
-		p.messages = make([]Message, len(messages))
+		p.messages = make([]llm.Message, len(messages))
 		copy(p.messages, messages)
 		p.mu.Unlock()
 	}
@@ -309,7 +310,7 @@ func (o *Orchestrator) Spawn(agent Agent, opts ...SpawnOption) (*Process, error)
 		ctx:          ctx,
 		cancel:       cancel,
 		orchestrator: o,
-		messages:     make([]Message, 0),
+		messages:     make([]llm.Message, 0),
 		metrics: ProcessMetrics{
 			StartedAt: time.Now(),
 		},

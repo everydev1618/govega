@@ -1,4 +1,4 @@
-package vega
+package tools
 
 import (
 	"context"
@@ -10,7 +10,38 @@ import (
 	"sync"
 
 	"github.com/everydev1618/govega/internal/container"
+	"github.com/everydev1618/govega/internal/skills"
+	"github.com/everydev1618/govega/llm"
 )
+
+// Standard errors
+var (
+	// ErrToolNotFound is returned when a tool is not registered
+	ErrToolNotFound = errors.New("tool not found")
+
+	// ErrToolAlreadyRegistered is returned when trying to register a duplicate tool name.
+	ErrToolAlreadyRegistered = errors.New("tool already registered")
+)
+
+// ToolError wraps errors with tool context.
+type ToolError struct {
+	ToolName string
+	Err      error
+}
+
+func (e *ToolError) Error() string {
+	return "tool " + e.ToolName + ": " + e.Err.Error()
+}
+
+func (e *ToolError) Unwrap() error {
+	return e.Err
+}
+
+// SkillsRef is a narrow interface for skill-based tool augmentation.
+// *vega.SkillsPrompt satisfies this interface.
+type SkillsRef interface {
+	GetMatchedSkills() []skills.SkillMatch
+}
 
 // Tools is a collection of callable tools.
 type Tools struct {
@@ -20,7 +51,7 @@ type Tools struct {
 	mcpClients []*mcpClientEntry // MCP server clients
 	container  *containerState   // Container routing state
 	parent     *Tools            // parent for skill-tool lookups (set by Filter)
-	skillsRef  *SkillsPrompt     // skills prompt for dynamic tool augmentation
+	skillsRef  SkillsRef         // skills prompt for dynamic tool augmentation
 	mu         sync.RWMutex
 }
 
@@ -36,7 +67,7 @@ type tool struct {
 	name        string
 	description string
 	fn          any
-	schema      ToolSchema
+	schema      llm.ToolSchema
 	params      map[string]ParamDef
 }
 
@@ -98,21 +129,18 @@ func WithContainer(cm *container.Manager) ToolsOption {
 }
 
 // WithContainerRouting specifies which tools should be routed to containers.
-func WithContainerRouting(tools ...string) ToolsOption {
+func WithContainerRouting(toolNames ...string) ToolsOption {
 	return func(t *Tools) {
 		if t.container == nil {
 			t.container = &containerState{
 				routedTools: make(map[string]bool),
 			}
 		}
-		for _, name := range tools {
+		for _, name := range toolNames {
 			t.container.routedTools[name] = true
 		}
 	}
 }
-
-// ErrToolAlreadyRegistered is returned when trying to register a duplicate tool name.
-var ErrToolAlreadyRegistered = errors.New("tool already registered")
 
 // Register adds a tool to the collection.
 // The function can be:
@@ -185,7 +213,7 @@ func (t *Tools) Execute(ctx context.Context, name string, params map[string]any)
 	tl, ok := t.tools[name]
 	middleware := t.middleware
 	sandbox := t.sandbox
-	containerState := t.container
+	cs := t.container
 	parent := t.parent
 	t.mu.RUnlock()
 
@@ -201,10 +229,10 @@ func (t *Tools) Execute(ctx context.Context, name string, params map[string]any)
 	}
 
 	// Check if this tool should be routed to container
-	if containerState != nil && containerState.manager != nil &&
-		containerState.manager.IsAvailable() && containerState.project != "" &&
-		containerState.routedTools[name] {
-		return t.executeInContainer(ctx, name, params, containerState)
+	if cs != nil && cs.manager != nil &&
+		cs.manager.IsAvailable() && cs.project != "" &&
+		cs.routedTools[name] {
+		return t.executeInContainer(ctx, name, params, cs)
 	}
 
 	// Apply sandbox rewriting if needed
@@ -281,7 +309,7 @@ func (t *Tools) executeInContainer(ctx context.Context, name string, params map[
 
 // Schema returns the schemas for all tools.
 // If a skillsRef is set, tools declared by matched skills are also included.
-func (t *Tools) Schema() []ToolSchema {
+func (t *Tools) Schema() []llm.ToolSchema {
 	t.mu.RLock()
 	localTools := t.tools
 	sp := t.skillsRef
@@ -289,7 +317,7 @@ func (t *Tools) Schema() []ToolSchema {
 	t.mu.RUnlock()
 
 	seen := make(map[string]bool, len(localTools))
-	schemas := make([]ToolSchema, 0, len(localTools))
+	schemas := make([]llm.ToolSchema, 0, len(localTools))
 	for _, tl := range localTools {
 		schemas = append(schemas, tl.schema)
 		seen[tl.name] = true
@@ -346,7 +374,7 @@ func (t *Tools) Filter(names ...string) *Tools {
 
 // WithSkillsRef returns a shallow copy with a skills prompt reference set.
 // When Schema() is called, tools declared by matched skills are included.
-func (t *Tools) WithSkillsRef(sp *SkillsPrompt) *Tools {
+func (t *Tools) WithSkillsRef(sp SkillsRef) *Tools {
 	return &Tools{
 		tools:      t.tools,
 		middleware: t.middleware,
@@ -359,8 +387,8 @@ func (t *Tools) WithSkillsRef(sp *SkillsPrompt) *Tools {
 }
 
 // inferSchema infers a JSON schema from a function signature.
-func (t *Tools) inferSchema(name string, fn any) ToolSchema {
-	schema := ToolSchema{
+func (t *Tools) inferSchema(name string, fn any) llm.ToolSchema {
+	schema := llm.ToolSchema{
 		Name:        name,
 		Description: name,
 		InputSchema: map[string]any{
@@ -425,7 +453,7 @@ func (t *Tools) inferSchema(name string, fn any) ToolSchema {
 }
 
 // buildSchema builds a schema from explicit definitions.
-func (t *Tools) buildSchema(name, description string, params map[string]ParamDef) ToolSchema {
+func (t *Tools) buildSchema(name, description string, params map[string]ParamDef) llm.ToolSchema {
 	props := make(map[string]any)
 	required := []string{}
 
@@ -446,7 +474,7 @@ func (t *Tools) buildSchema(name, description string, params map[string]ParamDef
 		}
 	}
 
-	return ToolSchema{
+	return llm.ToolSchema{
 		Name:        name,
 		Description: description,
 		InputSchema: map[string]any{

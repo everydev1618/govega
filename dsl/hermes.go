@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/tools"
 )
 
 const hermesAgentName = "hermes"
@@ -62,21 +62,21 @@ func HermesAgent(defaultModel string) *Agent {
 // tool collection. list_agents is registered only if not already present
 // (Mother registers it when she's injected).
 func RegisterHermesTools(interp *Interpreter) {
-	tools := interp.Tools()
+	t := interp.Tools()
 
 	// Only register list_agents if Mother hasn't already provided it.
 	alreadyHasListAgents := false
-	for _, ts := range tools.Schema() {
+	for _, ts := range t.Schema() {
 		if ts.Name == "list_agents" {
 			alreadyHasListAgents = true
 			break
 		}
 	}
 	if !alreadyHasListAgents {
-		tools.Register("list_agents", newHermesListAgentsTool(interp))
+		t.Register("list_agents", newHermesListAgentsTool(interp))
 	}
 
-	tools.Register("send_to_agent", newSendToAgentTool(interp))
+	t.Register("send_to_agent", newSendToAgentTool(interp))
 }
 
 // InjectHermes adds Hermes to the interpreter.
@@ -98,10 +98,10 @@ func InjectHermes(interp *Interpreter) error {
 
 // newHermesListAgentsTool lists agents with name, model, and a system prompt
 // summary so Hermes can reason about which agent fits a given task.
-func newHermesListAgentsTool(interp *Interpreter) vega.ToolDef {
-	return vega.ToolDef{
+func newHermesListAgentsTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "List all available agents with their name, model, and a short summary of their purpose. Use this to decide which agent to route a task to.",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			doc := interp.Document()
 			interp.mu.RLock()
 			defer interp.mu.RUnlock()
@@ -131,15 +131,15 @@ func newHermesListAgentsTool(interp *Interpreter) vega.ToolDef {
 			}
 			return string(out), nil
 		}),
-		Params: map[string]vega.ParamDef{},
+		Params: map[string]tools.ParamDef{},
 	}
 }
 
 // newSendToAgentTool sends a message to any agent by name — no team restriction.
-func newSendToAgentTool(interp *Interpreter) vega.ToolDef {
-	return vega.ToolDef{
+func newSendToAgentTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
 		Description: "Send a task or message to any agent by name and receive their response. Works for any agent in the universe, including mother.",
-		Fn: vega.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			agent, _ := params["agent"].(string)
 			message, _ := params["message"].(string)
 			if agent == "" {
@@ -150,7 +150,7 @@ func newSendToAgentTool(interp *Interpreter) vega.ToolDef {
 			}
 			return interp.SendToAgent(ctx, agent, message)
 		}),
-		Params: map[string]vega.ParamDef{
+		Params: map[string]tools.ParamDef{
 			"agent": {
 				Type:        "string",
 				Description: "Name of the agent to send the message to (e.g. 'mother', 'researcher', 'writer')",

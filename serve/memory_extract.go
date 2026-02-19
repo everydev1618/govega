@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/llm"
 )
 
 const maxJournalEntries = 20
@@ -35,8 +35,8 @@ func (s *Server) extractMemory(userID, agent, userMsg, response string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	llm := s.getExtractLLM()
-	if llm == nil {
+	extractLLM := s.getExtractLLM()
+	if extractLLM == nil {
 		slog.Warn("memory extraction skipped: no extract LLM available")
 		return
 	}
@@ -52,11 +52,11 @@ func (s *Server) extractMemory(userID, agent, userMsg, response string) {
 
 	prompt := buildExtractionPrompt(existingJSON, userMsg, response)
 
-	messages := []vega.Message{
-		{Role: vega.RoleUser, Content: prompt},
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: prompt},
 	}
 
-	resp, err := llm.Generate(ctx, messages, nil)
+	resp, err := extractLLM.Generate(ctx, messages, nil)
 	if err != nil {
 		slog.Error("memory extraction: LLM call failed", "error", err)
 		return

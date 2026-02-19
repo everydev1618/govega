@@ -26,9 +26,6 @@ var (
 	// ErrCircuitOpen is returned when circuit breaker is open
 	ErrCircuitOpen = errors.New("circuit breaker is open")
 
-	// ErrToolNotFound is returned when a tool is not registered
-	ErrToolNotFound = errors.New("tool not found")
-
 	// ErrSandboxViolation is returned when file access escapes sandbox
 	ErrSandboxViolation = errors.New("sandbox violation: path escapes allowed directory")
 
@@ -72,20 +69,6 @@ func (e *ProcessError) Error() string {
 }
 
 func (e *ProcessError) Unwrap() error {
-	return e.Err
-}
-
-// ToolError wraps errors with tool context.
-type ToolError struct {
-	ToolName string
-	Err      error
-}
-
-func (e *ToolError) Error() string {
-	return "tool " + e.ToolName + ": " + e.Err.Error()
-}
-
-func (e *ToolError) Unwrap() error {
 	return e.Err
 }
 
