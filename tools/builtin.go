@@ -1,9 +1,15 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 // RegisterBuiltins adds the built-in tools.
@@ -64,6 +70,76 @@ func (t *Tools) RegisterBuiltins() {
 		Params: map[string]ParamDef{
 			"path":    {Type: "string", Description: "File path", Required: true},
 			"content": {Type: "string", Description: "Content to append", Required: true},
+		},
+	})
+
+	t.Register("exec", ToolDef{
+		Description: "Execute a shell command inside the workspace sandbox. The working directory is always the sandbox. Use this to run build tools, start servers, install dependencies, etc.",
+		Fn: func(ctx context.Context, params map[string]any) (string, error) {
+			command := params["command"].(string)
+
+			// Determine working directory: sandbox if set, else cwd.
+			workdir := t.sandbox
+			if workdir == "" {
+				var err error
+				workdir, err = os.Getwd()
+				if err != nil {
+					return "", err
+				}
+			}
+
+			// Optional subdirectory within the sandbox.
+			if sub, ok := params["workdir"].(string); ok && sub != "" {
+				candidate := sub
+				if !filepath.IsAbs(candidate) {
+					candidate = filepath.Join(workdir, candidate)
+				}
+				candidate = filepath.Clean(candidate)
+				// Must stay within sandbox (if sandbox is set).
+				if t.sandbox != "" {
+					rel, err := filepath.Rel(t.sandbox, candidate)
+					if err != nil || strings.HasPrefix(rel, "..") {
+						candidate = workdir // silently fall back to sandbox root
+					}
+				}
+				workdir = candidate
+			}
+
+			// Ensure workdir exists.
+			if err := os.MkdirAll(workdir, 0755); err != nil {
+				return "", fmt.Errorf("cannot create workdir %s: %w", workdir, err)
+			}
+
+			// Timeout: default 60 s, honour optional "timeout_seconds" param.
+			timeout := 60 * time.Second
+			if ts, ok := params["timeout_seconds"].(float64); ok && ts > 0 {
+				timeout = time.Duration(ts) * time.Second
+			}
+
+			execCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
+			cmd := exec.CommandContext(execCtx, "sh", "-c", command)
+			cmd.Dir = workdir
+
+			var buf bytes.Buffer
+			cmd.Stdout = &buf
+			cmd.Stderr = &buf
+
+			err := cmd.Run()
+			output := buf.String()
+			if len(output) > 8000 {
+				output = output[:8000] + "\n... (truncated)"
+			}
+			if err != nil {
+				return output, fmt.Errorf("command failed: %w\n%s", err, output)
+			}
+			return output, nil
+		},
+		Params: map[string]ParamDef{
+			"command":         {Type: "string", Description: "Shell command to run (executed via sh -c)", Required: true},
+			"workdir":         {Type: "string", Description: "Subdirectory within the workspace to run the command in (optional, must stay within sandbox)", Required: false},
+			"timeout_seconds": {Type: "number", Description: "Max seconds to wait before killing the command (default 60)", Required: false},
 		},
 	})
 }
