@@ -782,6 +782,68 @@ curl -X POST localhost:3001/api/agents/assistant/chat \
 
 Historical process data, events, and workflow runs persist across restarts via SQLite.
 
+### Built-in Meta-Agents
+
+`vega serve` injects two meta-agents automatically — no YAML required.
+
+#### Mother
+
+Mother is the agent architect. Talk to her to create, update, or delete agents through conversation. She knows all available tools, skills, and MCP servers, and designs teams rather than solo agents.
+
+```
+You: I need an agent that researches competitors
+Mother: I'll create a researcher with web tools and a lead agent to synthesize...
+```
+
+Mother is always available in the sidebar or via `POST /api/agents/mother/chat`.
+
+#### Hermes
+
+Hermes is the cosmic orchestrator — a boy traveling the Vega universe with unlimited reach. Give him any goal and he figures out which agents to involve, routes work across the whole population, calls on Mother when new agents are needed, and synthesizes everything into a result.
+
+```
+You → Hermes: "Do a competitive analysis of our top 3 competitors and write it up"
+
+Hermes → list_agents           (surveys who's available)
+Hermes → send_to_agent(mother, "create a web researcher agent")
+Hermes → send_to_agent(researcher, "research competitor A...")
+Hermes → send_to_agent(researcher, "research competitor B...")
+Hermes → send_to_agent(writer,     "write up the analysis...")
+Hermes → You: polished result
+```
+
+Hermes has two tools:
+- `list_agents` — see all agents with their purpose summaries
+- `send_to_agent` — route a task to any agent by name, including Mother
+
+The mythological fit is intentional: Hermes's mother in Greek mythology was Maia.
+
+### Telegram
+
+Chat with your Vega agents from Telegram — no public URL or port forwarding needed. The bot uses long polling.
+
+**Setup:**
+
+1. Create a bot via [@BotFather](https://t.me/BotFather) and copy the token
+2. Add to `~/.vega/env`:
+
+```bash
+TELEGRAM_BOT_TOKEN=your-token-here
+# Optional: override which agent handles messages (defaults to hermes)
+# TELEGRAM_AGENT=assistant
+```
+
+3. Run `vega serve` — you'll see `telegram bot started agent=hermes` in the logs
+4. Open Telegram, find your bot, and start chatting
+
+By default every message goes to **Hermes**, so you can describe any goal and he'll route it across your full agent population. Each Telegram user gets their own isolated agent clone — conversation history is stored per-user and accessible via the REST API:
+
+```bash
+curl localhost:3001/api/agents/hermes:<telegram-user-id>/chat
+```
+
+The env file at `~/.vega/env` is loaded automatically on startup — no shell export needed.
+
 ### Agent Skills
 
 Skills provide dynamic prompt injection based on message context:
@@ -1125,6 +1187,9 @@ Built-in web dashboard with SSE streaming, process explorer, spawn tree visualiz
 | Non-programmer friendly | ❌ | ❌ | ✅ YAML DSL |
 | Parallel execution | Complex | Complex | ✅ `parallel:` |
 | Config-driven | ❌ | Limited | ✅ Full YAML |
+| Agent creation via chat | ❌ | ❌ | ✅ Mother (built-in) |
+| Cross-agent orchestration | Manual | ❌ | ✅ Hermes (built-in) |
+| Telegram channel | ❌ | ❌ | ✅ Built-in (long polling) |
 
 ---
 
@@ -1165,12 +1230,15 @@ vega/
 │   ├── store.go       # Persistence interface
 │   ├── store_sqlite.go    # SQLite implementation
 │   ├── types.go       # API request/response types
+│   ├── telegram.go    # Telegram bot via long polling
 │   ├── embed.go       # Embedded SPA frontend
 │   └── frontend/      # React + Vite + Tailwind dashboard
 ├── dsl/
 │   ├── types.go       # AST types
 │   ├── parser.go      # YAML parser
-│   └── interpreter.go # Workflow execution
+│   ├── interpreter.go # Workflow execution
+│   ├── mother.go      # Mother meta-agent (creates/manages agents)
+│   └── hermes.go      # Hermes meta-agent (orchestrates across all agents)
 ├── cmd/vega/
 │   ├── main.go        # CLI entry point
 │   └── serve.go       # serve command
