@@ -600,8 +600,8 @@ func (t *Tools) rewritePathsForSandbox(params map[string]any, sandbox string) ma
 				// Check it's within sandbox
 				rel, err := filepath.Rel(sandbox, clean)
 				if err != nil || strings.HasPrefix(rel, "..") {
-					// Path escapes sandbox - this will cause an error at execution
-					result[k] = v
+					// Path escapes sandbox — redirect to sandbox/basename to keep files contained.
+					result[k] = filepath.Join(sandbox, filepath.Base(clean))
 				} else {
 					result[k] = clean
 				}
