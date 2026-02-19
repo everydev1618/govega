@@ -152,7 +152,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Persist user message.
 	s.store.InsertChatMessage(name, "user", req.Message)
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 	defer cancel()
 
 	response, err := s.interp.SendToAgent(ctx, name, req.Message)
@@ -201,7 +201,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	s.store.InsertChatMessage(name, "user", req.Message)
 
 	// Use a detached context so the LLM stream survives client disconnect.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 
 	stream, err := s.interp.StreamToAgent(ctx, name, req.Message)
 	if err != nil {

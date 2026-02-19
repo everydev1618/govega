@@ -3,6 +3,7 @@ package vega
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -215,9 +216,16 @@ func (p *Process) Send(ctx context.Context, message string) (string, error) {
 	// Execute the LLM call loop (may involve tool calls)
 	response, callMetrics, err := p.executeLLMLoop(ctx, message)
 	if err != nil {
-		p.mu.Lock()
-		p.metrics.Errors++
-		p.mu.Unlock()
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// Context cancelled or timed out — fail the process so ensureAgent
+			// can respawn it cleanly on the next call rather than leaving it
+			// stuck in StatusRunning forever.
+			p.Fail(err)
+		} else {
+			p.mu.Lock()
+			p.metrics.Errors++
+			p.mu.Unlock()
+		}
 		return "", err
 	}
 
