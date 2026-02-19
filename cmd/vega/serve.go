@@ -102,8 +102,10 @@ Examples:
 
 	// Create and start server
 	cfg := serve.Config{
-		Addr:   *addr,
-		DBPath: *dbPath,
+		Addr:          *addr,
+		DBPath:        *dbPath,
+		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
+		TelegramAgent: os.Getenv("TELEGRAM_AGENT"),
 	}
 
 	srv := serve.New(interp, cfg)

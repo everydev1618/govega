@@ -28,8 +28,10 @@ type activeStream struct {
 
 // Config holds server configuration.
 type Config struct {
-	Addr   string
-	DBPath string
+	Addr          string
+	DBPath        string
+	TelegramToken string // TELEGRAM_BOT_TOKEN; leave empty to disable
+	TelegramAgent string // TELEGRAM_AGENT; defaults to first agent if empty
 }
 
 // Server is the HTTP server for the Vega dashboard and REST API.
@@ -38,6 +40,7 @@ type Server struct {
 	broker    *EventBroker
 	store     Store
 	popClient *population.Client
+	telegram  *TelegramBot
 	cfg       Config
 	startedAt time.Time
 
@@ -82,6 +85,25 @@ func (s *Server) Start(ctx context.Context) error {
 	s.store = store
 	if err := store.Init(); err != nil {
 		return fmt.Errorf("init database: %w", err)
+	}
+
+	// Start Telegram bot if configured.
+	if s.cfg.TelegramToken != "" {
+		agentName := s.cfg.TelegramAgent
+		if agentName == "" {
+			for name := range s.interp.Document().Agents {
+				agentName = name
+				break
+			}
+		}
+		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store)
+		if err != nil {
+			slog.Warn("telegram bot init failed", "error", err)
+		} else {
+			s.telegram = tb
+			go tb.Start(ctx)
+			slog.Info("telegram bot started", "agent", agentName)
+		}
 	}
 
 	// Initialize population client.
