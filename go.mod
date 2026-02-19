@@ -4,8 +4,8 @@ go 1.25.4
 
 require (
 	github.com/docker/docker v27.0.0+incompatible
+	github.com/everydev1618/vega-population v0.1.0
 	github.com/google/uuid v1.6.0
-	github.com/martellcode/vega-population v0.0.0-20260130165058-362a7fe0b2b6
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.45.0
 )

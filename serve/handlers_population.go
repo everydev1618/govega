@@ -12,7 +12,7 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
-	"github.com/martellcode/vega-population/population"
+	"github.com/everydev1618/vega-population/population"
 	"gopkg.in/yaml.v3"
 )
 
