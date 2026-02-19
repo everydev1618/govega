@@ -543,45 +543,56 @@ func (p *Parser) parseSettings(m map[string]any) *Settings {
 		s.MCP = &MCPDef{}
 		if servers, ok := mcpRaw["servers"].([]any); ok {
 			for _, serverRaw := range servers {
-				if serverMap, ok := serverRaw.(map[string]any); ok {
+				switch v := serverRaw.(type) {
+				case string:
+					// Shorthand: just the server name (resolve from registry)
+					s.MCP.Servers = append(s.MCP.Servers, MCPServerDef{
+						Name:         v,
+						FromRegistry: true,
+					})
+				case map[string]any:
 					server := MCPServerDef{}
-					if v, ok := serverMap["name"].(string); ok {
-						server.Name = v
+					if name, ok := v["name"].(string); ok {
+						server.Name = name
 					}
-					if v, ok := serverMap["transport"].(string); ok {
-						server.Transport = v
+					if transport, ok := v["transport"].(string); ok {
+						server.Transport = transport
 					}
-					if v, ok := serverMap["command"].(string); ok {
-						server.Command = v
+					if cmd, ok := v["command"].(string); ok {
+						server.Command = cmd
 					}
-					if args, ok := serverMap["args"].([]any); ok {
+					if args, ok := v["args"].([]any); ok {
 						for _, a := range args {
-							if s, ok := a.(string); ok {
-								server.Args = append(server.Args, s)
+							if str, ok := a.(string); ok {
+								server.Args = append(server.Args, str)
 							}
 						}
 					}
-					if env, ok := serverMap["env"].(map[string]any); ok {
+					if env, ok := v["env"].(map[string]any); ok {
 						server.Env = make(map[string]string)
-						for k, v := range env {
-							if s, ok := v.(string); ok {
-								server.Env[k] = s
+						for k, val := range env {
+							if str, ok := val.(string); ok {
+								server.Env[k] = str
 							}
 						}
 					}
-					if v, ok := serverMap["url"].(string); ok {
-						server.URL = v
+					if url, ok := v["url"].(string); ok {
+						server.URL = url
 					}
-					if headers, ok := serverMap["headers"].(map[string]any); ok {
+					if headers, ok := v["headers"].(map[string]any); ok {
 						server.Headers = make(map[string]string)
-						for k, v := range headers {
-							if s, ok := v.(string); ok {
-								server.Headers[k] = s
+						for k, val := range headers {
+							if str, ok := val.(string); ok {
+								server.Headers[k] = str
 							}
 						}
 					}
-					if v, ok := serverMap["timeout"].(string); ok {
-						server.Timeout = v
+					if timeout, ok := v["timeout"].(string); ok {
+						server.Timeout = timeout
+					}
+					// If has name but no command/url, it's a registry reference with overrides
+					if server.Name != "" && server.Command == "" && server.URL == "" {
+						server.FromRegistry = true
 					}
 					s.MCP.Servers = append(s.MCP.Servers, server)
 				}

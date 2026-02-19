@@ -14,6 +14,18 @@ import (
 	"github.com/everydev1618/vega-population/population"
 )
 
+// activeStream tracks a server-side chat stream that runs independently of
+// any connected SSE client. The goroutine producing events writes to the
+// events channel; one or more SSE handlers read from it via the relay loop.
+type activeStream struct {
+	events chan vega.ChatEvent // buffered, written by goroutine
+	done   chan struct{}       // closed when stream completes
+
+	mu       sync.Mutex // guards response and err
+	response string     // set after done
+	err      error      // set after done
+}
+
 // Config holds server configuration.
 type Config struct {
 	Addr   string
@@ -32,21 +44,27 @@ type Server struct {
 	// extractLLM is a separate LLM client used for memory extraction.
 	extractLLM   vega.LLM
 	extractLLMMu sync.Once
+
+	// streams tracks active chat streams that run server-side, decoupled
+	// from any particular SSE client connection.
+	streamsMu sync.Mutex
+	streams   map[string]*activeStream
 }
 
 // New creates a new Server.
 func New(interp *dsl.Interpreter, cfg Config) *Server {
 	return &Server{
-		interp: interp,
-		broker: NewEventBroker(),
-		cfg:    cfg,
+		interp:  interp,
+		broker:  NewEventBroker(),
+		cfg:     cfg,
+		streams: make(map[string]*activeStream),
 	}
 }
 
 // getExtractLLM returns the lazily-initialized LLM client for memory extraction.
 func (s *Server) getExtractLLM() vega.LLM {
 	s.extractLLMMu.Do(func() {
-		s.extractLLM = llm.NewAnthropic(llm.WithModel("claude-haiku-3-20240307"))
+		s.extractLLM = llm.NewAnthropic(llm.WithModel("claude-haiku-4-5-20251001"))
 	})
 	return s.extractLLM
 }
@@ -78,6 +96,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.popClient != nil {
 		s.restoreComposedAgents()
 	}
+
+	// Inject Mother — the built-in meta-agent for creating agents via chat.
+	s.injectMother()
 
 	// Wire orchestrator callbacks to broker + store.
 	s.wireCallbacks()
@@ -154,6 +175,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Chat
 	mux.HandleFunc("GET /api/agents/{name}/chat", s.handleChatHistory)
 	mux.HandleFunc("POST /api/agents/{name}/chat", s.handleChat)
+	mux.HandleFunc("POST /api/agents/{name}/chat/stream", s.handleChatStream)
 	mux.HandleFunc("DELETE /api/agents/{name}/chat", s.handleClearChat)
 
 	// Memory
@@ -265,6 +287,39 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// injectMother adds the Mother meta-agent to the interpreter with persistence
+// callbacks that keep composed agents in sync with the SQLite store.
+func (s *Server) injectMother() {
+	cb := &dsl.MotherCallbacks{
+		OnAgentCreated: func(name, model, system string, tools, team []string) {
+			s.store.InsertComposedAgent(ComposedAgent{
+				Name:      name,
+				Model:     model,
+				System:    system,
+				Team:      team,
+				CreatedAt: time.Now(),
+			})
+			s.broker.Publish(BrokerEvent{
+				Type:      "agent.created",
+				Agent:     name,
+				Timestamp: time.Now(),
+			})
+		},
+		OnAgentDeleted: func(name string) {
+			s.store.DeleteComposedAgent(name)
+			s.broker.Publish(BrokerEvent{
+				Type:      "agent.deleted",
+				Agent:     name,
+				Timestamp: time.Now(),
+			})
+		},
+	}
+
+	if err := dsl.InjectMother(s.interp, cb); err != nil {
+		slog.Warn("failed to inject Mother agent", "error", err)
+	}
 }
 
 func truncate(s string, max int) string {

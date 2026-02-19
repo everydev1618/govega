@@ -2,6 +2,7 @@
 name: code-review
 description: Expert guidance for reviewing code quality and best practices
 tags: [code, review, quality]
+tools: [read_file, list_files]
 triggers:
   - type: keyword
     keywords: [review, code review, PR, pull request, merge request]

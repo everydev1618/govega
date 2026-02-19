@@ -2,6 +2,7 @@
 name: documentation
 description: Technical documentation writing guidance
 tags: [docs, documentation, writing]
+tools: [read_file, write_file, list_files]
 triggers:
   - type: keyword
     keywords: [document, documentation, docs, readme, API docs, docstring]

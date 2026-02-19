@@ -65,4 +65,54 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
+  resetChat: (agent: string) =>
+    fetchAPI<{ status: string }>(`/api/agents/${agent}/chat`, { method: 'DELETE' }),
+
+  // Streaming chat
+  chatStream: (
+    agent: string,
+    message: string,
+    onEvent: (event: import('./types').ChatEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    return fetch(`${BASE}/api/agents/${agent}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+      signal,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const body = await res.text()
+        throw new Error(`${res.status}: ${body}`)
+      }
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE frames from buffer.
+        const lines = buffer.split('\n')
+        buffer = lines.pop()! // keep incomplete last line
+
+        let currentData: string | null = null
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            currentData = line.slice(6)
+          } else if (line === '' && currentData !== null) {
+            try {
+              onEvent(JSON.parse(currentData))
+            } catch { /* skip malformed */ }
+            currentData = null
+          }
+        }
+      }
+    }).catch((err) => {
+      if (err.name === 'AbortError') return
+      throw err
+    })
+  },
 }

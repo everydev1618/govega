@@ -2,6 +2,7 @@
 name: security-audit
 description: Security vulnerability assessment and secure coding guidance
 tags: [security, audit, vulnerability]
+tools: [read_file]
 triggers:
   - type: keyword
     keywords: [security, vulnerability, CVE, exploit, injection, XSS, CSRF, auth]

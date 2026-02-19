@@ -19,11 +19,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<Overview />} />
+          <Route index element={<Chat />} />
+          <Route path="chat" element={<Chat />} />
+          <Route path="overview" element={<Overview />} />
           <Route path="processes" element={<ProcessExplorer />} />
           <Route path="spawn-tree" element={<SpawnTree />} />
           <Route path="events" element={<EventStream />} />
-          <Route path="chat" element={<Chat />} />
           <Route path="population" element={<Population />} />
           <Route path="agents" element={<AgentRegistry />} />
           <Route path="mcp" element={<MCPServers />} />

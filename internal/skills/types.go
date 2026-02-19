@@ -26,6 +26,12 @@ type Skill struct {
 	// Tags are categories for the skill.
 	Tags []string `yaml:"tags"`
 
+	// Tools are tool names this skill needs when active.
+	Tools []string `yaml:"tools,omitempty"`
+
+	// MCP lists MCP server names this skill needs when active.
+	MCP []string `yaml:"mcp,omitempty"`
+
 	// Triggers define when the skill should be activated.
 	Triggers []TriggerDef `yaml:"triggers"`
 
@@ -72,6 +78,8 @@ type SkillMetadata struct {
 	Name        string       `yaml:"name"`
 	Description string       `yaml:"description"`
 	Tags        []string     `yaml:"tags"`
+	Tools       []string     `yaml:"tools,omitempty"`
+	MCP         []string     `yaml:"mcp,omitempty"`
 	Triggers    []TriggerDef `yaml:"triggers"`
 }
 
