@@ -59,6 +59,11 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	toolOpts := []vega.ToolsOption{}
 	if doc.Settings != nil && doc.Settings.Sandbox != "" {
 		toolOpts = append(toolOpts, vega.WithSandbox(doc.Settings.Sandbox))
+	} else {
+		// Default sandbox to the shared workspace directory.
+		if err := vega.EnsureHome(); err == nil {
+			toolOpts = append(toolOpts, vega.WithSandbox(vega.WorkspacePath()))
+		}
 	}
 
 	// Add MCP servers if configured
@@ -208,6 +213,9 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 			systemStr = knowledgeSection + "\n\n" + systemStr
 		}
 	}
+
+	// Inject workspace path so agents know where relative paths resolve.
+	systemStr += "\nYour working directory is " + vega.WorkspacePath()
 
 	// Build base system prompt
 	var systemPrompt vega.SystemPrompt = vega.StaticPrompt(systemStr)
