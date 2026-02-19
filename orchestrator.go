@@ -321,6 +321,11 @@ func (o *Orchestrator) Spawn(agent Agent, opts ...SpawnOption) (*Process, error)
 		opt(p)
 	}
 
+	// Default WorkDir to shared workspace if not set by options.
+	if p.WorkDir == "" {
+		p.WorkDir = WorkspacePath()
+	}
+
 	// Set LLM backend
 	if agent.LLM != nil {
 		p.llm = agent.LLM
