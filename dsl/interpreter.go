@@ -486,12 +486,21 @@ func (i *Interpreter) executeStep(ctx context.Context, step *Step, execCtx *Exec
 }
 
 // ensureAgent spawns an agent process on demand if it doesn't exist yet.
+// If the existing process has failed (e.g. due to context cancellation), it is
+// removed and a fresh process is spawned so callers don't get stuck.
 func (i *Interpreter) ensureAgent(name string) (*vega.Process, error) {
 	i.mu.RLock()
 	proc, ok := i.agents[name]
 	i.mu.RUnlock()
-	if ok {
+	if ok && proc.Status() != vega.StatusFailed {
 		return proc, nil
+	}
+
+	// Remove the failed process from the map before respawning.
+	if ok {
+		i.mu.Lock()
+		delete(i.agents, name)
+		i.mu.Unlock()
 	}
 
 	agentDef, exists := i.doc.Agents[name]
