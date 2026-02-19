@@ -1,10 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
-const nav = [
-  { to: '/', label: 'Overview' },
-  { to: '/chat', label: 'Chat' },
-  { to: '/population', label: 'Population' },
+const primaryNav = [
+  { to: '/', label: 'Chat' },
   { to: '/agents', label: 'Agents' },
+]
+
+const secondaryNav = [
+  { to: '/overview', label: 'Overview' },
+  { to: '/population', label: 'Population' },
   { to: '/workflows', label: 'Workflows' },
   { to: '/processes', label: 'Processes' },
   { to: '/events', label: 'Events' },
@@ -12,6 +15,24 @@ const nav = [
   { to: '/mcp', label: 'MCP' },
   { to: '/costs', label: 'Costs' },
 ]
+
+function NavItem({ to, label }: { to: string; label: string }) {
+  return (
+    <NavLink
+      to={to}
+      end={to === '/'}
+      className={({ isActive }) =>
+        `block px-3 py-2 rounded-md text-sm transition-colors ${
+          isActive
+            ? 'bg-accent text-accent-foreground font-medium'
+            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+        }`
+      }
+    >
+      {label}
+    </NavLink>
+  )
+}
 
 export function Layout() {
   return (
@@ -24,23 +45,18 @@ export function Layout() {
           </h1>
           <p className="text-xs text-muted-foreground">Agent Dashboard</p>
         </div>
-        <nav className="flex-1 p-2 space-y-0.5">
-          {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) =>
-                `block px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
+        <nav className="flex-1 p-2">
+          <div className="space-y-0.5">
+            {primaryNav.map((item) => (
+              <NavItem key={item.to} {...item} />
+            ))}
+          </div>
+          <div className="my-2 border-t border-border" />
+          <div className="space-y-0.5">
+            {secondaryNav.map((item) => (
+              <NavItem key={item.to} {...item} />
+            ))}
+          </div>
         </nav>
       </aside>
 

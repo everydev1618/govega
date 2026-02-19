@@ -51,14 +51,21 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 			return resp.Content, metrics, nil
 		}
 
-		// Execute tool calls - add assistant message only if it has content
-		if strings.TrimSpace(resp.Content) != "" {
-			messages = append(messages, Message{Role: RoleAssistant, Content: resp.Content})
+		// Build assistant message with text + tool_use blocks so the API
+		// sees proper tool invocations on the next iteration.
+		assistantContent := resp.Content
+		for _, tc := range resp.ToolCalls {
+			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
+		}
+		if strings.TrimSpace(assistantContent) != "" {
+			messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
 		}
 
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
 
+		// Collect all tool results into a single user message.
+		var toolResults strings.Builder
 		for _, tc := range resp.ToolCalls {
 			metrics.ToolCalls = append(metrics.ToolCalls, tc.Name)
 
@@ -67,10 +74,13 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 				result = "Error: " + err.Error()
 			}
 
-			// Add tool result as user message (this is how Anthropic expects it)
+			toolResults.WriteString(formatToolResult(tc.ID, tc.Name, result))
+			toolResults.WriteString("\n")
+		}
+		if toolResults.Len() > 0 {
 			messages = append(messages, Message{
 				Role:    RoleUser,
-				Content: formatToolResult(tc.ID, tc.Name, result),
+				Content: strings.TrimSpace(toolResults.String()),
 			})
 		}
 	}
@@ -154,17 +164,11 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 			return fullResponse, nil
 		}
 
-		// Add assistant message with the response (include tool call info if no text)
+		// Build assistant message with text + tool_use blocks.
 		assistantContent := iterResponse
-		if assistantContent == "" {
-			// Build a representation of the tool calls for the message
-			var toolParts []string
-			for _, tc := range toolCalls {
-				toolParts = append(toolParts, formatToolCall(tc.ID, tc.Name, tc.Arguments))
-			}
-			assistantContent = strings.Join(toolParts, "\n")
+		for _, tc := range toolCalls {
+			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
 		}
-		// Only add assistant message if it has content
 		if strings.TrimSpace(assistantContent) != "" {
 			messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
 		}
@@ -172,7 +176,8 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
 
-		// Execute tool calls and add results
+		// Collect all tool results into a single user message.
+		var toolResults strings.Builder
 		for _, tc := range toolCalls {
 			p.mu.Lock()
 			p.metrics.ToolCalls++
@@ -183,10 +188,141 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 				result = "Error: " + err.Error()
 			}
 
-			// Add tool result as user message
+			toolResults.WriteString(formatToolResult(tc.ID, tc.Name, result))
+			toolResults.WriteString("\n")
+		}
+		if toolResults.Len() > 0 {
 			messages = append(messages, Message{
 				Role:    RoleUser,
-				Content: formatToolResult(tc.ID, tc.Name, result),
+				Content: strings.TrimSpace(toolResults.String()),
+			})
+		}
+	}
+
+	return fullResponse, ErrMaxIterationsExceeded
+}
+
+// executeLLMStreamRich runs a streaming LLM call loop, emitting structured
+// ChatEvent values (text deltas + tool lifecycle) instead of raw string chunks.
+func (p *Process) executeLLMStreamRich(ctx context.Context, message string, events chan<- ChatEvent) (string, error) {
+	messages := p.buildMessages()
+
+	var toolSchemas []ToolSchema
+	if p.Agent.Tools != nil {
+		toolSchemas = p.Agent.Tools.Schema()
+	}
+
+	var fullResponse string
+	maxIterations := DefaultMaxIterations
+	if p.Agent.MaxIterations > 0 {
+		maxIterations = p.Agent.MaxIterations
+	}
+
+	for i := 0; i < maxIterations; i++ {
+		select {
+		case <-ctx.Done():
+			return fullResponse, ctx.Err()
+		default:
+		}
+
+		eventCh, err := p.llm.GenerateStream(ctx, messages, toolSchemas)
+		if err != nil {
+			return fullResponse, err
+		}
+
+		var iterResponse string
+		var toolCalls []ToolCall
+		var currentToolCall *ToolCall
+		var currentToolJSON string
+
+		for ev := range eventCh {
+			if ev.Error != nil {
+				return fullResponse, ev.Error
+			}
+
+			switch ev.Type {
+			case StreamEventContentDelta:
+				if ev.Delta != "" {
+					events <- ChatEvent{Type: ChatEventTextDelta, Delta: ev.Delta}
+					iterResponse += ev.Delta
+					fullResponse += ev.Delta
+				}
+			case StreamEventToolStart:
+				if ev.ToolCall != nil {
+					currentToolCall = &ToolCall{
+						ID:        ev.ToolCall.ID,
+						Name:      ev.ToolCall.Name,
+						Arguments: make(map[string]any),
+					}
+					currentToolJSON = ""
+				}
+			case StreamEventToolDelta:
+				if currentToolCall != nil {
+					currentToolJSON += ev.Delta
+				}
+			case StreamEventContentEnd:
+				if currentToolCall != nil {
+					if currentToolJSON != "" {
+						json.Unmarshal([]byte(currentToolJSON), &currentToolCall.Arguments)
+					}
+					// Emit tool_start with complete arguments.
+					events <- ChatEvent{
+						Type:       ChatEventToolStart,
+						ToolCallID: currentToolCall.ID,
+						ToolName:   currentToolCall.Name,
+						Arguments:  currentToolCall.Arguments,
+					}
+					toolCalls = append(toolCalls, *currentToolCall)
+					currentToolCall = nil
+					currentToolJSON = ""
+				}
+			}
+		}
+
+		if len(toolCalls) == 0 {
+			return fullResponse, nil
+		}
+
+		// Build assistant message with text + tool_use blocks.
+		assistantContent := iterResponse
+		for _, tc := range toolCalls {
+			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
+		}
+		if strings.TrimSpace(assistantContent) != "" {
+			messages = append(messages, Message{Role: RoleAssistant, Content: assistantContent})
+		}
+
+		toolCtx := ContextWithProcess(ctx, p)
+
+		// Execute tools and collect results into a single user message.
+		var toolResults strings.Builder
+		for _, tc := range toolCalls {
+			p.mu.Lock()
+			p.metrics.ToolCalls++
+			p.mu.Unlock()
+
+			start := time.Now()
+			result, execErr := p.Agent.Tools.Execute(toolCtx, tc.Name, tc.Arguments)
+			elapsed := toolDuration(start)
+			if execErr != nil {
+				result = "Error: " + execErr.Error()
+			}
+
+			events <- ChatEvent{
+				Type:       ChatEventToolEnd,
+				ToolCallID: tc.ID,
+				ToolName:   tc.Name,
+				Result:     result,
+				DurationMs: elapsed,
+			}
+
+			toolResults.WriteString(formatToolResult(tc.ID, tc.Name, result))
+			toolResults.WriteString("\n")
+		}
+		if toolResults.Len() > 0 {
+			messages = append(messages, Message{
+				Role:    RoleUser,
+				Content: strings.TrimSpace(toolResults.String()),
 			})
 		}
 	}

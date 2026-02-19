@@ -307,6 +307,41 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 	return stream, nil
 }
 
+// SendStreamRich sends a message and returns a ChatStream with structured events
+// (text deltas, tool start/end) instead of raw text chunks.
+func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStream, error) {
+	p.mu.Lock()
+	if p.status != StatusRunning && p.status != StatusPending {
+		p.mu.Unlock()
+		return nil, ErrProcessNotRunning
+	}
+	p.status = StatusRunning
+	p.iteration++
+	p.metrics.LastActiveAt = time.Now()
+	p.mu.Unlock()
+
+	p.addMessage(Message{Role: RoleUser, Content: message})
+
+	stream := newChatStream()
+
+	go func() {
+		defer close(stream.events)
+		defer close(stream.done)
+
+		response, err := p.executeLLMStreamRich(ctx, message, stream.events)
+		stream.mu.Lock()
+		stream.response = response
+		stream.err = err
+		stream.mu.Unlock()
+
+		if err == nil {
+			p.addMessage(Message{Role: RoleAssistant, Content: response})
+		}
+	}()
+
+	return stream, nil
+}
+
 // Stop terminates the process.
 // This is equivalent to killing the process - linked processes will be notified.
 func (p *Process) Stop() {

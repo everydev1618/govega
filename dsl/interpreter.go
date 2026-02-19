@@ -3,6 +3,7 @@ package dsl
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -63,22 +64,48 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	// Add MCP servers if configured
 	if doc.Settings != nil && doc.Settings.MCP != nil {
 		for _, serverDef := range doc.Settings.MCP.Servers {
-			config := mcp.ServerConfig{
-				Name:    serverDef.Name,
-				Command: serverDef.Command,
-				Args:    serverDef.Args,
-				Env:     serverDef.Env,
-				URL:     serverDef.URL,
-				Headers: serverDef.Headers,
-			}
-			if serverDef.Transport != "" {
-				config.Transport = mcp.TransportType(serverDef.Transport)
-			}
-			if serverDef.Timeout != "" {
-				if d, err := time.ParseDuration(serverDef.Timeout); err == nil {
-					config.Timeout = d
+			var config mcp.ServerConfig
+
+			if serverDef.FromRegistry {
+				// Resolve from registry
+				entry, ok := mcp.Lookup(serverDef.Name)
+				if !ok {
+					return nil, fmt.Errorf("MCP server %q not found in registry", serverDef.Name)
+				}
+				config = entry.ToServerConfig(expandEnvVars(serverDef.Env))
+
+				// Merge overrides from DSL
+				if serverDef.Transport != "" {
+					config.Transport = mcp.TransportType(serverDef.Transport)
+				}
+				if len(serverDef.Args) > 0 {
+					config.Args = append(config.Args, serverDef.Args...)
+				}
+				if serverDef.Timeout != "" {
+					if d, err := time.ParseDuration(serverDef.Timeout); err == nil {
+						config.Timeout = d
+					}
+				}
+			} else {
+				// Full config from DSL
+				config = mcp.ServerConfig{
+					Name:    serverDef.Name,
+					Command: serverDef.Command,
+					Args:    serverDef.Args,
+					Env:     expandEnvVars(serverDef.Env),
+					URL:     serverDef.URL,
+					Headers: serverDef.Headers,
+				}
+				if serverDef.Transport != "" {
+					config.Transport = mcp.TransportType(serverDef.Transport)
+				}
+				if serverDef.Timeout != "" {
+					if d, err := time.ParseDuration(serverDef.Timeout); err == nil {
+						config.Timeout = d
+					}
 				}
 			}
+
 			toolOpts = append(toolOpts, vega.WithMCPServer(config))
 		}
 	}
@@ -172,6 +199,16 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		systemStr = BuildTeamPrompt(systemStr, def.Team, descs, bbEnabled)
 	}
 
+	// Resolve knowledge and prepend to system prompt if configured.
+	if len(def.Knowledge) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		knowledgeSection := i.resolveKnowledge(ctx, def.Knowledge)
+		cancel()
+		if knowledgeSection != "" {
+			systemStr = knowledgeSection + "\n\n" + systemStr
+		}
+	}
+
 	// Build base system prompt
 	var systemPrompt vega.SystemPrompt = vega.StaticPrompt(systemStr)
 
@@ -206,12 +243,23 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		}
 	}
 
+	// Build agent tools — filter if agent has explicit tools, then wire skill-tools.
+	agentTools := i.tools
+	if len(def.Tools) > 0 {
+		agentTools = i.tools.Filter(def.Tools...)
+	}
+
+	// If agent has skills, set skillsRef so skill-declared tools augment the schema dynamically.
+	if sp, ok := systemPrompt.(*vega.SkillsPrompt); ok {
+		agentTools = agentTools.WithSkillsRef(sp)
+	}
+
 	// Build agent config
 	agent := vega.Agent{
 		Name:   name,
 		Model:  def.Model,
 		System: systemPrompt,
-		Tools:  i.tools,
+		Tools:  agentTools,
 	}
 
 	if def.Temperature != nil {
@@ -991,6 +1039,11 @@ func (i *Interpreter) Tools() *vega.Tools {
 	return i.tools
 }
 
+// SkillsLoader returns the global skills loader, or nil if none is configured.
+func (i *Interpreter) SkillsLoader() *skills.Loader {
+	return i.skillsLoader
+}
+
 // Agents returns a copy of the active agent processes map.
 func (i *Interpreter) Agents() map[string]*vega.Process {
 	i.mu.RLock()
@@ -1081,6 +1134,75 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 	}
 
 	return response, nil
+}
+
+// StreamToAgent sends a message to a specific agent and returns a ChatStream
+// with structured events for real-time streaming and tool call visibility.
+func (i *Interpreter) StreamToAgent(ctx context.Context, agentName string, message string) (*vega.ChatStream, error) {
+	proc, err := i.ensureAgent(agentName)
+	if err != nil {
+		return nil, err
+	}
+	return proc.SendStreamRich(ctx, message)
+}
+
+// resolveKnowledge fetches all knowledge URIs and returns a formatted section.
+func (i *Interpreter) resolveKnowledge(ctx context.Context, uris []string) string {
+	var builder strings.Builder
+	builder.WriteString("# Knowledge\n")
+	any := false
+
+	for _, uri := range uris {
+		content, err := i.fetchKnowledgeItem(ctx, uri)
+		if err != nil {
+			continue
+		}
+		any = true
+		builder.WriteString("\n## ")
+		builder.WriteString(uri)
+		builder.WriteString("\n```\n")
+		builder.WriteString(content)
+		builder.WriteString("\n```\n")
+	}
+
+	if !any {
+		return ""
+	}
+	return builder.String()
+}
+
+// fetchKnowledgeItem fetches a single knowledge resource.
+// Routes file:// URIs to os.ReadFile. Other schemes are treated as MCP resource
+// URIs where the scheme identifies the MCP server name.
+func (i *Interpreter) fetchKnowledgeItem(ctx context.Context, uri string) (string, error) {
+	if strings.HasPrefix(uri, "file://") {
+		path := strings.TrimPrefix(uri, "file://")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read knowledge file %s: %w", path, err)
+		}
+		return string(data), nil
+	}
+
+	// Parse scheme as MCP server name: "postgres://public/users" -> server=postgres, uri=public/users
+	if idx := strings.Index(uri, "://"); idx > 0 {
+		serverName := uri[:idx]
+		return i.tools.ReadMCPResource(ctx, serverName, uri)
+	}
+
+	return "", fmt.Errorf("unsupported knowledge URI scheme: %s", uri)
+}
+
+// expandEnvVars expands $VAR and ${VAR} references in environment variable values.
+func expandEnvVars(env map[string]string) map[string]string {
+	if len(env) == 0 {
+		return env
+	}
+	result := make(map[string]string, len(env))
+	for k, v := range env {
+		result[k] = os.ExpandEnv(v)
+	}
+	return result
 }
 
 // Helper functions

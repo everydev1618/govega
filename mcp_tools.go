@@ -58,7 +58,41 @@ func (t *Tools) ConnectMCP(ctx context.Context) error {
 		}
 	}
 
+	// Register the global mcp_read_resource tool if any servers are connected.
+	if len(clients) > 0 {
+		t.registerMCPReadResourceTool()
+	}
+
 	return nil
+}
+
+// registerMCPReadResourceTool registers a tool that reads resources from any connected MCP server.
+func (t *Tools) registerMCPReadResourceTool() {
+	// Don't register if already exists.
+	t.mu.RLock()
+	_, exists := t.tools["mcp_read_resource"]
+	t.mu.RUnlock()
+	if exists {
+		return
+	}
+
+	fn := func(ctx context.Context, params map[string]any) (string, error) {
+		server, _ := params["server"].(string)
+		uri, _ := params["uri"].(string)
+		if server == "" || uri == "" {
+			return "", fmt.Errorf("both 'server' and 'uri' parameters are required")
+		}
+		return t.ReadMCPResource(ctx, server, uri)
+	}
+
+	t.Register("mcp_read_resource", ToolDef{
+		Description: "Read a resource from a connected MCP server",
+		Fn:          fn,
+		Params: map[string]ParamDef{
+			"server": {Type: "string", Description: "MCP server name", Required: true},
+			"uri":    {Type: "string", Description: "Resource URI to read", Required: true},
+		},
+	})
 }
 
 // DisconnectMCP disconnects all MCP servers.
@@ -152,6 +186,24 @@ func extractParamsFromSchema(schema map[string]any) map[string]ParamDef {
 	}
 
 	return params
+}
+
+// ReadMCPResource reads a resource from a specific MCP server by name.
+func (t *Tools) ReadMCPResource(ctx context.Context, serverName, uri string) (string, error) {
+	t.mu.RLock()
+	clients := t.mcpClients
+	t.mu.RUnlock()
+
+	for _, entry := range clients {
+		if entry.config.Name == serverName {
+			if !entry.client.Connected() {
+				return "", fmt.Errorf("MCP server %q not connected", serverName)
+			}
+			return entry.client.ReadResource(ctx, uri)
+		}
+	}
+
+	return "", fmt.Errorf("MCP server %q not found", serverName)
 }
 
 // FilterMCP returns a new Tools with only tools from specified MCP servers.

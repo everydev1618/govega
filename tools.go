@@ -19,6 +19,8 @@ type Tools struct {
 	sandbox    string
 	mcpClients []*mcpClientEntry // MCP server clients
 	container  *containerState   // Container routing state
+	parent     *Tools            // parent for skill-tool lookups (set by Filter)
+	skillsRef  *SkillsPrompt     // skills prompt for dynamic tool augmentation
 	mu         sync.RWMutex
 }
 
@@ -184,7 +186,15 @@ func (t *Tools) Execute(ctx context.Context, name string, params map[string]any)
 	middleware := t.middleware
 	sandbox := t.sandbox
 	containerState := t.container
+	parent := t.parent
 	t.mu.RUnlock()
+
+	// Fallback to parent for tools provided by skills.
+	if !ok && parent != nil {
+		parent.mu.RLock()
+		tl, ok = parent.tools[name]
+		parent.mu.RUnlock()
+	}
 
 	if !ok {
 		return "", &ToolError{ToolName: name, Err: ErrToolNotFound}
@@ -270,14 +280,40 @@ func (t *Tools) executeInContainer(ctx context.Context, name string, params map[
 }
 
 // Schema returns the schemas for all tools.
+// If a skillsRef is set, tools declared by matched skills are also included.
 func (t *Tools) Schema() []ToolSchema {
 	t.mu.RLock()
-	defer t.mu.RUnlock()
+	localTools := t.tools
+	sp := t.skillsRef
+	p := t.parent
+	t.mu.RUnlock()
 
-	schemas := make([]ToolSchema, 0, len(t.tools))
-	for _, tl := range t.tools {
+	seen := make(map[string]bool, len(localTools))
+	schemas := make([]ToolSchema, 0, len(localTools))
+	for _, tl := range localTools {
 		schemas = append(schemas, tl.schema)
+		seen[tl.name] = true
 	}
+
+	// Augment with skill-declared tools from the parent.
+	if sp != nil && p != nil {
+		matches := sp.GetMatchedSkills()
+		for _, m := range matches {
+			for _, toolName := range m.Skill.Tools {
+				if seen[toolName] {
+					continue
+				}
+				p.mu.RLock()
+				tl, ok := p.tools[toolName]
+				p.mu.RUnlock()
+				if ok {
+					schemas = append(schemas, tl.schema)
+					seen[toolName] = true
+				}
+			}
+		}
+	}
+
 	return schemas
 }
 
@@ -291,6 +327,7 @@ func (t *Tools) Filter(names ...string) *Tools {
 		middleware: t.middleware,
 		sandbox:    t.sandbox,
 		container:  t.container,
+		parent:     t,
 	}
 
 	nameSet := make(map[string]bool)
@@ -305,6 +342,20 @@ func (t *Tools) Filter(names ...string) *Tools {
 	}
 
 	return filtered
+}
+
+// WithSkillsRef returns a shallow copy with a skills prompt reference set.
+// When Schema() is called, tools declared by matched skills are included.
+func (t *Tools) WithSkillsRef(sp *SkillsPrompt) *Tools {
+	return &Tools{
+		tools:      t.tools,
+		middleware: t.middleware,
+		sandbox:    t.sandbox,
+		container:  t.container,
+		mcpClients: t.mcpClients,
+		parent:     t.parent,
+		skillsRef:  sp,
+	}
 }
 
 // inferSchema infers a JSON schema from a function signature.

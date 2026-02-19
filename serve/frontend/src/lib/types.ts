@@ -151,3 +151,26 @@ export interface CreateAgentResponse {
   tools?: string[]
   process_id?: string
 }
+
+// --- Streaming Chat Types ---
+
+export interface ChatEvent {
+  type: 'text_delta' | 'tool_start' | 'tool_end' | 'error' | 'done'
+  delta?: string
+  tool_call_id?: string
+  tool_name?: string
+  arguments?: Record<string, unknown>
+  result?: string
+  duration_ms?: number
+  error?: string
+}
+
+export interface ToolCallState {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+  result?: string
+  duration_ms?: number
+  status: 'running' | 'completed' | 'error'
+  collapsed: boolean
+}

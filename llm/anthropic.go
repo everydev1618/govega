@@ -106,6 +106,7 @@ type contentBlock struct {
 	Content   string         `json:"content,omitempty"`
 }
 
+
 type anthropicTool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
@@ -205,6 +206,19 @@ func (a *AnthropicLLM) buildRequest(messages []vega.Message, tools []vega.ToolSc
 			continue
 		}
 
+		// Messages containing <tool_use> or <tool_result> XML need to be
+		// converted into structured content blocks for the Anthropic API.
+		if strings.Contains(msg.Content, "<tool_use ") || strings.Contains(msg.Content, "<tool_result ") {
+			blocks := parseToolBlocks(msg.Content)
+			if len(blocks) > 0 {
+				anthropicMsgs = append(anthropicMsgs, anthropicMsg{
+					Role:    string(msg.Role),
+					Content: blocks,
+				})
+				continue
+			}
+		}
+
 		anthropicMsgs = append(anthropicMsgs, anthropicMsg{
 			Role:    string(msg.Role),
 			Content: msg.Content,
@@ -224,6 +238,137 @@ func (a *AnthropicLLM) buildRequest(messages []vega.Message, tools []vega.ToolSc
 	}
 
 	return req
+}
+
+// parseToolBlocks converts message text containing XML tool_use/tool_result
+// tags into structured Anthropic content blocks for API requests.
+// Returns []any where each element is a map with exactly the fields the API
+// expects for that block type (text, tool_use, or tool_result).
+func parseToolBlocks(content string) []any {
+	var blocks []any
+
+	remaining := content
+	for remaining != "" {
+		toolUseIdx := strings.Index(remaining, "<tool_use ")
+		toolResultIdx := strings.Index(remaining, "<tool_result ")
+
+		nextIdx := -1
+		isToolUse := false
+		if toolUseIdx >= 0 && (toolResultIdx < 0 || toolUseIdx < toolResultIdx) {
+			nextIdx = toolUseIdx
+			isToolUse = true
+		} else if toolResultIdx >= 0 {
+			nextIdx = toolResultIdx
+		}
+
+		if nextIdx < 0 {
+			text := strings.TrimSpace(remaining)
+			if text != "" {
+				blocks = append(blocks, map[string]any{"type": "text", "text": text})
+			}
+			break
+		}
+
+		if nextIdx > 0 {
+			text := strings.TrimSpace(remaining[:nextIdx])
+			if text != "" {
+				blocks = append(blocks, map[string]any{"type": "text", "text": text})
+			}
+		}
+
+		if isToolUse {
+			block, rest := parseToolUseXML(remaining[nextIdx:])
+			if block != nil {
+				blocks = append(blocks, block)
+			}
+			remaining = rest
+		} else {
+			block, rest := parseToolResultXML(remaining[nextIdx:])
+			if block != nil {
+				blocks = append(blocks, block)
+			}
+			remaining = rest
+		}
+	}
+
+	return blocks
+}
+
+// parseToolUseXML extracts a tool_use block from XML like:
+// <tool_use id="..." name="...">\njson\n</tool_use>
+func parseToolUseXML(s string) (map[string]any, string) {
+	endTag := "</tool_use>"
+	endIdx := strings.Index(s, endTag)
+	if endIdx < 0 {
+		return nil, ""
+	}
+
+	tagEnd := strings.Index(s, ">")
+	if tagEnd < 0 || tagEnd > endIdx {
+		return nil, s[endIdx+len(endTag):]
+	}
+
+	openTag := s[:tagEnd]
+	id := extractAttr(openTag, "id")
+	name := extractAttr(openTag, "name")
+	jsonBody := strings.TrimSpace(s[tagEnd+1 : endIdx])
+
+	input := map[string]any{}
+	if jsonBody != "" {
+		json.Unmarshal([]byte(jsonBody), &input)
+	}
+
+	block := map[string]any{
+		"type":  "tool_use",
+		"id":    id,
+		"name":  name,
+		"input": input,
+	}
+
+	return block, s[endIdx+len(endTag):]
+}
+
+// parseToolResultXML extracts a tool_result block from XML like:
+// <tool_result tool_use_id="..." name="...">\ncontent\n</tool_result>
+func parseToolResultXML(s string) (map[string]any, string) {
+	endTag := "</tool_result>"
+	endIdx := strings.Index(s, endTag)
+	if endIdx < 0 {
+		return nil, ""
+	}
+
+	tagEnd := strings.Index(s, ">")
+	if tagEnd < 0 || tagEnd > endIdx {
+		return nil, s[endIdx+len(endTag):]
+	}
+
+	openTag := s[:tagEnd]
+	toolUseID := extractAttr(openTag, "tool_use_id")
+	resultContent := strings.TrimSpace(s[tagEnd+1 : endIdx])
+
+	block := map[string]any{
+		"type":        "tool_result",
+		"tool_use_id": toolUseID,
+		"content":     resultContent,
+	}
+
+	return block, s[endIdx+len(endTag):]
+}
+
+// extractAttr extracts an attribute value from an XML-like tag string.
+// e.g. extractAttr(`<tool_use id="abc" name="foo"`, "id") → "abc"
+func extractAttr(tag, attr string) string {
+	needle := attr + `="`
+	idx := strings.Index(tag, needle)
+	if idx < 0 {
+		return ""
+	}
+	start := idx + len(needle)
+	end := strings.Index(tag[start:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return tag[start : start+end]
 }
 
 func (a *AnthropicLLM) createHTTPRequest(ctx context.Context, req *anthropicRequest) (*http.Request, error) {

@@ -170,6 +170,138 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"response": response})
 }
 
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	baseAgent := r.PathValue("name")
+	name := s.chatAgentName(baseAgent, r)
+	userID := r.Header.Get("X-Auth-User")
+	if userID == "" {
+		userID = "default"
+	}
+
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
+		return
+	}
+
+	proc, err := s.interp.EnsureAgent(name)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
+		if memText := formatMemoryForInjection(memories); memText != "" {
+			proc.SetExtraSystem(memText)
+		}
+	}
+
+	s.store.InsertChatMessage(name, "user", req.Message)
+
+	// Use a detached context so the LLM stream survives client disconnect.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+
+	stream, err := s.interp.StreamToAgent(ctx, name, req.Message)
+	if err != nil {
+		cancel()
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Create a server-side active stream to decouple from the HTTP connection.
+	streamID := uuid.New().String()[:8]
+	as := &activeStream{
+		events: make(chan vega.ChatEvent, 256),
+		done:   make(chan struct{}),
+	}
+
+	s.streamsMu.Lock()
+	s.streams[streamID] = as
+	s.streamsMu.Unlock()
+
+	// Detached goroutine: relay events from the LLM ChatStream into the
+	// activeStream, persist the result, then clean up.
+	go func() {
+		defer cancel()
+
+		for event := range stream.Events() {
+			as.events <- event
+		}
+
+		response := stream.Response()
+		streamErr := stream.Err()
+
+		as.mu.Lock()
+		as.response = response
+		as.err = streamErr
+		as.mu.Unlock()
+		close(as.done)
+		close(as.events)
+
+		// Persist assistant response even if no client is listening.
+		if streamErr == nil && response != "" {
+			s.store.InsertChatMessage(name, "assistant", response)
+			go s.extractMemory(userID, baseAgent, req.Message, response)
+		}
+
+		// Keep the stream in the map briefly so a reconnecting client
+		// could theoretically find it, then remove it.
+		time.Sleep(30 * time.Second)
+		s.streamsMu.Lock()
+		delete(s.streams, streamID)
+		s.streamsMu.Unlock()
+	}()
+
+	// --- SSE relay: forward events to the connected client ---
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "streaming not supported"})
+		return
+	}
+
+	for {
+		select {
+		case event, ok := <-as.events:
+			if !ok {
+				// Stream finished — send final events.
+				as.mu.Lock()
+				streamErr := as.err
+				as.mu.Unlock()
+
+				if streamErr != nil {
+					errData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventError, Error: streamErr.Error()})
+					fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
+					flusher.Flush()
+				}
+
+				doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone})
+				fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
+				flusher.Flush()
+				return
+			}
+			data, err := json.Marshal(event)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+			flusher.Flush()
+
+		case <-r.Context().Done():
+			// Client disconnected — handler returns but the goroutine
+			// keeps running and will persist the response.
+			return
+		}
+	}
+}
+
 func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 	baseAgent := r.PathValue("name")
 	userID := r.URL.Query().Get("user")

@@ -177,14 +177,15 @@ type MCPDef struct {
 
 // MCPServerDef configures an individual MCP server.
 type MCPServerDef struct {
-	Name      string            `yaml:"name"`
-	Transport string            `yaml:"transport"`
-	Command   string            `yaml:"command"`
-	Args      []string          `yaml:"args"`
-	Env       map[string]string `yaml:"env"`
-	URL       string            `yaml:"url"`
-	Headers   map[string]string `yaml:"headers"`
-	Timeout   string            `yaml:"timeout"`
+	Name         string            `yaml:"name"`
+	Transport    string            `yaml:"transport"`
+	Command      string            `yaml:"command"`
+	Args         []string          `yaml:"args"`
+	Env          map[string]string `yaml:"env"`
+	URL          string            `yaml:"url"`
+	Headers      map[string]string `yaml:"headers"`
+	Timeout      string            `yaml:"timeout"`
+	FromRegistry bool              `yaml:"-"` // resolved from registry, not serialized
 }
 
 // GlobalSkillsDef configures global skill settings.

@@ -226,6 +226,11 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
+	if name == "mother" {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Mother cannot be deleted"})
+		return
+	}
+
 	if err := s.interp.RemoveAgent(name); err != nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
 		return

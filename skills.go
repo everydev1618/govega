@@ -118,6 +118,11 @@ func (s *SkillsPrompt) GetMatchedSkills() []skills.SkillMatch {
 	return matches
 }
 
+// Loader returns the underlying skills loader.
+func (s *SkillsPrompt) Loader() *skills.Loader {
+	return s.loader
+}
+
 // AvailableSkills returns a list of all available skills.
 func (s *SkillsPrompt) AvailableSkills() []string {
 	if s.loader == nil {
