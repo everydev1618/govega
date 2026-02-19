@@ -1,5 +1,10 @@
 # Vega
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/everydev1618/govega.svg)](https://pkg.go.dev/github.com/everydev1618/govega)
+[![Latest Release](https://img.shields.io/github/v/release/everydev1618/govega)](https://github.com/everydev1618/govega/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/everydev1618/govega)](go.mod)
+
 **Fault-tolerant AI agent orchestration for Go.**
 
 Vega makes it easy to build reliable AI agent systems with Erlang-style supervision. Use the YAML DSL for rapid prototyping or the Go library for full control.
@@ -115,8 +120,8 @@ import (
     "fmt"
     "log"
 
-    "github.com/martellcode/vega"
-    "github.com/martellcode/vega/llm"
+    "github.com/everydev1618/govega"
+    "github.com/everydev1618/govega/llm"
 )
 
 func main() {
@@ -681,7 +686,7 @@ type SpawnTreeNode struct {
 Connect to MCP servers to use external tools:
 
 ```go
-import "github.com/martellcode/vega/mcp"
+import "github.com/everydev1618/govega/mcp"
 
 tools := vega.NewTools(
     vega.WithMCPServer(mcp.ServerConfig{
@@ -849,7 +854,7 @@ The env file at `~/.vega/env` is loaded automatically on startup — no shell ex
 Skills provide dynamic prompt injection based on message context:
 
 ```go
-import "github.com/martellcode/vega/skills"
+import "github.com/everydev1618/govega/skills"
 
 // Load skills from directories
 loader := skills.NewLoader("./skills", "~/.vega/skills")
