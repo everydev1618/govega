@@ -3,7 +3,7 @@ version: 2
 before:
   hooks:
     # Build the frontend so it gets embedded into the binary.
-    - cmd: sh -c 'if [ -f serve/frontend/package.json ]; then cd serve/frontend && npm ci && npm run build; else mkdir -p serve/frontend/dist && touch serve/frontend/dist/.gitkeep; fi'
+    - sh -c 'if [ -f serve/frontend/package.json ]; then cd serve/frontend && npm ci && npm run build; else mkdir -p serve/frontend/dist && touch serve/frontend/dist/.gitkeep; fi'
 
 builds:
   - id: vega
@@ -47,10 +47,11 @@ changelog:
       - "^ci:"
 
 brews:
-  - repository:
+  - skip_upload: "{{ if .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}"
+    repository:
       owner: everydev1618
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      token: "{{ if .Env.HOMEBREW_TAP_TOKEN }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ else }}{{ .Env.GITHUB_TOKEN }}{{ end }}"
     directory: Formula
     homepage: https://github.com/everydev1618/govega
     description: AI Agent Orchestration CLI
