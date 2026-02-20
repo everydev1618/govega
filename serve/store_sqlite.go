@@ -70,6 +70,7 @@ func (s *SQLiteStore) Init() error {
 		model       TEXT NOT NULL DEFAULT '',
 		persona     TEXT NOT NULL DEFAULT '',
 		skills      TEXT NOT NULL DEFAULT '[]',
+		tools       TEXT NOT NULL DEFAULT '[]',
 		team        TEXT NOT NULL DEFAULT '[]',
 		system      TEXT NOT NULL DEFAULT '',
 		temperature REAL,
@@ -259,11 +260,12 @@ func (s *SQLiteStore) ListWorkflowRuns(limit int) ([]WorkflowRun, error) {
 // InsertComposedAgent persists a composed agent definition.
 func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 	skillsJSON, _ := json.Marshal(a.Skills)
+	toolsJSON, _ := json.Marshal(a.Tools)
 	teamJSON, _ := json.Marshal(a.Team)
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO composed_agents (name, model, persona, skills, team, system, temperature, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Name, a.Model, a.Persona, string(skillsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt,
+		`INSERT OR REPLACE INTO composed_agents (name, model, persona, skills, tools, team, system, temperature, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Name, a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt,
 	)
 	return err
 }
@@ -271,7 +273,7 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 // ListComposedAgents returns all composed agents.
 func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	rows, err := s.db.Query(
-		`SELECT name, model, persona, skills, team, system, temperature, created_at
+		`SELECT name, model, persona, skills, tools, team, system, temperature, created_at
 		 FROM composed_agents ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -282,12 +284,13 @@ func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	var agents []ComposedAgent
 	for rows.Next() {
 		var a ComposedAgent
-		var skillsJSON, teamJSON string
+		var skillsJSON, toolsJSON, teamJSON string
 		var temp sql.NullFloat64
-		if err := rows.Scan(&a.Name, &a.Model, &a.Persona, &skillsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.Name, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(skillsJSON), &a.Skills)
+		json.Unmarshal([]byte(toolsJSON), &a.Tools)
 		json.Unmarshal([]byte(teamJSON), &a.Team)
 		if temp.Valid {
 			a.Temperature = &temp.Float64
