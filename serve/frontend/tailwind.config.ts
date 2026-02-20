@@ -19,6 +19,15 @@ export default {
         primary: 'hsl(224 76% 48%)',
         'primary-foreground': 'hsl(0 0% 98%)',
       },
+      animation: {
+        'pulse-subtle': 'pulse-subtle 2s ease-in-out infinite',
+      },
+      keyframes: {
+        'pulse-subtle': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.8' },
+        },
+      },
       borderRadius: {
         lg: '0.5rem',
         md: 'calc(0.5rem - 2px)',

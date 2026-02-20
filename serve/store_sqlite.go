@@ -97,6 +97,28 @@ func (s *SQLiteStore) Init() error {
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_user_memory_unique
 		ON user_memory(user_id, agent, layer);
 
+	CREATE TABLE IF NOT EXISTS scheduled_jobs (
+		name       TEXT PRIMARY KEY,
+		cron       TEXT NOT NULL,
+		agent_name TEXT NOT NULL,
+		message    TEXT NOT NULL,
+		enabled    BOOLEAN NOT NULL DEFAULT 1,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS memory_items (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id    TEXT NOT NULL,
+		agent      TEXT NOT NULL,
+		topic      TEXT NOT NULL DEFAULT '',
+		content    TEXT NOT NULL,
+		tags       TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_memory_items_user_agent ON memory_items(user_id, agent);
+	CREATE INDEX IF NOT EXISTS idx_memory_items_topic ON memory_items(user_id, agent, topic);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -363,6 +385,128 @@ func (s *SQLiteStore) GetUserMemory(userID, agent string) ([]UserMemory, error) 
 func (s *SQLiteStore) DeleteUserMemory(userID, agent string) error {
 	_, err := s.db.Exec(`DELETE FROM user_memory WHERE user_id = ? AND agent = ?`, userID, agent)
 	return err
+}
+
+// UpsertScheduledJob creates or replaces a scheduled job.
+func (s *SQLiteStore) UpsertScheduledJob(job ScheduledJob) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO scheduled_jobs (name, cron, agent_name, message, enabled, created_at)
+		 VALUES (?, ?, ?, ?, ?, COALESCE(
+		   (SELECT created_at FROM scheduled_jobs WHERE name = ?),
+		   CURRENT_TIMESTAMP
+		 ))`,
+		job.Name, job.Cron, job.AgentName, job.Message, job.Enabled, job.Name,
+	)
+	return err
+}
+
+// DeleteScheduledJob removes a scheduled job by name.
+func (s *SQLiteStore) DeleteScheduledJob(name string) error {
+	_, err := s.db.Exec(`DELETE FROM scheduled_jobs WHERE name = ?`, name)
+	return err
+}
+
+// ListScheduledJobs returns all scheduled jobs.
+func (s *SQLiteStore) ListScheduledJobs() ([]ScheduledJob, error) {
+	rows, err := s.db.Query(
+		`SELECT name, cron, agent_name, message, enabled, created_at
+		 FROM scheduled_jobs ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []ScheduledJob
+	for rows.Next() {
+		var j ScheduledJob
+		if err := rows.Scan(&j.Name, &j.Cron, &j.AgentName, &j.Message, &j.Enabled, &j.CreatedAt); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+// InsertMemoryItem saves a memory item and returns its ID.
+func (s *SQLiteStore) InsertMemoryItem(item MemoryItem) (int64, error) {
+	result, err := s.db.Exec(
+		`INSERT INTO memory_items (user_id, agent, topic, content, tags)
+		 VALUES (?, ?, ?, ?, ?)`,
+		item.UserID, item.Agent, item.Topic, item.Content, item.Tags,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// SearchMemoryItems searches memory items by keyword via LIKE across topic, content, and tags.
+func (s *SQLiteStore) SearchMemoryItems(userID, agent, query string, limit int) ([]MemoryItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, topic, content, tags, created_at, updated_at
+		 FROM memory_items
+		 WHERE user_id = ? AND agent = ?
+		   AND (topic LIKE ? OR content LIKE ? OR tags LIKE ?)
+		 ORDER BY updated_at DESC LIMIT ?`,
+		userID, agent, pattern, pattern, pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []MemoryItem
+	for rows.Next() {
+		var m MemoryItem
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
+}
+
+// DeleteMemoryItem removes a memory item by ID.
+func (s *SQLiteStore) DeleteMemoryItem(id int64) error {
+	result, err := s.db.Exec(`DELETE FROM memory_items WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// ListMemoryItemsByTopic returns memory items for a given user+agent+topic.
+func (s *SQLiteStore) ListMemoryItemsByTopic(userID, agent, topic string) ([]MemoryItem, error) {
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, topic, content, tags, created_at, updated_at
+		 FROM memory_items
+		 WHERE user_id = ? AND agent = ? AND topic = ?
+		 ORDER BY created_at ASC`,
+		userID, agent, topic,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []MemoryItem
+	for rows.Next() {
+		var m MemoryItem
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.

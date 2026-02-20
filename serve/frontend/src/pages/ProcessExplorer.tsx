@@ -1,13 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAPI } from '../hooks/useAPI'
+import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
+import { KanbanBoard } from '../components/KanbanBoard'
 import type { ProcessResponse, ProcessDetailResponse } from '../lib/types'
+
+type ViewMode = 'list' | 'kanban'
 
 export function ProcessExplorer() {
   const { data: processes, loading, refetch } = useAPI(() => api.getProcesses())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<ProcessDetailResponse | null>(null)
   const [sortKey, setSortKey] = useState<'started_at' | 'status' | 'agent'>('started_at')
+  const [viewMode, setViewMode] = useState<ViewMode>('kanban')
+
+  // SSE: auto-refresh on process lifecycle events
+  const { events } = useSSE()
+  const lastEventRef = useRef(0)
+  useEffect(() => {
+    if (events.length === 0) return
+    const latest = events[0]
+    const ts = new Date(latest.timestamp).getTime()
+    if (ts > lastEventRef.current && latest.type.startsWith('process.')) {
+      lastEventRef.current = ts
+      refetch()
+    }
+  }, [events, refetch])
+
+  // Poll every 5s while any process is running (metrics aren't pushed via SSE)
+  useEffect(() => {
+    const hasRunning = processes?.some(p => p.status === 'running')
+    if (!hasRunning) return
+    const id = setInterval(refetch, 5000)
+    return () => clearInterval(id)
+  }, [processes, refetch])
 
   const sorted = processes ? [...processes].sort((a, b) => {
     if (sortKey === 'started_at') return new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
@@ -33,39 +59,70 @@ export function ProcessExplorer() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Process Explorer</h2>
-        <div className="flex gap-2 text-sm">
-          {(['started_at', 'status', 'agent'] as const).map(key => (
-            <button key={key} onClick={() => setSortKey(key)}
-              className={`px-3 py-1 rounded ${sortKey === key ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}>
-              {key === 'started_at' ? 'Time' : key.charAt(0).toUpperCase() + key.slice(1)}
+        <div className="flex items-center gap-4">
+          {/* View toggle */}
+          <div className="flex gap-1 text-sm border border-border rounded-lg p-0.5">
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`px-3 py-1 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
+            >
+              Board
             </button>
-          ))}
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1 rounded-md transition-colors ${viewMode === 'list' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
+            >
+              List
+            </button>
+          </div>
+
+          {/* Sort controls — only in list mode */}
+          {viewMode === 'list' && (
+            <div className="flex gap-2 text-sm">
+              {(['started_at', 'status', 'agent'] as const).map(key => (
+                <button key={key} onClick={() => setSortKey(key)}
+                  className={`px-3 py-1 rounded ${sortKey === key ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}>
+                  {key === 'started_at' ? 'Time' : key.charAt(0).toUpperCase() + key.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex gap-4">
-        {/* Process list */}
-        <div className="flex-1 space-y-2">
-          {sorted.length === 0 && <p className="text-muted-foreground text-sm">No processes running.</p>}
-          {sorted.map((p: ProcessResponse) => (
-            <div key={p.id} onClick={() => openDetail(p.id)}
-              className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedId === p.id ? 'border-primary bg-accent' : 'border-border bg-card hover:border-primary/50'}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-mono text-sm">{p.id}</span>
-                <StatusBadge status={p.status} />
-              </div>
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{p.agent}</span>
-                <span>{new Date(p.started_at).toLocaleTimeString()}</span>
-              </div>
-              {p.task && <p className="text-xs text-muted-foreground mt-1 truncate">{p.task}</p>}
+        {/* Main content area */}
+        <div className="flex-1 min-w-0">
+          {viewMode === 'kanban' ? (
+            <KanbanBoard
+              processes={processes || []}
+              selectedId={selectedId}
+              onSelect={openDetail}
+            />
+          ) : (
+            <div className="space-y-2">
+              {sorted.length === 0 && <p className="text-muted-foreground text-sm">No processes running.</p>}
+              {sorted.map((p: ProcessResponse) => (
+                <div key={p.id} onClick={() => openDetail(p.id)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedId === p.id ? 'border-primary bg-accent' : 'border-border bg-card hover:border-primary/50'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-sm">{p.id}</span>
+                    <StatusBadge status={p.status} />
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>{p.agent}</span>
+                    <span>{new Date(p.started_at).toLocaleTimeString()}</span>
+                  </div>
+                  {p.task && <p className="text-xs text-muted-foreground mt-1 truncate">{p.task}</p>}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
 
         {/* Detail panel */}
         {selectedId && detail && (
-          <div className="w-96 border border-border rounded-lg bg-card p-4 space-y-4 max-h-[80vh] overflow-auto">
+          <div className="w-96 shrink-0 border border-border rounded-lg bg-card p-4 space-y-4 max-h-[80vh] overflow-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold">Process {detail.id}</h3>
               <button onClick={() => setSelectedId(null)} className="text-muted-foreground hover:text-foreground">&times;</button>

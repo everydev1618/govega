@@ -18,7 +18,7 @@ vega serve team.vega.yaml
 # Open http://localhost:3001 → pick an agent → start chatting
 ```
 
-No YAML file? `vega serve` starts with a default assistant.
+No YAML file? `vega serve` starts with Mother and Hermes ready to go.
 
 ### Streaming API
 
@@ -793,11 +793,14 @@ Historical process data, events, and workflow runs persist across restarts via S
 
 #### Mother
 
-Mother is the agent architect. Talk to her to create, update, or delete agents through conversation. She knows all available tools, skills, and MCP servers, and designs teams rather than solo agents.
+Mother is the agent architect. Talk to her to create, update, or delete agents through conversation. She knows all available tools, skills, and MCP servers, and designs teams rather than solo agents. She can also set up recurring schedules — cron-driven triggers that send a message to any agent automatically.
 
 ```
 You: I need an agent that researches competitors
 Mother: I'll create a researcher with web tools and a lead agent to synthesize...
+
+You: Every morning at 9am, have hermes check Hacker News and email me a summary
+Mother: [calls create_schedule with cron "0 9 * * *", agent "hermes", message "..."]
 ```
 
 Mother is always available in the sidebar or via `POST /api/agents/mother/chat`.
@@ -822,6 +825,28 @@ Hermes has two tools:
 - `send_to_agent` — route a task to any agent by name, including Mother
 
 The mythological fit is intentional: Hermes's mother in Greek mythology was Maia.
+
+### Scheduler
+
+Trigger agents on a cron schedule — no external cron job needed. The scheduler runs inside `vega serve` and persists jobs to SQLite so they survive restarts.
+
+Set up a schedule by asking Mother:
+
+```
+You: Every day at 9am, send a message to hermes saying "check hacker news for AI news and email me a summary"
+Mother: Done! Schedule "morning-news" created: '0 9 * * *' → hermes
+```
+
+Or use Mother's scheduler tools directly:
+
+- `create_schedule(name, cron, agent, message)` — add a job
+- `update_schedule(name, cron?, agent?, message?, enabled?)` — modify a job
+- `delete_schedule(name)` — remove a job
+- `list_schedules()` — list all active jobs
+
+Standard 5-field cron syntax: `"0 9 * * *"` = 9am daily, `"*/30 * * * *"` = every 30 minutes.
+
+To send email results, give agents the `send_email` tool (requires `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` env vars).
 
 ### Telegram
 
@@ -1195,6 +1220,8 @@ Built-in web dashboard with SSE streaming, process explorer, spawn tree visualiz
 | Agent creation via chat | ❌ | ❌ | ✅ Mother (built-in) |
 | Cross-agent orchestration | Manual | ❌ | ✅ Hermes (built-in) |
 | Telegram channel | ❌ | ❌ | ✅ Built-in (long polling) |
+| Scheduled triggers | Manual | ❌ | ✅ Built-in cron scheduler |
+| Email delivery | Manual | ❌ | ✅ `send_email` built-in |
 
 ---
 
@@ -1234,16 +1261,18 @@ vega/
 │   ├── broker.go      # Event pub/sub for SSE
 │   ├── store.go       # Persistence interface
 │   ├── store_sqlite.go    # SQLite implementation
+│   ├── scheduler.go   # Built-in cron scheduler (robfig/cron)
 │   ├── types.go       # API request/response types
 │   ├── telegram.go    # Telegram bot via long polling
 │   ├── embed.go       # Embedded SPA frontend
 │   └── frontend/      # React + Vite + Tailwind dashboard
 ├── dsl/
-│   ├── types.go       # AST types
-│   ├── parser.go      # YAML parser
-│   ├── interpreter.go # Workflow execution
-│   ├── mother.go      # Mother meta-agent (creates/manages agents)
-│   └── hermes.go      # Hermes meta-agent (orchestrates across all agents)
+│   ├── types.go           # AST types
+│   ├── parser.go          # YAML parser
+│   ├── interpreter.go     # Workflow execution
+│   ├── mother.go          # Mother meta-agent (creates/manages agents)
+│   ├── scheduler_tools.go # SchedulerBackend interface + Mother scheduler tools
+│   └── hermes.go          # Hermes meta-agent (orchestrates across all agents)
 ├── cmd/vega/
 │   ├── main.go        # CLI entry point
 │   └── serve.go       # serve command

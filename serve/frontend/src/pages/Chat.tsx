@@ -1,43 +1,25 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Markdown from 'react-markdown'
-import { useAPI } from '../hooks/useAPI'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
-import type { AgentResponse, ChatEvent, ToolCallState } from '../lib/types'
+import type { ChatEvent, ToolCallState } from '../lib/types'
+
+const HERMES = 'hermes'
+
+// Matches the handoff line Hermes emits: → Handing you to **agent-name** for this conversation.
+const HANDOFF_RE = /→\s+Handing you to \*\*([^*]+)\*\*/
+
+const starterPrompts = [
+  'What agents do I have and what can they do?',
+  'Create me a research agent that can search the web',
+  'Schedule a daily news summary and email it to me',
+]
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   toolCalls?: ToolCallState[]
   streaming?: boolean
-}
-
-function getStarterPrompts(agent: AgentResponse): string[] {
-  const prompts: string[] = []
-
-  if (agent.team?.length) {
-    prompts.push(`What can your team members do?`)
-  }
-  if (agent.tools?.length) {
-    const sample = agent.tools.slice(0, 2).join(' and ')
-    prompts.push(`How do you use ${sample}?`)
-  }
-  if (agent.system) {
-    prompts.push('What are you best at?')
-  }
-
-  // Fill with generic defaults
-  const defaults = [
-    'What can you help me with?',
-    'Walk me through your capabilities',
-    'Give me an example of what you can do',
-  ]
-  for (const d of defaults) {
-    if (prompts.length >= 3) break
-    if (!prompts.includes(d)) prompts.push(d)
-  }
-
-  return prompts.slice(0, 3)
 }
 
 function ToolCallPanel({ tc, onToggle }: { tc: ToolCallState; onToggle: () => void }) {
@@ -110,6 +92,37 @@ function UserAvatar() {
   )
 }
 
+function AgentAvatar({ name }: { name: string }) {
+  return (
+    <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-semibold">
+      {name[0]?.toUpperCase()}
+    </div>
+  )
+}
+
+function HandoffBanner({ from, to, onSwitch }: { from: string; to: string; onSwitch: () => void }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-primary/30 bg-primary/5 text-sm">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <AgentAvatar name={from} />
+        <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+        <AgentAvatar name={to} />
+      </div>
+      <span className="flex-1 text-muted-foreground">
+        Hermes connected you with <span className="font-semibold text-foreground">{to}</span>
+      </span>
+      <button
+        onClick={onSwitch}
+        className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
+      >
+        Talk to {to} →
+      </button>
+    </div>
+  )
+}
+
 function VegaStar() {
   return (
     <pre className="text-xs leading-snug font-mono select-none inline-block text-left" aria-hidden="true">
@@ -124,51 +137,55 @@ function VegaStar() {
   )
 }
 
-function AgentAvatar({ name }: { name: string }) {
-  return (
-    <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-semibold">
-      {name[0]?.toUpperCase()}
-    </div>
-  )
-}
-
 export function Chat() {
-  const { data: agents, refetch: refetchAgents } = useAPI(() => api.getAgents())
   const { events } = useSSE()
 
-  // Refetch agent list when Mother creates or deletes an agent
-  useEffect(() => {
-    const latest = events[0]
-    if (latest?.type === 'agent.created' || latest?.type === 'agent.deleted') {
-      refetchAgents()
-    }
-  }, [events, refetchAgents])
-  const [selected, setSelected] = useState<string | null>(null)
+  // Which agent the chat is currently directed to
+  const [activeAgent, setActiveAgent] = useState(HERMES)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  // Agent Hermes wants to hand us off to, pending user confirmation
+  const [pendingHandoff, setPendingHandoff] = useState<string | null>(null)
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // Track the event index at stream start so we only look at events fired during this stream
+  const streamStartEventCount = useRef(0)
 
-  const selectedAgent = agents?.find(a => a.name === selected)
+  // Load history for the active agent whenever it changes
+  useEffect(() => {
+    setLoaded(false)
+    setMessages([])
+    setPendingHandoff(null)
+    api.chatHistory(activeAgent)
+      .then(history => {
+        if (history?.length) {
+          setMessages(history.map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true))
+  }, [activeAgent])
 
   // Auto-resize textarea
   const resizeTextarea = useCallback(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    const maxH = 6 * 24 // ~6 lines
-    ta.style.height = Math.min(ta.scrollHeight, maxH) + 'px'
+    ta.style.height = Math.min(ta.scrollHeight, 6 * 24) + 'px'
   }, [])
 
-  useEffect(() => {
-    resizeTextarea()
-  }, [input, resizeTextarea])
+  useEffect(() => { resizeTextarea() }, [input, resizeTextarea])
 
-  // Smart auto-scroll: only scroll when near bottom
+  // Smart auto-scroll
   const isNearBottom = useCallback(() => {
     const el = messagesRef.current
     if (!el) return true
@@ -181,21 +198,15 @@ export function Chat() {
     }
   }, [messages, isNearBottom])
 
-  // Track scroll position for FAB
   useEffect(() => {
     const el = messagesRef.current
     if (!el) return
     const onScroll = () => {
-      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-      setShowScrollBtn(distFromBottom > 200)
+      setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 200)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [selected])
-
-  const scrollToBottom = () => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  }, [activeAgent])
 
   const handleEvent = useCallback((event: ChatEvent) => {
     setMessages(prev => {
@@ -241,19 +252,39 @@ export function Chat() {
     })
   }, [])
 
-  const send = async () => {
-    if (!selected || !input.trim() || sending) return
-    const msg = input.trim()
+  // After a stream ends, check if Hermes emitted a handoff line
+  const checkForHandoff = useCallback((finalContent: string) => {
+    if (activeAgent !== HERMES) return
+    const match = finalContent.match(HANDOFF_RE)
+    if (match) {
+      setPendingHandoff(match[1].trim())
+    }
+  }, [activeAgent])
+
+  const send = async (text?: string) => {
+    const msg = (text ?? input).trim()
+    if (!msg || sending) return
     setInput('')
+    setPendingHandoff(null)
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setMessages(prev => [...prev, { role: 'assistant', content: '', toolCalls: [], streaming: true }])
     setSending(true)
 
+    // Remember SSE event count so we can detect new agent.created events during this stream
+    streamStartEventCount.current = events.length
+
     const abort = new AbortController()
     abortRef.current = abort
 
+    let finalContent = ''
+    const wrappedHandler = (event: ChatEvent) => {
+      if (event.type === 'text_delta') finalContent += event.delta || ''
+      handleEvent(event)
+    }
+
     try {
-      await api.chatStream(selected, msg, handleEvent, abort.signal)
+      await api.chatStream(activeAgent, msg, wrappedHandler, abort.signal)
+      checkForHandoff(finalContent)
     } catch (err) {
       setMessages(prev => {
         const msgs = [...prev]
@@ -269,43 +300,29 @@ export function Chat() {
     }
   }
 
-  const switchAgent = async (name: string) => {
+  const switchToAgent = async (name: string) => {
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
       setSending(false)
     }
-
-    setSelected(name)
-    setMessages([])
-
-    try {
-      const history = await api.chatHistory(name)
-      if (history?.length) {
-        setMessages(history.map(m => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })))
-      }
-    } catch {
-      // No history yet.
-    }
+    setPendingHandoff(null)
+    setActiveAgent(name)
+    // History load handled by the activeAgent useEffect
   }
 
   const clearChat = async () => {
-    if (!selected) return
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
       setSending(false)
     }
     setMessages([])
-    try {
-      await api.resetChat(selected)
-    } catch {
-      // best-effort
-    }
+    setPendingHandoff(null)
+    try { await api.resetChat(activeAgent) } catch { /* best-effort */ }
   }
+
+  const goBackToHermes = () => switchToAgent(HERMES)
 
   const toggleToolCall = (msgIdx: number, tcIdx: number) => {
     setMessages(prev => {
@@ -324,191 +341,145 @@ export function Chat() {
     }
   }
 
+  const isHermes = activeAgent === HERMES
+
   return (
-    <div className="flex h-[calc(100vh-3rem)] gap-4">
-      {/* Agent picker */}
-      <div className="w-56 flex-shrink-0 space-y-1 overflow-auto py-1">
-        <h2 className="text-sm font-semibold text-muted-foreground px-2 mb-2">Agents</h2>
-        {[...(agents || [])].sort((a, b) =>
-          a.name === 'mother' ? -1 : b.name === 'mother' ? 1 : a.name.localeCompare(b.name)
-        ).map((agent: AgentResponse) => (
+    <div className="flex flex-col h-[calc(100vh-3rem)]">
+      {/* Header */}
+      <div className="flex items-center gap-3 pb-3 border-b border-border mb-3">
+        {!isHermes && (
           <button
-            key={agent.name}
-            onClick={() => switchAgent(agent.name)}
-            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-              selected === agent.name
-                ? 'bg-accent text-accent-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-            }`}
+            onClick={goBackToHermes}
+            title="Back to Hermes"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors flex-shrink-0"
           >
-            <div className="flex items-center gap-2">
-              <span>{agent.name}</span>
-              {agent.source === 'composed' && (
-                <span className="text-xs px-1 py-0.5 rounded bg-purple-900/50 text-purple-400">c</span>
-              )}
-            </div>
-            {agent.model && (
-              <p className="text-xs text-muted-foreground font-mono truncate">{agent.model}</p>
-            )}
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
           </button>
-        ))}
+        )}
+        <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-sm font-semibold">
+          {activeAgent[0]?.toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-semibold">{activeAgent}</h2>
+          <p className="text-xs text-muted-foreground">
+            {isHermes
+              ? 'Cosmic orchestrator — routes your goals across the whole agent universe'
+              : 'Specialist agent — connected by Hermes'}
+          </p>
+        </div>
+        <button
+          onClick={clearChat}
+          title="Clear chat"
+          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+          </svg>
+        </button>
       </div>
 
-      {/* Chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {!selected ? (
-          /* No agent selected state */
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-4">
+      {/* Messages */}
+      <div ref={messagesRef} className="flex-1 overflow-auto space-y-5 pb-4 relative">
+        {loaded && messages.length === 0 && isHermes && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center space-y-4 max-w-md">
               <VegaStar />
-              <h3 className="text-lg font-semibold text-foreground">Start a conversation</h3>
-              <p className="text-sm text-muted-foreground max-w-xs">Select an agent from the sidebar to begin chatting</p>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">What do you need?</h3>
+                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                  Hermes routes your goals across all agents — or calls on Mother to build new ones.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center pt-2">
+                {starterPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => send(prompt)}
+                    className="text-sm px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        ) : (
-          <>
-            {/* Enhanced header */}
-            <div className="flex items-start gap-3 pb-3 border-b border-border mb-3">
-              <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-sm font-semibold">
-                {selected[0]?.toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold">{selected}</h2>
-                  {selectedAgent?.source === 'composed' && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400">composed</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {selectedAgent?.model && (
-                    <span className="font-mono">{selectedAgent.model}</span>
-                  )}
-                  {selectedAgent?.tools?.length ? (
-                    <>
-                      <span className="text-border">|</span>
-                      <span>{selectedAgent.tools.length} tools</span>
-                    </>
-                  ) : null}
-                  {selectedAgent?.team?.length ? (
-                    <>
-                      <span className="text-border">|</span>
-                      <span>team: {selectedAgent.team.join(', ')}</span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-              <button
-                onClick={clearChat}
-                title="Clear chat"
-                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Messages */}
-            <div ref={messagesRef} className="flex-1 overflow-auto space-y-5 pb-4 relative">
-              {messages.length === 0 && selectedAgent && (
-                /* Welcome state */
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center space-y-4 max-w-md">
-                    <VegaStar />
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">Chat with {selected}</h3>
-                      {selectedAgent.system && (
-                        <p className="text-sm text-muted-foreground mt-1.5 line-clamp-3 leading-relaxed">
-                          {selectedAgent.system}
-                        </p>
-                      )}
-                    </div>
-                    {selectedAgent.model && (
-                      <span className="inline-block text-xs font-mono px-2 py-1 rounded-full bg-accent text-accent-foreground">
-                        {selectedAgent.model}
-                      </span>
-                    )}
-                    <div className="flex flex-wrap gap-2 justify-center pt-2">
-                      {getStarterPrompts(selectedAgent).map((prompt) => (
-                        <button
-                          key={prompt}
-                          onClick={() => setInput(prompt)}
-                          className="text-sm px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
-                        >
-                          {prompt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.role === 'assistant' && <AgentAvatar name={selected} />}
-                  {msg.role === 'user' ? (
-                    <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
-                      {msg.content}
-                    </div>
-                  ) : (
-                    <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
-                      {msg.streaming && !msg.content && (!msg.toolCalls || msg.toolCalls.length === 0) && (
-                        <TypingIndicator />
-                      )}
-                      {msg.content && <Markdown>{msg.content}</Markdown>}
-                      {msg.streaming && msg.content && (
-                        <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
-                      )}
-                      {msg.toolCalls?.map((tc, j) => (
-                        <ToolCallPanel key={tc.id} tc={tc} onToggle={() => toggleToolCall(i, j)} />
-                      ))}
-                    </div>
-                  )}
-                  {msg.role === 'user' && <UserAvatar />}
-                </div>
-              ))}
-              <div ref={bottomRef} />
-
-              {/* Scroll to bottom FAB */}
-              {showScrollBtn && (
-                <button
-                  onClick={scrollToBottom}
-                  className="sticky bottom-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-accent border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors z-10"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {/* Input */}
-            <div className="pt-3 border-t border-border space-y-1.5">
-              <div className="flex gap-2 items-end">
-                <textarea
-                  ref={textareaRef}
-                  rows={1}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={`Message ${selected}...`}
-                  disabled={sending}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:border-primary disabled:opacity-50 resize-none overflow-y-auto"
-                  style={{ maxHeight: '144px' }}
-                />
-                <button
-                  onClick={send}
-                  disabled={sending || !input.trim()}
-                  className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50 flex-shrink-0"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-                  </svg>
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground px-1">Enter to send, Shift+Enter for new line</p>
-            </div>
-          </>
         )}
+
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {msg.role === 'assistant' && <AgentAvatar name={activeAgent} />}
+            {msg.role === 'user' ? (
+              <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
+                {msg.content}
+              </div>
+            ) : (
+              <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
+                {msg.streaming && !msg.content && (!msg.toolCalls || msg.toolCalls.length === 0) && (
+                  <TypingIndicator />
+                )}
+                {msg.content && <Markdown>{msg.content}</Markdown>}
+                {msg.streaming && msg.content && (
+                  <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+                )}
+                {msg.toolCalls?.map((tc, j) => (
+                  <ToolCallPanel key={tc.id} tc={tc} onToggle={() => toggleToolCall(i, j)} />
+                ))}
+              </div>
+            )}
+            {msg.role === 'user' && <UserAvatar />}
+          </div>
+        ))}
+
+        {/* Handoff banner — shown after Hermes routes to a specialist */}
+        {pendingHandoff && (
+          <HandoffBanner
+            from={HERMES}
+            to={pendingHandoff}
+            onSwitch={() => switchToAgent(pendingHandoff)}
+          />
+        )}
+
+        <div ref={bottomRef} />
+
+        {showScrollBtn && (
+          <button
+            onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            className="sticky bottom-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-accent border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors z-10"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="pt-3 border-t border-border space-y-1.5">
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={isHermes ? 'Tell Hermes what you need…' : `Message ${activeAgent}…`}
+            disabled={sending}
+            className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:border-primary disabled:opacity-50 resize-none overflow-y-auto"
+            style={{ maxHeight: '144px' }}
+          />
+          <button
+            onClick={() => send()}
+            disabled={sending || !input.trim()}
+            className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50 flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground px-1">Enter to send · Shift+Enter for new line</p>
       </div>
     </div>
   )

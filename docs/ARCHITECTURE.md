@@ -61,6 +61,7 @@ vega/
 │   ├── broker.go     # EventBroker pub/sub (fans out to SSE subscribers)
 │   ├── store.go      # Store interface for persistence
 │   ├── store_sqlite.go   # SQLite implementation (modernc.org/sqlite, pure Go)
+│   ├── scheduler.go  # Built-in cron scheduler (robfig/cron/v3)
 │   ├── types.go      # API request/response structs
 │   ├── embed.go      # //go:embed for SPA frontend
 │   └── frontend/     # React + Vite + Tailwind CSS dashboard
@@ -498,7 +499,7 @@ The `serve` package provides `vega serve` — an HTTP server with a web dashboar
 
 - **EventBroker pattern**: The `EventBroker` pub/sub hooks into `orch.OnProcessStarted/Complete/Failed` callbacks and fans out events to SSE subscribers. Events are also persisted to SQLite. Max 50 concurrent subscribers.
 
-- **Pure Go SQLite**: Uses `modernc.org/sqlite` (no CGo) for cross-compilation. Stores events, process snapshots, and workflow runs. WAL mode for concurrent reads.
+- **Pure Go SQLite**: Uses `modernc.org/sqlite` (no CGo) for cross-compilation. Stores events, process snapshots, workflow runs, composed agents, chat history, and scheduled jobs. WAL mode for concurrent reads.
 
 - **Embedded SPA**: The React frontend is compiled to static files and embedded into the Go binary via `//go:embed`. A fallback handler serves `index.html` for client-side routing.
 
@@ -520,10 +521,13 @@ GET    /                        → Embedded React dashboard (SPA)
 
 ### SQLite Schema
 
-Three tables persist data across restarts:
+Six tables persist data across restarts:
 - **events** — All orchestration events (type, process_id, agent, timestamp, data JSON)
 - **process_snapshots** — Process state snapshots (status, metrics, parent, timestamps)
 - **workflow_runs** — Workflow execution history (name, inputs, status, result)
+- **composed_agents** — Agent definitions created via Mother or REST API
+- **chat_messages** — Per-agent conversation history
+- **scheduled_jobs** — Recurring cron schedules (name, cron expression, agent, message, enabled)
 
 ## Performance Considerations
 

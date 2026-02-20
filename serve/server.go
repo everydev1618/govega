@@ -41,6 +41,7 @@ type Server struct {
 	store     Store
 	popClient *population.Client
 	telegram  *TelegramBot
+	scheduler *Scheduler
 	cfg       Config
 	startedAt time.Time
 
@@ -100,11 +101,49 @@ func (s *Server) Start(ctx context.Context) error {
 		s.restoreComposedAgents()
 	}
 
+	// Register memory tools before injecting meta-agents so they can use them.
+	RegisterMemoryTools(s.interp)
+
 	// Inject Mother — the built-in meta-agent for creating agents via chat.
 	s.injectMother()
 
 	// Inject Hermes — the cosmic orchestrator that routes goals across all agents.
 	s.injectHermes()
+
+	// Set up scheduler and restore persisted jobs.
+	s.scheduler = NewScheduler(
+		s.interp,
+		func(job dsl.ScheduledJob) error {
+			return s.store.UpsertScheduledJob(ScheduledJob{
+				Name:      job.Name,
+				Cron:      job.Cron,
+				AgentName: job.AgentName,
+				Message:   job.Message,
+				Enabled:   job.Enabled,
+			})
+		},
+		func(name string) error {
+			return s.store.DeleteScheduledJob(name)
+		},
+	)
+	if storedJobs, err := s.store.ListScheduledJobs(); err != nil {
+		slog.Warn("scheduler: failed to load persisted jobs", "error", err)
+	} else {
+		for _, sj := range storedJobs {
+			job := dsl.ScheduledJob{
+				Name:      sj.Name,
+				Cron:      sj.Cron,
+				AgentName: sj.AgentName,
+				Message:   sj.Message,
+				Enabled:   sj.Enabled,
+			}
+			if err := s.scheduler.AddJob(job); err != nil {
+				slog.Warn("scheduler: failed to restore job", "name", sj.Name, "error", err)
+			}
+		}
+	}
+	dsl.RegisterSchedulerTools(s.interp, s.scheduler)
+	go s.scheduler.Start(ctx)
 
 	// Start Telegram bot if configured (after meta-agents are injected).
 	if s.cfg.TelegramToken != "" {
@@ -112,7 +151,9 @@ func (s *Server) Start(ctx context.Context) error {
 		if agentName == "" {
 			agentName = dsl.HermesAgentName // default to Hermes
 		}
-		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store)
+		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store, func(userID, agent, userMsg, response string) {
+			s.extractMemory(userID, agent, userMsg, response)
+		})
 		if err != nil {
 			slog.Warn("telegram bot init failed", "error", err)
 		} else {
@@ -339,14 +380,14 @@ func (s *Server) injectMother() {
 		},
 	}
 
-	if err := dsl.InjectMother(s.interp, cb); err != nil {
+	if err := dsl.InjectMother(s.interp, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules"); err != nil {
 		slog.Warn("failed to inject Mother agent", "error", err)
 	}
 }
 
 // injectHermes adds Hermes, the cosmic orchestrator, to the interpreter.
 func (s *Server) injectHermes() {
-	if err := dsl.InjectHermes(s.interp); err != nil {
+	if err := dsl.InjectHermes(s.interp, "remember", "recall", "forget"); err != nil {
 		slog.Warn("failed to inject Hermes agent", "error", err)
 	}
 }
