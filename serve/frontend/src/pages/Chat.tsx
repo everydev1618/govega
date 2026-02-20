@@ -2,9 +2,10 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
-import type { ChatEvent, ToolCallState } from '../lib/types'
+import type { AgentResponse, ChatEvent, ToolCallState } from '../lib/types'
 
 const HERMES = 'hermes'
+const META_AGENTS = new Set(['hermes', 'mother'])
 
 // Matches the handoff line Hermes emits: → Handing you to **agent-name** for this conversation.
 const HANDOFF_RE = /→\s+Handing you to \*\*([^*]+)\*\*/
@@ -123,6 +124,77 @@ function HandoffBanner({ from, to, onSwitch }: { from: string; to: string; onSwi
   )
 }
 
+function AgentPicker({
+  agents,
+  activeAgent,
+  onSelect,
+}: {
+  agents: AgentResponse[]
+  activeAgent: string
+  onSelect: (name: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  if (agents.length === 0) return null
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => setOpen(v => !v)}
+        title="Switch agent"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span>Agents</span>
+        <span className="bg-primary/20 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none">
+          {agents.length}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-border bg-card shadow-lg z-20 overflow-hidden">
+          <div className="px-3 py-2 border-b border-border">
+            <p className="text-xs text-muted-foreground font-medium">Your agents</p>
+          </div>
+          <div className="max-h-64 overflow-y-auto py-1">
+            {agents.map(a => (
+              <button
+                key={a.name}
+                onClick={() => { onSelect(a.name); setOpen(false) }}
+                className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left ${
+                  activeAgent === a.name ? 'bg-accent/30 text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
+                  {a.name[0]?.toUpperCase()}
+                </div>
+                <span className="truncate font-medium">{a.name}</span>
+                {activeAgent === a.name && (
+                  <svg className="w-3 h-3 ml-auto text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function VegaStar() {
   return (
     <pre className="text-xs leading-snug font-mono select-none inline-block text-left" aria-hidden="true">
@@ -149,6 +221,8 @@ export function Chat() {
   const [loaded, setLoaded] = useState(false)
   // Agent Hermes wants to hand us off to, pending user confirmation
   const [pendingHandoff, setPendingHandoff] = useState<string | null>(null)
+  // Specialist agents (excludes hermes + mother)
+  const [specialists, setSpecialists] = useState<AgentResponse[]>([])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -156,6 +230,26 @@ export function Chat() {
   const abortRef = useRef<AbortController | null>(null)
   // Track the event index at stream start so we only look at events fired during this stream
   const streamStartEventCount = useRef(0)
+
+  // Fetch specialist agents (all agents except meta-agents)
+  const fetchAgents = useCallback(() => {
+    api.getAgents()
+      .then(list => {
+        setSpecialists((list ?? []).filter(a => !META_AGENTS.has(a.name)))
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => { fetchAgents() }, [fetchAgents])
+
+  // Refresh agent list when Mother creates or deletes an agent
+  useEffect(() => {
+    const last = events[events.length - 1]
+    if (!last) return
+    if (last.type === 'agent.created' || last.type === 'agent.deleted') {
+      fetchAgents()
+    }
+  }, [events, fetchAgents])
 
   // Load history for the active agent whenever it changes
   useEffect(() => {
@@ -369,6 +463,11 @@ export function Chat() {
               : 'Specialist agent — connected by Hermes'}
           </p>
         </div>
+        <AgentPicker
+          agents={specialists}
+          activeAgent={activeAgent}
+          onSelect={switchToAgent}
+        />
         <button
           onClick={clearChat}
           title="Clear chat"
