@@ -138,7 +138,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Ensure the agent process is spawned so we can inject memory.
 	proc, err := s.interp.EnsureAgent(name)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 
@@ -158,7 +159,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	response, err := s.interp.SendToAgent(ctx, name, req.Message)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 
@@ -189,7 +191,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	proc, err := s.interp.EnsureAgent(name)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 
@@ -208,7 +211,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	stream, err := s.interp.StreamToAgent(ctx, name, req.Message)
 	if err != nil {
 		cancel()
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 
@@ -279,7 +283,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				as.mu.Unlock()
 
 				if streamErr != nil {
-					errData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventError, Error: streamErr.Error()})
+					_, friendlyMsg := classifyHTTPError(streamErr)
+					errData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventError, Error: friendlyMsg})
 					fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
 					flusher.Flush()
 				}
@@ -582,6 +587,28 @@ func treeNodeToResponse(node *vega.SpawnTreeNode) SpawnTreeNodeResponse {
 		SpawnReason: node.SpawnReason,
 		StartedAt:   node.StartedAt,
 		Children:    children,
+	}
+}
+
+// classifyHTTPError maps an error to an HTTP status code and user-friendly message
+// using vega.ClassifyError.
+func classifyHTTPError(err error) (int, string) {
+	class := vega.ClassifyError(err)
+	switch class {
+	case vega.ErrClassAuthentication:
+		return http.StatusUnauthorized,
+			"API key is missing or invalid. Check your ~/.vega/env file or run 'vega init'."
+	case vega.ErrClassRateLimit:
+		return http.StatusTooManyRequests,
+			"Rate limited by the AI provider. Please wait a moment and try again."
+	case vega.ErrClassOverloaded:
+		return http.StatusServiceUnavailable,
+			"The AI provider is currently overloaded. Please try again shortly."
+	case vega.ErrClassBudgetExceeded:
+		return http.StatusPaymentRequired,
+			"Budget exceeded for this agent."
+	default:
+		return http.StatusInternalServerError, err.Error()
 	}
 }
 

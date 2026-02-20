@@ -126,6 +126,33 @@ type anthropicResponse struct {
 	} `json:"usage"`
 }
 
+// ValidateKey makes a minimal API call to verify the API key is valid.
+// Returns nil on success, or an error describing the failure (empty key,
+// authentication failure, or network/other error).
+func (a *AnthropicLLM) ValidateKey(ctx context.Context) error {
+	if a.apiKey == "" {
+		return fmt.Errorf("API key is empty")
+	}
+
+	req := &anthropicRequest{
+		Model:     a.model,
+		MaxTokens: 1,
+		Messages:  []anthropicMsg{{Role: "user", Content: "hi"}},
+	}
+
+	_, err := a.doRequest(ctx, req)
+	if err == nil {
+		return nil
+	}
+
+	errStr := strings.ToLower(err.Error())
+	if strings.Contains(errStr, "401") || strings.Contains(errStr, "unauthorized") ||
+		strings.Contains(errStr, "invalid") || strings.Contains(errStr, "authentication") {
+		return fmt.Errorf("invalid API key: %w", err)
+	}
+	return fmt.Errorf("could not reach Anthropic API: %w", err)
+}
+
 // Generate sends a request and returns the complete response.
 func (a *AnthropicLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
 	start := time.Now()

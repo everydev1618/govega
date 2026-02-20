@@ -21,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route element={<Layout />}>
           <Route index element={<Chat />} />
           <Route path="chat" element={<Chat />} />
+          <Route path="chat/:agent" element={<Chat />} />
           <Route path="overview" element={<Overview />} />
           <Route path="processes" element={<ProcessExplorer />} />
           <Route path="spawn-tree" element={<SpawnTree />} />

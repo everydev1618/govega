@@ -1,5 +1,23 @@
 const BASE = ''
 
+export class APIError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'APIError'
+    this.status = status
+  }
+}
+
+async function parseErrorResponse(res: Response): Promise<APIError> {
+  const body = await res.text()
+  try {
+    const json = JSON.parse(body)
+    if (json.error) return new APIError(res.status, json.error)
+  } catch { /* not JSON, fall through */ }
+  return new APIError(res.status, body)
+}
+
 export async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -9,8 +27,7 @@ export async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> 
     },
   })
   if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`${res.status}: ${body}`)
+    throw await parseErrorResponse(res)
   }
   return res.json()
 }
@@ -82,8 +99,7 @@ export const api = {
       signal,
     }).then(async (res) => {
       if (!res.ok) {
-        const body = await res.text()
-        throw new Error(`${res.status}: ${body}`)
+        throw await parseErrorResponse(res)
       }
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()

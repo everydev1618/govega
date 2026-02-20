@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAPI } from '../hooks/useAPI'
 import { api } from '../lib/api'
 import type { PopulationInstalledItem, CreateAgentRequest } from '../lib/types'
 
 export function AgentRegistry() {
+  const navigate = useNavigate()
   const { data: agents, loading, refetch } = useAPI(() => api.getAgents())
   const [showComposer, setShowComposer] = useState(false)
   const [personas, setPersonas] = useState<PopulationInstalledItem[]>([])
@@ -218,6 +220,13 @@ export function AgentRegistry() {
                     {agent.process_status}
                   </span>
                 )}
+                <button
+                  onClick={() => navigate(`/chat/${agent.name}`)}
+                  className="text-xs px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                  title={`Chat with ${agent.name}`}
+                >
+                  Chat
+                </button>
                 {agent.source === 'composed' && (
                   <button
                     onClick={() => deleteAgent(agent.name)}

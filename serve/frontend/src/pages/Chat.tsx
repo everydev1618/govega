@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
-import { api } from '../lib/api'
-import { APIError } from '../lib/api'
+import { api, APIError } from '../lib/api'
 import type { AgentResponse, ChatEvent, ToolCallState } from '../lib/types'
 
 const HERMES = 'hermes'
@@ -240,10 +240,12 @@ function VegaStar() {
 }
 
 export function Chat() {
+  const { agent: agentParam } = useParams<{ agent?: string }>()
+  const navigate = useNavigate()
   const { events } = useSSE()
 
   // Which agent the chat is currently directed to
-  const [activeAgent, setActiveAgent] = useState(HERMES)
+  const [activeAgent, setActiveAgent] = useState(agentParam || HERMES)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -429,6 +431,19 @@ export function Chat() {
       abortRef.current = null
     }
   }
+
+  // Sync activeAgent when navigating to /chat/:agent from another page
+  useEffect(() => {
+    if (agentParam && agentParam !== activeAgent) {
+      setActiveAgent(agentParam)
+    }
+  }, [agentParam]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep URL in sync with activeAgent
+  useEffect(() => {
+    const target = activeAgent === HERMES ? '/chat' : `/chat/${activeAgent}`
+    navigate(target, { replace: true })
+  }, [activeAgent, navigate])
 
   const switchToAgent = (name: string) => {
     if (abortRef.current) {
