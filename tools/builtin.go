@@ -105,6 +105,8 @@ func (t *Tools) RegisterBuiltins() {
 		},
 	})
 
+	RegisterEmailTool(t)
+
 	t.Register("exec", ToolDef{
 		Description: "Execute a shell command inside the workspace sandbox. The working directory is always the sandbox. Use this to run build tools, start servers, install dependencies, etc.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {

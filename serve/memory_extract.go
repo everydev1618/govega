@@ -11,23 +11,19 @@ import (
 	"github.com/everydev1618/govega/llm"
 )
 
-const maxJournalEntries = 20
-const displayJournalEntries = 10
-
 // extractionResult is the JSON structure returned by the extraction LLM.
 type extractionResult struct {
 	ProfileUpdates map[string]any `json:"profile_updates"`
-	JournalEntry   *journalEntry  `json:"journal_entry"`
+	TopicUpdates   []topicUpdate  `json:"topic_updates"`
 	NotesUpdates   map[string]any `json:"notes_updates"`
 }
 
-// journalEntry is a single coaching session summary.
-type journalEntry struct {
-	Date           string   `json:"date"`
-	Challenge      string   `json:"challenge"`
-	Advice         string   `json:"advice"`
-	ActionItems    []string `json:"action_items"`
-	FrameworksUsed []string `json:"frameworks_used"`
+// topicUpdate is a project/topic summary extracted from conversation.
+type topicUpdate struct {
+	Topic   string   `json:"topic"`
+	Summary string   `json:"summary"`
+	Details []string `json:"details"`
+	Tags    []string `json:"tags"`
 }
 
 // extractMemory runs an async LLM call to extract memory from the latest exchange.
@@ -81,27 +77,32 @@ func (s *Server) extractMemory(userID, agent, userMsg, response string) {
 		}
 	}
 
-	// Append journal entry if present.
-	if result.JournalEntry != nil {
-		if result.JournalEntry.Date == "" {
-			result.JournalEntry.Date = time.Now().Format("2006-01-02")
+	// Store topic updates as memory items and rebuild the topics summary.
+	if len(result.TopicUpdates) > 0 {
+		for _, tu := range result.TopicUpdates {
+			if tu.Topic == "" || tu.Summary == "" {
+				continue
+			}
+			content := tu.Summary
+			if len(tu.Details) > 0 {
+				content += "\n- " + strings.Join(tu.Details, "\n- ")
+			}
+			tags := strings.Join(tu.Tags, ",")
+			if _, err := s.store.InsertMemoryItem(MemoryItem{
+				UserID:  userID,
+				Agent:   agent,
+				Topic:   tu.Topic,
+				Content: content,
+				Tags:    tags,
+			}); err != nil {
+				slog.Error("memory extraction: failed to insert memory item", "error", err, "topic", tu.Topic)
+			} else {
+				slog.Info("memory extraction: stored topic update", "user", userID, "topic", tu.Topic)
+			}
 		}
-		existing := findLayer(memories, "journal")
-		var entries []journalEntry
-		if existing != "" {
-			json.Unmarshal([]byte(existing), &entries)
-		}
-		entries = append(entries, *result.JournalEntry)
-		// Cap at maxJournalEntries.
-		if len(entries) > maxJournalEntries {
-			entries = entries[len(entries)-maxJournalEntries:]
-		}
-		content, _ := json.Marshal(entries)
-		if err := s.store.UpsertUserMemory(userID, agent, "journal", string(content)); err != nil {
-			slog.Error("memory extraction: failed to upsert journal", "error", err)
-		} else {
-			slog.Info("memory extraction: added journal entry", "user", userID)
-		}
+
+		// Rebuild topics summary layer.
+		s.updateTopicsSummary(userID, agent)
 	}
 
 	// Upsert notes if we got updates.
@@ -117,6 +118,46 @@ func (s *Server) extractMemory(userID, agent, userMsg, response string) {
 	}
 }
 
+// updateTopicsSummary aggregates distinct topics from memory_items into a
+// summary JSON object and upserts it to user_memory with layer="topics".
+func (s *Server) updateTopicsSummary(userID, agent string) {
+	// Search with empty query to get all items, then deduplicate by topic.
+	items, err := s.store.SearchMemoryItems(userID, agent, "", 100)
+	if err != nil {
+		slog.Error("memory extraction: failed to list memory items for summary", "error", err)
+		return
+	}
+
+	// Build topic → latest summary map.
+	topics := make(map[string]string)
+	for _, item := range items {
+		if item.Topic == "" {
+			continue
+		}
+		// Keep the most recent entry per topic (items are ordered by updated_at DESC).
+		if _, exists := topics[item.Topic]; !exists {
+			// Truncate to first line / 120 chars for summary.
+			summary := item.Content
+			if idx := strings.Index(summary, "\n"); idx > 0 {
+				summary = summary[:idx]
+			}
+			if len(summary) > 120 {
+				summary = summary[:120] + "..."
+			}
+			topics[item.Topic] = summary
+		}
+	}
+
+	if len(topics) == 0 {
+		return
+	}
+
+	content, _ := json.Marshal(topics)
+	if err := s.store.UpsertUserMemory(userID, agent, "topics", string(content)); err != nil {
+		slog.Error("memory extraction: failed to upsert topics summary", "error", err)
+	}
+}
+
 // formatMemoryForInjection formats stored memories into text for the system prompt.
 func formatMemoryForInjection(memories []UserMemory) string {
 	if len(memories) == 0 {
@@ -124,15 +165,19 @@ func formatMemoryForInjection(memories []UserMemory) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("## Coaching Client Memory\n")
+	b.WriteString("## Memory\n")
 
 	for _, m := range memories {
 		switch m.Layer {
 		case "profile":
 			b.WriteString("\n### Who they are\n")
 			b.WriteString(formatProfileContent(m.Content))
+		case "topics":
+			b.WriteString("\n### Active topics\n")
+			b.WriteString(formatTopicsContent(m.Content))
 		case "journal":
-			b.WriteString("\n### Coaching history (recent)\n")
+			// Legacy backward compat: render existing journal entries read-only.
+			b.WriteString("\n### History (legacy)\n")
 			b.WriteString(formatJournalContent(m.Content))
 		case "notes":
 			b.WriteString("\n### Notes\n")
@@ -140,7 +185,22 @@ func formatMemoryForInjection(memories []UserMemory) string {
 		}
 	}
 
-	b.WriteString("\nReference this context naturally. Don't recite it mechanically. Check in on past action items when relevant.")
+	b.WriteString("\nReference this context naturally. Don't recite it mechanically.")
+	b.WriteString("\nYou have memory tools: use `recall` to search past details, `remember` to save important info.")
+	return b.String()
+}
+
+// formatTopicsContent renders the topics summary as one-liners.
+func formatTopicsContent(content string) string {
+	var topics map[string]string
+	if err := json.Unmarshal([]byte(content), &topics); err != nil {
+		return content
+	}
+	var b strings.Builder
+	for topic, summary := range topics {
+		b.WriteString(fmt.Sprintf("- **%s**: %s\n", topic, summary))
+	}
+	b.WriteString("(Use `recall` tool for full details on any topic.)\n")
 	return b.String()
 }
 
@@ -157,6 +217,15 @@ func formatProfileContent(content string) string {
 	return b.String()
 }
 
+// journalEntry is a legacy coaching session summary (kept for backward compat).
+type journalEntry struct {
+	Date           string   `json:"date"`
+	Challenge      string   `json:"challenge"`
+	Advice         string   `json:"advice"`
+	ActionItems    []string `json:"action_items"`
+	FrameworksUsed []string `json:"frameworks_used"`
+}
+
 // formatJournalContent converts journal JSON array to readable text.
 func formatJournalContent(content string) string {
 	var entries []journalEntry
@@ -164,10 +233,10 @@ func formatJournalContent(content string) string {
 		return content
 	}
 
-	// Show only the most recent displayJournalEntries.
+	// Show only the most recent 10.
 	start := 0
-	if len(entries) > displayJournalEntries {
-		start = len(entries) - displayJournalEntries
+	if len(entries) > 10 {
+		start = len(entries) - 10
 	}
 
 	var b strings.Builder
@@ -211,29 +280,29 @@ func buildExistingMemoryJSON(memories []UserMemory) string {
 }
 
 // buildExtractionPrompt constructs the prompt for the extraction LLM.
-func buildExtractionPrompt(existingMemory, userMsg, danResponse string) string {
-	return fmt.Sprintf(`You are analyzing a coaching conversation to extract memory updates.
+func buildExtractionPrompt(existingMemory, userMsg, agentResponse string) string {
+	return fmt.Sprintf(`You are analyzing a conversation to extract memory updates.
 
 EXISTING MEMORY:
 %s
 
 LATEST EXCHANGE:
 User: %s
-Dan: %s
+Agent: %s
 
 Extract ONLY new or changed information. Return JSON:
 {
   "profile_updates": {"key": "value", ...} or null,
-  "journal_entry": {"challenge": "...", "advice": "...", "action_items": [...], "frameworks_used": [...]} or null,
+  "topic_updates": [{"topic": "...", "summary": "...", "details": ["..."], "tags": ["..."]}] or null,
   "notes_updates": {"key": "value", ...} or null
 }
 
 Rules:
-- profile_updates: factual info about the person (name, business, role, location, revenue, employees, etc.)
-- journal_entry: only if a meaningful coaching exchange happened (challenge discussed, advice given, commitments made)
+- profile_updates: factual info about the person (name, business, role, location, etc.)
+- topic_updates: projects, tasks, ongoing discussions. Each needs a clear topic name, a one-line summary, optional detail bullets, and tags for search. Only create entries for substantive topics discussed, not casual chat.
 - notes_updates: communication preferences, personality observations, recurring themes
-- If nothing meaningful was revealed, return {"profile_updates":null,"journal_entry":null,"notes_updates":null}
-- Return ONLY valid JSON, no markdown fences, no explanation.`, existingMemory, userMsg, danResponse)
+- If nothing meaningful was revealed, return {"profile_updates":null,"topic_updates":null,"notes_updates":null}
+- Return ONLY valid JSON, no markdown fences, no explanation.`, existingMemory, userMsg, agentResponse)
 }
 
 // parseExtractionResult extracts the JSON from the LLM response.

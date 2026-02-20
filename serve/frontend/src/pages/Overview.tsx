@@ -11,7 +11,7 @@ export function Overview() {
 
   if (loading) return <PageSkeleton />
 
-  const hasAgents = agents && agents.length > 1 // more than just the default assistant
+  const hasAgents = agents && agents.length > 2 // more than just mother + hermes
   const hasWorkflows = workflows && workflows.length > 0
 
   return (
@@ -28,23 +28,23 @@ export function Overview() {
         <div className="p-5 rounded-lg border border-border bg-card space-y-5">
           <h3 className="text-lg font-semibold">Get Started</h3>
           <p className="text-sm text-muted-foreground">
-            Vega lets you build AI agents from reusable personas and skills, then orchestrate them with workflows. Here's how:
+            Just talk to Hermes — he'll route your goals across agents, ask Mother to build new ones, and set up schedules. Or go deeper:
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <StepCard
               step={1}
-              title="Browse & Install"
-              description="Explore the population library. Install personas (agent personalities) and skills (tool collections)."
-              to="/population"
-              cta="Open Population"
+              title="Chat with Hermes"
+              description="Describe what you need. Hermes orchestrates across all agents, calls Mother to create new ones, and sets up schedules."
+              to="/"
+              cta="Open Chat"
             />
             <StepCard
               step={2}
-              title="Compose an Agent"
-              description="Pick a persona, attach skills, and create a live agent. It spawns immediately with all its tools."
-              to="/agents"
-              cta="Open Agents"
+              title="Browse the Population"
+              description="Explore the library of agent personas and skill packs. Install them and ask Hermes to put them to work."
+              to="/population"
+              cta="Open Population"
             />
             <StepCard
               step={3}

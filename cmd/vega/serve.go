@@ -13,36 +13,13 @@ import (
 )
 
 // defaultDocument returns a minimal Document for when no YAML file is provided.
+// Mother and Hermes are always injected by the server, so no starter agents
+// are needed here.
 func defaultDocument() *dsl.Document {
 	return &dsl.Document{
-		Name: "Vega Dashboard",
-		Agents: map[string]*dsl.Agent{
-			"assistant": {
-				Name:   "assistant",
-				Model:  "claude-sonnet-4-20250514",
-				System: "You are a helpful assistant.",
-			},
-		},
-		Workflows: map[string]*dsl.Workflow{
-			"ask": {
-				Description: "Send a message to the assistant",
-				Inputs: map[string]*dsl.Input{
-					"message": {
-						Type:        "string",
-						Description: "The message to send",
-						Required:    true,
-					},
-				},
-				Steps: []dsl.Step{
-					{
-						Agent: "assistant",
-						Send:  "{{message}}",
-						Save:  "response",
-					},
-				},
-				Output: "{{response}}",
-			},
-		},
+		Name:      "Vega",
+		Agents:    map[string]*dsl.Agent{},
+		Workflows: map[string]*dsl.Workflow{},
 	}
 }
 

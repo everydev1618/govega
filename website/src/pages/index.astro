@@ -78,7 +78,7 @@ const vegaGaps = [
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vega — Fault-tolerant AI agent orchestration for Go</title>
+  <title>Vega — Fault-tolerant AI agent orchestration</title>
   <meta name="description" content="Build reliable AI agent systems with Erlang-style supervision, YAML DSL, and a built-in web dashboard." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>★</text></svg>" />
 </head>
@@ -122,7 +122,7 @@ const vegaGaps = [
       Vega
     </h1>
     <p class="text-xl text-slate-300 mb-3 max-w-2xl mx-auto">
-      Fault-tolerant AI agent orchestration for Go
+      Fault-tolerant AI agent orchestration
     </p>
     <p class="text-slate-500 mb-10 max-w-xl mx-auto">
       Erlang-style supervision trees, a YAML DSL for non-programmers, and a built-in web dashboard with real-time streaming.
@@ -143,10 +143,16 @@ const vegaGaps = [
   <!-- Install -->
   <section id="install" class="max-w-5xl mx-auto px-6 pb-20">
     <p class="section-label text-center">Install</p>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
       <div class="code-block">
         <p class="text-slate-500 text-xs mb-2"># CLI via Homebrew</p>
         <p class="text-emerald-400">brew install <span class="text-white">everydev1618/tap/vega</span></p>
+      </div>
+      <div class="code-block">
+        <p class="text-slate-500 text-xs mb-2"># Download binary</p>
+        <a href={`${GITHUB}/releases/latest`} target="_blank" class="text-indigo-400 hover:text-indigo-300 transition-colors text-sm">
+          macOS · Linux · Windows →
+        </a>
       </div>
       <div class="code-block">
         <p class="text-slate-500 text-xs mb-2"># Go library</p>

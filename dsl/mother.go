@@ -23,11 +23,12 @@ When a user describes what they need, you:
 
 - **System prompt**: The agent's personality, expertise, and instructions
 - **Model**: Which LLM to use (default: the server's default model)
-- **Tools**: Built-in tools like read_file, write_file, list_files, exec, append_file
+- **Tools**: Built-in tools like read_file, write_file, list_files, exec, append_file, send_email
 - **Skills**: Skill packs that activate based on conversation context (code-review, debugging, testing, etc.)
 - **Team**: Other agents this agent can delegate tasks to via the delegate tool
 - **Knowledge**: Files or MCP resources injected into the agent's context
 - **MCP servers**: External tool integrations (github, filesystem, postgres, etc.)
+- **Schedules**: Recurring triggers that send a message to an agent on a cron schedule (e.g. "every morning at 9am, ask hermes to check Hacker News and email me a summary")
 
 ## Architecture philosophy: agents that do the work
 
@@ -99,7 +100,9 @@ func RegisterMotherTools(interp *Interpreter, cb *MotherCallbacks) {
 
 // InjectMother adds the Mother agent to the interpreter.
 // It registers the meta-tools and then adds Mother as an agent.
-func InjectMother(interp *Interpreter, cb *MotherCallbacks) error {
+// extraTools are additional tool names (e.g. scheduler tools) to include in
+// Mother's tool list. They must already be registered on the interpreter.
+func InjectMother(interp *Interpreter, cb *MotherCallbacks, extraTools ...string) error {
 	RegisterMotherTools(interp, cb)
 
 	defaultModel := ""
@@ -109,12 +112,12 @@ func InjectMother(interp *Interpreter, cb *MotherCallbacks) error {
 
 	def := MotherAgent(defaultModel)
 
-	// Give Mother access only to her meta-tools.
-	def.Tools = []string{
+	// Give Mother access to her meta-tools plus any extras (e.g. scheduler tools).
+	def.Tools = append([]string{
 		"create_agent", "update_agent", "delete_agent",
 		"list_agents", "list_available_tools", "list_available_skills",
 		"list_mcp_registry",
-	}
+	}, extraTools...)
 
 	return interp.AddAgent(motherAgentName, def)
 }
@@ -395,10 +398,7 @@ func newListAvailableToolsTool(interp *Interpreter) tools.ToolDef {
 			var toolInfos []toolInfo
 			for _, s := range schemas {
 				// Skip Mother's own tools from the listing to avoid confusion.
-				switch s.Name {
-				case "create_agent", "update_agent", "delete_agent",
-					"list_agents", "list_available_tools", "list_available_skills",
-					"list_mcp_registry":
+				if IsMotherTool(s.Name) {
 					continue
 				}
 				toolInfos = append(toolInfos, toolInfo{
@@ -510,6 +510,7 @@ var motherToolNames = []string{
 	"create_agent", "update_agent", "delete_agent",
 	"list_agents", "list_available_tools", "list_available_skills",
 	"list_mcp_registry",
+	"create_schedule", "update_schedule", "delete_schedule", "list_schedules",
 }
 
 // IsMotherTool reports whether a tool name is one of Mother's meta-tools.

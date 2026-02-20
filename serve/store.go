@@ -57,6 +57,27 @@ type Store interface {
 
 	// DeleteUserMemory removes all memory for a user+agent.
 	DeleteUserMemory(userID, agent string) error
+
+	// InsertMemoryItem saves a memory item.
+	InsertMemoryItem(item MemoryItem) (int64, error)
+
+	// SearchMemoryItems searches memory items by keyword across topic, content, and tags.
+	SearchMemoryItems(userID, agent, query string, limit int) ([]MemoryItem, error)
+
+	// DeleteMemoryItem removes a memory item by ID.
+	DeleteMemoryItem(id int64) error
+
+	// ListMemoryItemsByTopic returns memory items for a given user+agent+topic.
+	ListMemoryItemsByTopic(userID, agent, topic string) ([]MemoryItem, error)
+
+	// UpsertScheduledJob creates or replaces a scheduled job.
+	UpsertScheduledJob(job ScheduledJob) error
+
+	// DeleteScheduledJob removes a scheduled job by name.
+	DeleteScheduledJob(name string) error
+
+	// ListScheduledJobs returns all scheduled jobs.
+	ListScheduledJobs() ([]ScheduledJob, error)
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.
@@ -112,6 +133,28 @@ type ComposedAgent struct {
 	System      string   `json:"system,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// MemoryItem is a persisted memory entry for project-aware recall.
+type MemoryItem struct {
+	ID        int64     `json:"id"`
+	UserID    string    `json:"user_id"`
+	Agent     string    `json:"agent"`
+	Topic     string    `json:"topic"`
+	Content   string    `json:"content"`
+	Tags      string    `json:"tags"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ScheduledJob is a persisted recurring agent trigger.
+type ScheduledJob struct {
+	Name      string    `json:"name"`
+	Cron      string    `json:"cron"`
+	AgentName string    `json:"agent"`
+	Message   string    `json:"message"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // WorkflowRun is a persisted workflow execution.

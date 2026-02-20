@@ -475,6 +475,55 @@ agent := vega.Agent{
 }
 ```
 
+## Built-in Tools
+
+The following tools are registered automatically by `RegisterBuiltins()` and are available to any agent that lists them by name.
+
+| Tool | Description |
+|------|-------------|
+| `read_file` | Read the contents of a file |
+| `write_file` | Write content to a file (path, content) |
+| `append_file` | Append content to an existing file |
+| `list_files` | List directory contents as a JSON array |
+| `exec` | Execute a shell command inside the sandbox |
+| `send_email` | Send an email via SMTP |
+
+### `send_email`
+
+Sends email using stdlib `net/smtp`. Configuration is read from environment variables at call time — no restart needed when changing SMTP settings.
+
+**Required env vars:**
+- `SMTP_HOST` — SMTP server hostname (e.g. `smtp.gmail.com`)
+- `SMTP_USER` — Login username / sender address
+- `SMTP_PASS` — Login password or app password
+
+**Optional env vars:**
+- `SMTP_PORT` — Port number (default `587`)
+- `SMTP_FROM` — From address (defaults to `SMTP_USER`)
+
+**Parameters:**
+- `to` (required) — Recipient email address
+- `subject` (required) — Email subject line
+- `body` (required) — Email body content
+- `is_html` (optional, bool) — Send HTML email instead of plain text
+
+**Example agent config:**
+```yaml
+agents:
+  reporter:
+    model: claude-sonnet-4-20250514
+    system: You compile and email daily summaries.
+    tools:
+      - send_email
+```
+
+**Example environment setup:**
+```bash
+export SMTP_HOST=smtp.gmail.com
+export SMTP_USER=you@gmail.com
+export SMTP_PASS=your-app-password
+```
+
 ## Best Practices
 
 1. **Descriptive names** — `create_github_issue` not `gh_issue`
