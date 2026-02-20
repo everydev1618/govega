@@ -50,6 +50,7 @@ Examples:
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
+	requireAPIKey()
 
 	var doc *dsl.Document
 

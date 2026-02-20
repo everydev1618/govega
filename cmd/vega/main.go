@@ -30,6 +30,8 @@ func main() {
 	args := os.Args[2:]
 
 	switch cmd {
+	case "init":
+		initCmd()
 	case "run":
 		runCmd(args)
 	case "validate":
@@ -56,6 +58,7 @@ Usage:
   vega <command> [options]
 
 Commands:
+  init      Set up API keys and configuration
   run       Run a workflow from a .vega.yaml file
   validate  Validate a .vega.yaml file
   repl      Interactive REPL for exploring agents
@@ -64,6 +67,7 @@ Commands:
   help      Show this help message
 
 Examples:
+  vega init
   vega run team.vega.yaml --workflow code-review --task "Build a REST API"
   vega validate team.vega.yaml
   vega repl team.vega.yaml
@@ -99,6 +103,7 @@ Examples:
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
+	requireAPIKey()
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "Error: no .vega.yaml file specified")
@@ -338,6 +343,7 @@ Commands:
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
+	requireAPIKey()
 
 	var doc *dsl.Document
 	var interp *dsl.Interpreter
@@ -500,6 +506,21 @@ Commands:
 		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// requireAPIKey checks that ANTHROPIC_API_KEY is set (loadEnvFile must have run
+// first). If missing it prints a friendly error and exits.
+func requireAPIKey() {
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		return
+	}
+	fmt.Fprintln(os.Stderr, `Error: ANTHROPIC_API_KEY is not set.
+
+Set it in one of:
+  1. Run 'vega init' to configure interactively
+  2. Add ANTHROPIC_API_KEY=sk-... to ~/.vega/env
+  3. Export it: export ANTHROPIC_API_KEY=sk-...`)
+	os.Exit(1)
 }
 
 // loadEnvFile reads ~/.vega/env and sets any key=value pairs as environment
