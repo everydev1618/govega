@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
+import { APIError } from '../lib/api'
 import type { AgentResponse, ChatEvent, ToolCallState } from '../lib/types'
 
 const HERMES = 'hermes'
@@ -9,6 +10,21 @@ const META_AGENTS = new Set(['hermes', 'mother'])
 
 // Matches the handoff line Hermes emits: → Handing you to **agent-name** for this conversation.
 const HANDOFF_RE = /→\s+Handing you to \*\*([^*]+)\*\*/
+
+function classifyErrorType(msg: string): 'auth' | 'rate_limit' | 'generic' {
+  const lower = msg.toLowerCase()
+  if (lower.includes('api key') || lower.includes('unauthorized') || lower.includes('authentication') || lower.includes('401'))
+    return 'auth'
+  if (lower.includes('rate limit') || lower.includes('429'))
+    return 'rate_limit'
+  return 'generic'
+}
+
+function classifyErrorTypeFromStatus(status: number): 'auth' | 'rate_limit' | 'generic' {
+  if (status === 401) return 'auth'
+  if (status === 429) return 'rate_limit'
+  return 'generic'
+}
 
 const starterPrompts = [
   'What agents do I have and what can they do?',
@@ -21,6 +37,8 @@ interface ChatMessage {
   content: string
   toolCalls?: ToolCallState[]
   streaming?: boolean
+  error?: string
+  errorType?: 'auth' | 'rate_limit' | 'generic'
 }
 
 function ToolCallPanel({ tc, onToggle }: { tc: ToolCallState; onToggle: () => void }) {
@@ -83,6 +101,40 @@ function TypingIndicator() {
   )
 }
 
+function ErrorBanner({ error, errorType }: { error: string; errorType?: string }) {
+  const isAuth = errorType === 'auth'
+  const isRateLimit = errorType === 'rate_limit'
+
+  return (
+    <div className={`mt-2 rounded-lg border px-3 py-2.5 text-sm ${
+      isAuth
+        ? 'border-red-400/50 bg-red-500/10 text-red-300'
+        : isRateLimit
+          ? 'border-yellow-400/50 bg-yellow-500/10 text-yellow-300'
+          : 'border-red-400/50 bg-red-500/10 text-red-300'
+    }`}>
+      <div className="flex items-start gap-2">
+        <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+        <div>
+          <p className="font-medium">{error}</p>
+          {isAuth && (
+            <p className="mt-1 text-xs opacity-80">
+              Run <code className="px-1 py-0.5 rounded bg-black/20 font-mono">vega init</code> to configure your API key.
+            </p>
+          )}
+          {isRateLimit && (
+            <p className="mt-1 text-xs opacity-80">
+              Wait a moment, then try your message again.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function UserAvatar() {
   return (
     <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
@@ -101,28 +153,6 @@ function AgentAvatar({ name }: { name: string }) {
   )
 }
 
-function HandoffBanner({ from, to, onSwitch }: { from: string; to: string; onSwitch: () => void }) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-primary/30 bg-primary/5 text-sm">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <AgentAvatar name={from} />
-        <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-        </svg>
-        <AgentAvatar name={to} />
-      </div>
-      <span className="flex-1 text-muted-foreground">
-        Hermes connected you with <span className="font-semibold text-foreground">{to}</span>
-      </span>
-      <button
-        onClick={onSwitch}
-        className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
-      >
-        Talk to {to} →
-      </button>
-    </div>
-  )
-}
 
 function AgentPicker({
   agents,
@@ -219,8 +249,8 @@ export function Chat() {
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  // Agent Hermes wants to hand us off to, pending user confirmation
-  const [pendingHandoff, setPendingHandoff] = useState<string | null>(null)
+  // Set when Hermes hands off — shows a "connected via Hermes" notice in the new chat
+  const [handoffFrom, setHandoffFrom] = useState<string | null>(null)
   // Specialist agents (excludes hermes + mother)
   const [specialists, setSpecialists] = useState<AgentResponse[]>([])
 
@@ -255,7 +285,6 @@ export function Chat() {
   useEffect(() => {
     setLoaded(false)
     setMessages([])
-    setPendingHandoff(null)
     api.chatHistory(activeAgent)
       .then(history => {
         if (history?.length) {
@@ -332,10 +361,14 @@ export function Chat() {
           }
           break
         }
-        case 'error':
-          updated.content += `\n\nError: ${event.error}`
+        case 'error': {
+          const errMsg = event.error || 'An unexpected error occurred'
+          const errType = classifyErrorType(errMsg)
+          updated.error = errMsg
+          updated.errorType = errType
           updated.streaming = false
           break
+        }
         case 'done':
           updated.streaming = false
           break
@@ -346,12 +379,14 @@ export function Chat() {
     })
   }, [])
 
-  // After a stream ends, check if Hermes emitted a handoff line
+  // After a stream ends, check if Hermes emitted a handoff line and auto-switch
   const checkForHandoff = useCallback((finalContent: string) => {
     if (activeAgent !== HERMES) return
     const match = finalContent.match(HANDOFF_RE)
     if (match) {
-      setPendingHandoff(match[1].trim())
+      const target = match[1].trim()
+      setHandoffFrom(HERMES)
+      setActiveAgent(target)
     }
   }, [activeAgent])
 
@@ -359,7 +394,6 @@ export function Chat() {
     const msg = (text ?? input).trim()
     if (!msg || sending) return
     setInput('')
-    setPendingHandoff(null)
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setMessages(prev => [...prev, { role: 'assistant', content: '', toolCalls: [], streaming: true }])
     setSending(true)
@@ -384,7 +418,9 @@ export function Chat() {
         const msgs = [...prev]
         const last = msgs[msgs.length - 1]
         if (last?.role === 'assistant') {
-          msgs[msgs.length - 1] = { ...last, content: last.content + `\n\nError: ${err}`, streaming: false }
+          const errMsg = err instanceof APIError ? err.message : String(err)
+          const errType = err instanceof APIError ? classifyErrorTypeFromStatus(err.status) : classifyErrorType(errMsg)
+          msgs[msgs.length - 1] = { ...last, error: errMsg, errorType: errType, streaming: false }
         }
         return msgs
       })
@@ -394,13 +430,13 @@ export function Chat() {
     }
   }
 
-  const switchToAgent = async (name: string) => {
+  const switchToAgent = (name: string) => {
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
       setSending(false)
     }
-    setPendingHandoff(null)
+    setHandoffFrom(null)
     setActiveAgent(name)
     // History load handled by the activeAgent useEffect
   }
@@ -412,7 +448,6 @@ export function Chat() {
       setSending(false)
     }
     setMessages([])
-    setPendingHandoff(null)
     try { await api.resetChat(activeAgent) } catch { /* best-effort */ }
   }
 
@@ -440,7 +475,7 @@ export function Chat() {
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
       {/* Header */}
-      <div className="flex items-center gap-3 pb-3 border-b border-border mb-3">
+      <div className={`flex items-center gap-3 pb-3 border-b mb-3 transition-colors ${isHermes ? 'border-border' : 'border-primary/40'}`}>
         {!isHermes && (
           <button
             onClick={goBackToHermes}
@@ -452,15 +487,22 @@ export function Chat() {
             </svg>
           </button>
         )}
-        <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-sm font-semibold">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold transition-colors ${isHermes ? 'bg-primary/20 text-primary' : 'bg-emerald-500/20 text-emerald-400'}`}>
           {activeAgent[0]?.toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold">{activeAgent}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">{activeAgent}</h2>
+            {!isHermes && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 leading-none">
+                via Hermes
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             {isHermes
               ? 'Cosmic orchestrator — routes your goals across the whole agent universe'
-              : 'Specialist agent — connected by Hermes'}
+              : 'Specialist agent · your messages go directly here'}
           </p>
         </div>
         <AgentPicker
@@ -525,19 +567,19 @@ export function Chat() {
                 {msg.toolCalls?.map((tc, j) => (
                   <ToolCallPanel key={tc.id} tc={tc} onToggle={() => toggleToolCall(i, j)} />
                 ))}
+                {msg.error && <ErrorBanner error={msg.error} errorType={msg.errorType} />}
               </div>
             )}
             {msg.role === 'user' && <UserAvatar />}
           </div>
         ))}
 
-        {/* Handoff banner — shown after Hermes routes to a specialist */}
-        {pendingHandoff && (
-          <HandoffBanner
-            from={HERMES}
-            to={pendingHandoff}
-            onSwitch={() => switchToAgent(pendingHandoff)}
-          />
+        {/* Handoff notice — shown at top of specialist conversation */}
+        {!isHermes && handoffFrom && messages.length === 0 && loaded && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground px-1 py-2">
+            <span className="text-emerald-400">✦</span>
+            <span>Hermes connected you. Your messages go directly to <span className="font-medium text-foreground">{activeAgent}</span>.</span>
+          </div>
         )}
 
         <div ref={bottomRef} />
@@ -565,7 +607,7 @@ export function Chat() {
             onKeyDown={handleKeyDown}
             placeholder={isHermes ? 'Tell Hermes what you need…' : `Message ${activeAgent}…`}
             disabled={sending}
-            className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:border-primary disabled:opacity-50 resize-none overflow-y-auto"
+            className={`flex-1 px-4 py-2.5 rounded-xl bg-background border text-sm focus:outline-none disabled:opacity-50 resize-none overflow-y-auto transition-colors ${isHermes ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}`}
             style={{ maxHeight: '144px' }}
           />
           <button
