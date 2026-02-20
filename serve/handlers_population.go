@@ -339,6 +339,12 @@ func (s *Server) restoreComposedAgents() {
 		return
 	}
 
+	// metaTool returns true for tools that belong exclusively to Mother or Hermes
+	// and must never be handed to arbitrary composed agents.
+	metaTool := func(name string) bool {
+		return dsl.IsMotherTool(name) || dsl.IsHermesTool(name)
+	}
+
 	ctx := context.Background()
 	for _, a := range agents {
 		// Start with any explicitly persisted tool restrictions.
@@ -382,6 +388,16 @@ func (s *Server) restoreComposedAgents() {
 				toolNames = append(toolNames, "delegate")
 			}
 			system = dsl.BuildTeamPrompt(system, a.Team, nil, false)
+		}
+
+		// If no explicit tool list, the agent would get every registered tool.
+		// Exclude meta-tools (Mother/Hermes) which must never leak to arbitrary agents.
+		if len(toolNames) == 0 {
+			for _, ts := range s.interp.Tools().Schema() {
+				if !metaTool(ts.Name) {
+					toolNames = append(toolNames, ts.Name)
+				}
+			}
 		}
 
 		agentDef := &dsl.Agent{
