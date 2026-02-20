@@ -341,8 +341,10 @@ func (s *Server) restoreComposedAgents() {
 
 	ctx := context.Background()
 	for _, a := range agents {
-		// Re-register skill tools.
-		var toolNames []string
+		// Start with any explicitly persisted tool restrictions.
+		toolNames := append([]string(nil), a.Tools...)
+
+		// Re-register and append skill tools.
 		for _, skillName := range a.Skills {
 			names, err := s.registerSkillTools(skillName)
 			if err != nil {
@@ -369,7 +371,16 @@ func (s *Server) restoreComposedAgents() {
 			dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 				return s.interp.SendToAgent(ctx, agent, message)
 			})
-			toolNames = append(toolNames, "delegate")
+			hasDel := false
+			for _, t := range toolNames {
+				if t == "delegate" {
+					hasDel = true
+					break
+				}
+			}
+			if !hasDel {
+				toolNames = append(toolNames, "delegate")
+			}
 			system = dsl.BuildTeamPrompt(system, a.Team, nil, false)
 		}
 

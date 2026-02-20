@@ -361,6 +361,7 @@ func (s *Server) injectMother() {
 				Name:      name,
 				Model:     model,
 				System:    system,
+				Tools:     tools,
 				Team:      team,
 				CreatedAt: time.Now(),
 			})
