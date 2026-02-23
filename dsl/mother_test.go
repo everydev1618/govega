@@ -61,8 +61,9 @@ func TestMotherCreateAgent(t *testing.T) {
 
 	var createdName string
 	cb := &MotherCallbacks{
-		OnAgentCreated: func(name, model, system string, tools, team []string) {
-			createdName = name
+		OnAgentCreated: func(agent *Agent) error {
+			createdName = agent.Name
+			return nil
 		},
 	}
 

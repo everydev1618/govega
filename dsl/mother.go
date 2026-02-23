@@ -67,7 +67,7 @@ You cannot modify yourself.`
 // MotherCallbacks receives notifications when Mother creates or deletes agents.
 // Serve mode uses this to persist composed agents to the database.
 type MotherCallbacks struct {
-	OnAgentCreated func(name, model, system string, tools, team []string)
+	OnAgentCreated func(agent *Agent) error
 	OnAgentDeleted func(name string)
 }
 
@@ -171,7 +171,9 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			}
 
 			if cb != nil && cb.OnAgentCreated != nil {
-				cb.OnAgentCreated(name, model, system, toolNames, team)
+				if err := cb.OnAgentCreated(agentDef); err != nil {
+					return "", fmt.Errorf("persist agent %q: %w", name, err)
+				}
 			}
 
 			return fmt.Sprintf("Agent %q created successfully. The user can now switch to it in the sidebar.", name), nil
@@ -281,7 +283,9 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			}
 
 			if cb != nil && cb.OnAgentCreated != nil {
-				cb.OnAgentCreated(name, merged.Model, merged.System, merged.Tools, merged.Team)
+				if err := cb.OnAgentCreated(&merged); err != nil {
+					return "", fmt.Errorf("persist updated agent %q: %w", name, err)
+				}
 			}
 
 			return fmt.Sprintf("Agent %q updated successfully.", name), nil
