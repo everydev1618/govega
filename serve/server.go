@@ -88,6 +88,27 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("init database: %w", err)
 	}
 
+	// Wire file-write tracking callback.
+	s.interp.Tools().OnFileWrite = func(ctx context.Context, path, operation, description string) {
+		agentName := ""
+		processID := ""
+		if proc := vega.ProcessFromContext(ctx); proc != nil {
+			processID = proc.ID
+			if proc.Agent != nil {
+				agentName = proc.Agent.Name
+			}
+		}
+		if err := store.InsertWorkspaceFile(WorkspaceFile{
+			Path:        path,
+			Agent:       agentName,
+			ProcessID:   processID,
+			Operation:   operation,
+			Description: description,
+		}); err != nil {
+			slog.Error("failed to record workspace file", "path", path, "error", err)
+		}
+	}
+
 	// Initialize population client.
 	popClient, err := population.NewClient()
 	if err != nil {
@@ -244,6 +265,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Memory
 	mux.HandleFunc("GET /api/agents/{name}/memory", s.handleGetMemory)
 	mux.HandleFunc("DELETE /api/agents/{name}/memory", s.handleDeleteMemory)
+
+	// Files
+	mux.HandleFunc("GET /api/files", s.handleListFiles)
+	mux.HandleFunc("GET /api/files/read", s.handleReadFile)
+	mux.HandleFunc("GET /api/files/metadata", s.handleListFileMetadata)
 
 	// SSE
 	mux.HandleFunc("GET /api/events", s.handleSSE)

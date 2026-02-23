@@ -65,6 +65,18 @@ export const api = {
     return fetchAPI<import('./types').PopulationInstalledItem[]>(`/api/population/installed${params}`)
   },
 
+  // Files
+  getFiles: (path?: string) => {
+    const params = path ? `?path=${encodeURIComponent(path)}` : ''
+    return fetchAPI<import('./types').FileEntry[]>(`/api/files${params}`)
+  },
+  getFileContent: (path: string) =>
+    fetchAPI<import('./types').FileContentResponse>(`/api/files/read?path=${encodeURIComponent(path)}`),
+  getFileMetadata: (agent?: string) => {
+    const params = agent ? `?agent=${encodeURIComponent(agent)}` : ''
+    return fetchAPI<import('./types').FileMetadataResponse>(`/api/files/metadata${params}`)
+  },
+
   // Agent composition
   createAgent: (req: import('./types').CreateAgentRequest) =>
     fetchAPI<import('./types').CreateAgentResponse>('/api/agents', {

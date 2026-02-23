@@ -139,6 +139,31 @@ type ErrorResponse struct {
 	Details string `json:"details,omitempty"`
 }
 
+// FileEntry represents a file or directory in the workspace.
+type FileEntry struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	IsDir       bool   `json:"is_dir"`
+	Size        int64  `json:"size"`
+	ModTime     string `json:"mod_time"`
+	ContentType string `json:"content_type,omitempty"`
+}
+
+// FileContentResponse is the response for reading a file's content.
+type FileContentResponse struct {
+	Path        string `json:"path"`
+	ContentType string `json:"content_type"`
+	Content     string `json:"content"`
+	Encoding    string `json:"encoding"`
+	Size        int64  `json:"size"`
+}
+
+// FileMetadataResponse is the response for file metadata queries.
+type FileMetadataResponse struct {
+	Files  []WorkspaceFile `json:"files"`
+	Agents []string        `json:"agents"`
+}
+
 // --- Population & Agent Composition Types ---
 
 // PopulationSearchResult is the API representation of a population search result.

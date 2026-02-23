@@ -40,6 +40,8 @@ func main() {
 		replCmd(args)
 	case "serve":
 		serveCmd(args)
+	case "reset":
+		resetCmd(args)
 	case "version":
 		fmt.Printf("vega %s\n", version)
 	case "help", "-h", "--help":
@@ -63,6 +65,7 @@ Commands:
   validate  Validate a .vega.yaml file
   repl      Interactive REPL for exploring agents
   serve     Start web dashboard and REST API server
+  reset     Delete all agents, files, chat history, and memory
   version   Print version information
   help      Show this help message
 

@@ -78,6 +78,15 @@ type Store interface {
 
 	// ListScheduledJobs returns all scheduled jobs.
 	ListScheduledJobs() ([]ScheduledJob, error)
+
+	// InsertWorkspaceFile records a file write by an agent.
+	InsertWorkspaceFile(f WorkspaceFile) error
+
+	// ListWorkspaceFiles returns workspace file records, optionally filtered by agent.
+	ListWorkspaceFiles(agent string) ([]WorkspaceFile, error)
+
+	// ListWorkspaceFileAgents returns distinct agent names that have written files.
+	ListWorkspaceFileAgents() ([]string, error)
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.
@@ -156,6 +165,17 @@ type ScheduledJob struct {
 	Message   string    `json:"message"`
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// WorkspaceFile tracks a file written by an agent.
+type WorkspaceFile struct {
+	ID          int64     `json:"id"`
+	Path        string    `json:"path"`
+	Agent       string    `json:"agent"`
+	ProcessID   string    `json:"process_id"`
+	Operation   string    `json:"operation"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // WorkflowRun is a persisted workflow execution.

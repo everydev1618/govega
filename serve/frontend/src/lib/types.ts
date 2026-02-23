@@ -152,6 +152,42 @@ export interface CreateAgentResponse {
   process_id?: string
 }
 
+// --- File Browser Types ---
+
+export interface FileEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  size: number
+  mod_time: string
+  content_type?: string
+}
+
+export interface FileContentResponse {
+  path: string
+  content_type: string
+  content: string
+  encoding: string
+  size: number
+}
+
+// --- File Metadata Types ---
+
+export interface WorkspaceFileMetadata {
+  id: number
+  path: string
+  agent: string
+  process_id: string
+  operation: string
+  description?: string
+  created_at: string
+}
+
+export interface FileMetadataResponse {
+  files: WorkspaceFileMetadata[]
+  agents: string[]
+}
+
 // --- Streaming Chat Types ---
 
 export interface ChatEvent {

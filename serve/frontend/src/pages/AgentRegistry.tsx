@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAPI } from '../hooks/useAPI'
+import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
-import type { PopulationInstalledItem, CreateAgentRequest } from '../lib/types'
+import type { PopulationInstalledItem, CreateAgentRequest, ProcessResponse } from '../lib/types'
 
 export function AgentRegistry() {
   const navigate = useNavigate()
@@ -15,6 +16,32 @@ export function AgentRegistry() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([])
   const [selectedTeam, setSelectedTeam] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
+
+  // Fetch live process data for metrics
+  const { data: processes, refetch: refetchProcesses } = useAPI(() => api.getProcesses())
+  const { events } = useSSE()
+  const lastEventRef = useRef(0)
+  useEffect(() => {
+    if (events.length === 0) return
+    const latest = events[0]
+    const ts = new Date(latest.timestamp).getTime()
+    if (ts > lastEventRef.current && latest.type.startsWith('process.')) {
+      lastEventRef.current = ts
+      refetchProcesses()
+    }
+  }, [events, refetchProcesses])
+
+  // Poll every 5s while any agent process is running
+  useEffect(() => {
+    const hasRunning = processes?.some(p => p.status === 'running')
+    if (!hasRunning) return
+    const id = setInterval(refetchProcesses, 5000)
+    return () => clearInterval(id)
+  }, [processes, refetchProcesses])
+
+  // Map process_id → process for quick lookup
+  const processMap = new Map<string, ProcessResponse>()
+  processes?.forEach(p => processMap.set(p.id, p))
 
   // Load installed personas & skills when composer opens.
   useEffect(() => {
@@ -201,10 +228,19 @@ export function AgentRegistry() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {agents?.map(agent => (
+        {agents?.map(agent => {
+          const proc = agent.process_id ? processMap.get(agent.process_id) : undefined
+          const isRunning = proc?.status === 'running'
+          return (
           <div key={agent.name} className="p-4 rounded-lg bg-card border border-border space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
+                {isRunning && (
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                  </span>
+                )}
                 <h3 className="font-semibold">{agent.name}</h3>
                 {agent.source === 'composed' && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400">composed</span>
@@ -227,6 +263,13 @@ export function AgentRegistry() {
                 >
                   Chat
                 </button>
+                <button
+                  onClick={() => navigate(`/files?agent=${encodeURIComponent(agent.name)}`)}
+                  className="text-xs px-2 py-0.5 rounded bg-indigo-900/30 text-indigo-400 hover:bg-indigo-900/50 transition-colors"
+                  title={`Files by ${agent.name}`}
+                >
+                  Files
+                </button>
                 {agent.source === 'composed' && (
                   <button
                     onClick={() => deleteAgent(agent.name)}
@@ -243,6 +286,34 @@ export function AgentRegistry() {
               <div className="text-sm">
                 <span className="text-muted-foreground">Model: </span>
                 <span className="font-mono text-xs">{agent.model}</span>
+              </div>
+            )}
+
+            {/* Live metrics from process */}
+            {proc && (
+              <div className="grid grid-cols-3 gap-2 text-xs py-2 px-3 rounded bg-muted/50 border border-border/50">
+                <div>
+                  <div className="text-muted-foreground">Iterations</div>
+                  <div className="font-medium">{proc.metrics.iterations}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Tokens</div>
+                  <div className="font-medium">{proc.metrics.input_tokens + proc.metrics.output_tokens}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Cost</div>
+                  <div className="font-medium">${proc.metrics.cost_usd.toFixed(4)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Tool Calls</div>
+                  <div className="font-medium">{proc.metrics.tool_calls}</div>
+                </div>
+                {proc.metrics.last_active_at && (
+                  <div className="col-span-2">
+                    <div className="text-muted-foreground">Last Active</div>
+                    <div className="font-medium">{new Date(proc.metrics.last_active_at).toLocaleTimeString()}</div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -279,7 +350,8 @@ export function AgentRegistry() {
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

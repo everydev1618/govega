@@ -53,6 +53,10 @@ type Tools struct {
 	parent     *Tools            // parent for skill-tool lookups (set by Filter)
 	skillsRef  SkillsRef         // skills prompt for dynamic tool augmentation
 	mu         sync.RWMutex
+
+	// OnFileWrite is called after a successful write_file or append_file operation.
+	// Parameters: ctx, relative path, operation ("write"/"append"), description.
+	OnFileWrite func(ctx context.Context, path, operation, description string)
 }
 
 // containerState holds container routing configuration.

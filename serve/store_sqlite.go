@@ -120,6 +120,17 @@ func (s *SQLiteStore) Init() error {
 	CREATE INDEX IF NOT EXISTS idx_memory_items_user_agent ON memory_items(user_id, agent);
 	CREATE INDEX IF NOT EXISTS idx_memory_items_topic ON memory_items(user_id, agent, topic);
 
+	CREATE TABLE IF NOT EXISTS workspace_files (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		path        TEXT NOT NULL,
+		agent       TEXT NOT NULL DEFAULT '',
+		process_id  TEXT NOT NULL DEFAULT '',
+		operation   TEXT NOT NULL DEFAULT 'write',
+		description TEXT NOT NULL DEFAULT '',
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_workspace_files_agent ON workspace_files(agent);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -516,6 +527,86 @@ func (s *SQLiteStore) ListMemoryItemsByTopic(userID, agent, topic string) ([]Mem
 		items = append(items, m)
 	}
 	return items, rows.Err()
+}
+
+// InsertWorkspaceFile records a file write by an agent.
+func (s *SQLiteStore) InsertWorkspaceFile(f WorkspaceFile) error {
+	_, err := s.db.Exec(
+		`INSERT INTO workspace_files (path, agent, process_id, operation, description)
+		 VALUES (?, ?, ?, ?, ?)`,
+		f.Path, f.Agent, f.ProcessID, f.Operation, f.Description,
+	)
+	return err
+}
+
+// ListWorkspaceFiles returns workspace file records, optionally filtered by agent.
+func (s *SQLiteStore) ListWorkspaceFiles(agent string) ([]WorkspaceFile, error) {
+	var rows *sql.Rows
+	var err error
+	if agent != "" {
+		rows, err = s.db.Query(
+			`SELECT id, path, agent, process_id, operation, description, created_at
+			 FROM workspace_files WHERE agent = ? ORDER BY created_at DESC`, agent,
+		)
+	} else {
+		rows, err = s.db.Query(
+			`SELECT id, path, agent, process_id, operation, description, created_at
+			 FROM workspace_files ORDER BY created_at DESC`,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []WorkspaceFile
+	for rows.Next() {
+		var f WorkspaceFile
+		if err := rows.Scan(&f.ID, &f.Path, &f.Agent, &f.ProcessID, &f.Operation, &f.Description, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, rows.Err()
+}
+
+// ListWorkspaceFileAgents returns distinct agent names that have written files.
+func (s *SQLiteStore) ListWorkspaceFileAgents() ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT DISTINCT agent FROM workspace_files WHERE agent != '' ORDER BY agent ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		agents = append(agents, a)
+	}
+	return agents, rows.Err()
+}
+
+// CountTable returns the number of rows in the given table.
+func (s *SQLiteStore) CountTable(table string) (int, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count)
+	return count, err
+}
+
+// DeleteAllFromTable removes all rows from the given table.
+func (s *SQLiteStore) DeleteAllFromTable(table string) error {
+	_, err := s.db.Exec("DELETE FROM " + table)
+	return err
+}
+
+// Vacuum reclaims unused space in the database.
+func (s *SQLiteStore) Vacuum() {
+	s.db.Exec("VACUUM")
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.
