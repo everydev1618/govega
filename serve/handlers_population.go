@@ -197,7 +197,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist to SQLite.
-	s.store.InsertComposedAgent(ComposedAgent{
+	if err := s.store.InsertComposedAgent(ComposedAgent{
 		Name:        req.Name,
 		Model:       req.Model,
 		Persona:     req.Persona,
@@ -206,7 +206,11 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		System:      system,
 		Temperature: req.Temperature,
 		CreatedAt:   time.Now(),
-	})
+	}); err != nil {
+		slog.Error("failed to persist composed agent", "agent", req.Name, "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "agent created in memory but failed to persist: " + err.Error()})
+		return
+	}
 
 	// Get process ID from the spawned agent.
 	agents := s.interp.Agents()

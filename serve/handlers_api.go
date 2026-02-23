@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -151,7 +152,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist user message.
-	s.store.InsertChatMessage(name, "user", req.Message)
+	if err := s.store.InsertChatMessage(name, "user", req.Message); err != nil {
+		slog.Error("failed to persist user chat message", "agent", name, "error", err)
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 	defer cancel()
@@ -165,7 +168,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist assistant response.
-	s.store.InsertChatMessage(name, "assistant", response)
+	if err := s.store.InsertChatMessage(name, "assistant", response); err != nil {
+		slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
+	}
 
 	// Fire async memory extraction.
 	go s.extractMemory(userID, baseAgent, req.Message, response)
@@ -202,7 +207,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.store.InsertChatMessage(name, "user", req.Message)
+	if err := s.store.InsertChatMessage(name, "user", req.Message); err != nil {
+		slog.Error("failed to persist user chat message", "agent", name, "error", err)
+	}
 
 	// Use a detached context so the LLM stream survives client disconnect.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -247,8 +254,15 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		close(as.events)
 
 		// Persist assistant response even if no client is listening.
-		if streamErr == nil && response != "" {
-			s.store.InsertChatMessage(name, "assistant", response)
+		if streamErr != nil {
+			slog.Error("stream completed with error, assistant response not saved",
+				"agent", name, "error", streamErr, "response_len", len(response))
+		} else if response == "" {
+			slog.Warn("stream completed with empty response, nothing to save", "agent", name)
+		} else {
+			if err := s.store.InsertChatMessage(name, "assistant", response); err != nil {
+				slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
+			}
 			go s.extractMemory(userID, baseAgent, req.Message, response)
 		}
 

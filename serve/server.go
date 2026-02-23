@@ -356,23 +356,35 @@ func corsMiddleware(next http.Handler) http.Handler {
 // callbacks that keep composed agents in sync with the SQLite store.
 func (s *Server) injectMother() {
 	cb := &dsl.MotherCallbacks{
-		OnAgentCreated: func(name, model, system string, tools, team []string) {
-			s.store.InsertComposedAgent(ComposedAgent{
-				Name:      name,
-				Model:     model,
-				System:    system,
-				Tools:     tools,
-				Team:      team,
-				CreatedAt: time.Now(),
-			})
+		OnAgentCreated: func(agent *dsl.Agent) error {
+			var skills []string
+			if agent.Skills != nil {
+				skills = agent.Skills.Directories
+			}
+			if err := s.store.InsertComposedAgent(ComposedAgent{
+				Name:        agent.Name,
+				Model:       agent.Model,
+				System:      agent.System,
+				Tools:       agent.Tools,
+				Team:        agent.Team,
+				Skills:      skills,
+				Temperature: agent.Temperature,
+				CreatedAt:   time.Now(),
+			}); err != nil {
+				slog.Error("failed to persist composed agent", "agent", agent.Name, "error", err)
+				return fmt.Errorf("persist agent: %w", err)
+			}
 			s.broker.Publish(BrokerEvent{
 				Type:      "agent.created",
-				Agent:     name,
+				Agent:     agent.Name,
 				Timestamp: time.Now(),
 			})
+			return nil
 		},
 		OnAgentDeleted: func(name string) {
-			s.store.DeleteComposedAgent(name)
+			if err := s.store.DeleteComposedAgent(name); err != nil {
+				slog.Error("failed to delete composed agent from store", "agent", name, "error", err)
+			}
 			s.broker.Publish(BrokerEvent{
 				Type:      "agent.deleted",
 				Agent:     name,
