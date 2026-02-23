@@ -126,8 +126,14 @@ func (s *SQLiteStore) Init() error {
 	CREATE INDEX IF NOT EXISTS idx_workflow_runs_id ON workflow_runs(run_id);
 	CREATE INDEX IF NOT EXISTS idx_chat_agent ON chat_messages(agent);
 	`
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Migrate: add tools column to composed_agents if missing (added after initial release).
+	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN tools TEXT NOT NULL DEFAULT '[]'`)
+
+	return nil
 }
 
 // Close closes the database.
