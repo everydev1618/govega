@@ -56,14 +56,19 @@ func (t *Tools) RegisterBuiltins() {
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			path := params["path"].(string)
 			content := params["content"].(string)
+			desc, _ := params["description"].(string)
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				return "", err
+			}
+			if t.OnFileWrite != nil {
+				t.OnFileWrite(ctx, path, "write", desc)
 			}
 			return "File written successfully", nil
 		},
 		Params: map[string]ParamDef{
-			"path":    {Type: "string", Description: "File path", Required: true},
-			"content": {Type: "string", Description: "Content to write", Required: true},
+			"path":        {Type: "string", Description: "File path", Required: true},
+			"content":     {Type: "string", Description: "Content to write", Required: true},
+			"description": {Type: "string", Description: "Optional description of why this file is being written", Required: false},
 		},
 	})
 
@@ -89,6 +94,7 @@ func (t *Tools) RegisterBuiltins() {
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			path := params["path"].(string)
 			content := params["content"].(string)
+			desc, _ := params["description"].(string)
 			f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return "", err
@@ -97,11 +103,15 @@ func (t *Tools) RegisterBuiltins() {
 			if _, err := f.WriteString(content); err != nil {
 				return "", err
 			}
+			if t.OnFileWrite != nil {
+				t.OnFileWrite(ctx, path, "append", desc)
+			}
 			return "Content appended successfully", nil
 		},
 		Params: map[string]ParamDef{
-			"path":    {Type: "string", Description: "File path", Required: true},
-			"content": {Type: "string", Description: "Content to append", Required: true},
+			"path":        {Type: "string", Description: "File path", Required: true},
+			"content":     {Type: "string", Description: "Content to append", Required: true},
+			"description": {Type: "string", Description: "Optional description of why this file is being written", Required: false},
 		},
 	})
 
