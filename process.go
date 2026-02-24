@@ -494,6 +494,18 @@ func (p *Process) Result() string {
 	return p.finalResult
 }
 
+// HydrateMessages loads historical messages into a process that has no
+// conversation history yet (e.g. after a restart). This is a no-op if
+// the process already has messages.
+func (p *Process) HydrateMessages(msgs []llm.Message) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.messages) > 0 {
+		return // already has conversation history
+	}
+	p.messages = append(p.messages, msgs...)
+}
+
 // addMessage adds a message to the conversation history.
 func (p *Process) addMessage(msg llm.Message) {
 	p.mu.Lock()

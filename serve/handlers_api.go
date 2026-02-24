@@ -9,6 +9,7 @@ import (
 	"time"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/llm"
 	"github.com/google/uuid"
 )
 
@@ -97,6 +98,32 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 // --- Chat Handlers ---
 
+// hydrateAgent loads persisted chat history into a process that has no
+// conversation history (e.g. freshly spawned after restart). This gives
+// agents continuity across server restarts.
+func (s *Server) hydrateAgent(proc *vega.Process, agentName string) {
+	if len(proc.Messages()) > 0 {
+		return // already has history
+	}
+
+	history, err := s.store.ListChatMessages(agentName)
+	if err != nil || len(history) == 0 {
+		return
+	}
+
+	msgs := make([]llm.Message, 0, len(history))
+	for _, m := range history {
+		role := llm.RoleUser
+		if m.Role == "assistant" {
+			role = llm.RoleAssistant
+		}
+		msgs = append(msgs, llm.Message{Role: role, Content: m.Content})
+	}
+
+	proc.HydrateMessages(msgs)
+	slog.Debug("hydrated agent from chat history", "agent", agentName, "messages", len(msgs))
+}
+
 // chatAgentName returns a per-user agent name if X-Auth-User is set.
 // e.g. agent "dan" + user "etienne" → "dan:etienne".
 // It also ensures the per-user agent exists by cloning the base definition.
@@ -143,6 +170,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
+
+	// Hydrate conversation history from SQLite if this is a fresh process.
+	s.hydrateAgent(proc, name)
 
 	// Load and inject memory into the process before sending.
 	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
@@ -200,6 +230,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
+
+	s.hydrateAgent(proc, name)
 
 	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
 		if memText := formatMemoryForInjection(memories); memText != "" {
