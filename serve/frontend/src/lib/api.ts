@@ -72,6 +72,8 @@ export const api = {
   },
   getFileContent: (path: string) =>
     fetchAPI<import('./types').FileContentResponse>(`/api/files/read?path=${encodeURIComponent(path)}`),
+  deleteFile: (path: string) =>
+    fetchAPI<{ status: string; path: string }>(`/api/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
   getFileMetadata: (agent?: string) => {
     const params = agent ? `?agent=${encodeURIComponent(agent)}` : ''
     return fetchAPI<import('./types').FileMetadataResponse>(`/api/files/metadata${params}`)

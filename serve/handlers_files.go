@@ -138,6 +138,43 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleDeleteFile removes a file or empty directory under the workspace.
+func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
+	relPath := r.URL.Query().Get("path")
+	if relPath == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "path parameter required"})
+		return
+	}
+
+	absPath, err := safePath(relPath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "file not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	if info.IsDir() {
+		err = os.Remove(absPath) // only removes empty directories
+	} else {
+		err = os.Remove(absPath)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "path": relPath})
+}
+
 // handleListFileMetadata returns file metadata records, optionally filtered by agent.
 func (s *Server) handleListFileMetadata(w http.ResponseWriter, r *http.Request) {
 	agent := r.URL.Query().Get("agent")

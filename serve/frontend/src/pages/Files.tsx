@@ -111,7 +111,7 @@ function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string
 }
 
 // --- File Preview Panel ---
-function FilePreview({ file, onClose }: { file: FileContentResponse | null; onClose: () => void }) {
+function FilePreview({ file, onClose, onDelete }: { file: FileContentResponse | null; onClose: () => void; onDelete: (path: string) => void }) {
   if (!file) return null
 
   const ct = baseType(file.content_type)
@@ -133,12 +133,23 @@ function FilePreview({ file, onClose }: { file: FileContentResponse | null; onCl
               <p className="text-xs text-muted-foreground">{ct} &middot; {formatSize(file.size)}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onDelete(file.path)}
+              className="text-muted-foreground hover:text-red-400 transition-colors p-1 rounded hover:bg-red-500/10"
+              title="Delete file"
+            >
+              <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
+                <path d="M2.5 3.5h9M5.5 3.5V2.5a1 1 0 011-1h1a1 1 0 011 1v1M6 6v4M8 6v4M3.5 3.5l.5 8a1 1 0 001 1h4a1 1 0 001-1l.5-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -197,30 +208,90 @@ function FilePreview({ file, onClose }: { file: FileContentResponse | null; onCl
   )
 }
 
+// --- Delete Confirmation Dialog ---
+function DeleteConfirm({
+  path,
+  onConfirm,
+  onCancel,
+}: {
+  path: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const name = path.split('/').pop() || path
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+      onClick={onCancel}>
+      <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full"
+        onClick={e => e.stopPropagation()}>
+        <p className="text-lg font-semibold mb-2">Delete file?</p>
+        <p className="text-sm text-muted-foreground mb-4">
+          Are you sure you want to delete <span className="font-mono text-foreground">{name}</span>? This cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent/80 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- Delete Button ---
+function DeleteButton({ onClick, className = '' }: { onClick: (e: React.MouseEvent) => void; className?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-red-400 transition-colors p-1 rounded hover:bg-red-500/10 ${className}`}
+      title="Delete"
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2.5 3.5h9M5.5 3.5V2.5a1 1 0 011-1h1a1 1 0 011 1v1M6 6v4M8 6v4M3.5 3.5l.5 8a1 1 0 001 1h4a1 1 0 001-1l.5-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </button>
+  )
+}
+
 // --- Gallery Card ---
 function GalleryCard({
   entry,
   onNavigate,
   onPreview,
+  onDelete,
 }: {
   entry: FileEntry
   onNavigate: (p: string) => void
   onPreview: (p: string) => void
+  onDelete: (p: string) => void
 }) {
   const ct = entry.content_type || ''
 
   return (
     <button
       onClick={() => entry.is_dir ? onNavigate(entry.path) : onPreview(entry.path)}
-      className="group bg-card border border-border rounded-xl p-4 text-left hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/5 transition-all duration-200 flex flex-col"
+      className="group bg-card border border-border rounded-xl p-4 text-left hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/5 transition-all duration-200 flex flex-col relative"
     >
       <div className="flex items-start justify-between mb-3">
         <span className="text-2xl">{fileIcon(entry)}</span>
-        {!entry.is_dir && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground font-mono">
-            {entry.name.includes('.') ? entry.name.split('.').pop()?.toUpperCase() : ct.split('/').pop()}
-          </span>
-        )}
+        <div className="flex items-center gap-1">
+          {!entry.is_dir && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground font-mono">
+              {entry.name.includes('.') ? entry.name.split('.').pop()?.toUpperCase() : ct.split('/').pop()}
+            </span>
+          )}
+          <DeleteButton onClick={(e) => { e.stopPropagation(); onDelete(entry.path) }} />
+        </div>
       </div>
       <p className="font-medium text-sm truncate group-hover:text-indigo-400 transition-colors">
         {entry.name}
@@ -425,7 +496,7 @@ function InlinePreview({ path }: { path: string }) {
 }
 
 // --- By Agent View ---
-function AgentFileCard({ file, onPreview }: { file: WorkspaceFileMetadata; onPreview: (path: string) => void }) {
+function AgentFileCard({ file, onPreview, onDelete }: { file: WorkspaceFileMetadata; onPreview: (path: string) => void; onDelete: (path: string) => void }) {
   const name = file.path.split('/').pop() || file.path
   const ext = name.includes('.') ? name.split('.').pop()?.toUpperCase() : ''
 
@@ -442,6 +513,7 @@ function AgentFileCard({ file, onPreview }: { file: WorkspaceFileMetadata; onPre
           }`}>
             {file.operation === 'append' ? 'APPEND' : ext}
           </span>
+          <DeleteButton onClick={(e) => { e.stopPropagation(); onDelete(file.path) }} />
         </div>
       </div>
       <p className="font-medium text-sm truncate group-hover:text-indigo-400 transition-colors">{name}</p>
@@ -459,10 +531,12 @@ function AgentSection({
   agent,
   files,
   onPreview,
+  onDelete,
 }: {
   agent: string
   files: WorkspaceFileMetadata[]
   onPreview: (path: string) => void
+  onDelete: (path: string) => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -483,7 +557,7 @@ function AgentSection({
       {!collapsed && (
         <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {files.map(file => (
-            <AgentFileCard key={file.id} file={file} onPreview={onPreview} />
+            <AgentFileCard key={file.id} file={file} onPreview={onPreview} onDelete={onDelete} />
           ))}
         </div>
       )}
@@ -554,6 +628,30 @@ export function Files() {
       setPreviewLoading(false)
     }
   }, [])
+
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+
+  const handleDelete = useCallback(async (path: string) => {
+    try {
+      await api.deleteFile(path)
+      // Refresh the current view
+      loadEntries(currentPath)
+      // Close preview if we deleted the previewed file
+      if (previewFile && previewFile.path === path) {
+        setPreviewFile(null)
+      }
+      if (treeSelectedPath === path) {
+        setTreeSelectedPath('')
+      }
+      // Refresh metadata if in agents view
+      if (viewMode === 'agents') {
+        api.getFileMetadata(agentFilter || undefined).then(setMetadata).catch(() => {})
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to delete file')
+    }
+    setDeleteTarget(null)
+  }, [currentPath, loadEntries, previewFile, treeSelectedPath, viewMode, agentFilter])
 
   const dirs = entries.filter(e => e.is_dir).sort((a, b) => a.name.localeCompare(b.name))
   const files = entries.filter(e => !e.is_dir).sort((a, b) => a.name.localeCompare(b.name))
@@ -662,6 +760,7 @@ export function Files() {
               entry={entry}
               onNavigate={navigate}
               onPreview={openPreview}
+              onDelete={setDeleteTarget}
             />
           ))}
         </div>
@@ -733,6 +832,7 @@ export function Files() {
                 agent={agent}
                 files={agentFiles}
                 onPreview={openPreview}
+                onDelete={setDeleteTarget}
               />
             )
           })}
@@ -742,6 +842,7 @@ export function Files() {
               agent=""
               files={metadata.files.filter(f => !f.agent || !metadata.agents.includes(f.agent))}
               onPreview={openPreview}
+              onDelete={setDeleteTarget}
             />
           )}
         </div>
@@ -770,7 +871,14 @@ export function Files() {
           </div>
         </div>
       )}
-      <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
+      <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} onDelete={(path) => { setPreviewFile(null); setDeleteTarget(path) }} />
+      {deleteTarget && (
+        <DeleteConfirm
+          path={deleteTarget}
+          onConfirm={() => handleDelete(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   )
 }
