@@ -44,6 +44,14 @@ export const api = {
       body: JSON.stringify({ inputs }),
     }),
   getMCPServers: () => fetchAPI<import('./types').MCPServerResponse[]>('/api/mcp/servers'),
+  getMCPRegistry: () => fetchAPI<import('./types').MCPRegistryEntry[]>('/api/mcp/registry'),
+  connectMCPServer: (req: import('./types').ConnectMCPRequest) =>
+    fetchAPI<import('./types').ConnectMCPResponse>('/api/mcp/servers', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+  disconnectMCPServer: (name: string) =>
+    fetchAPI<{ status: string }>(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   getStats: () => fetchAPI<import('./types').StatsResponse>('/api/stats'),
   getSpawnTree: () => fetchAPI<import('./types').SpawnTreeNode[]>('/api/spawn-tree'),
 

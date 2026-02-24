@@ -223,3 +223,36 @@ type CreateAgentResponse struct {
 	Tools     []string `json:"tools,omitempty"`
 	ProcessID string   `json:"process_id,omitempty"`
 }
+
+// --- MCP Connection Types ---
+
+// MCPRegistryEntryResponse describes a registry entry for the connections page.
+type MCPRegistryEntryResponse struct {
+	Name             string            `json:"name"`
+	Description      string            `json:"description"`
+	RequiredEnv      []string          `json:"required_env,omitempty"`
+	OptionalEnv      []string          `json:"optional_env,omitempty"`
+	BuiltinGo        bool              `json:"builtin_go,omitempty"`
+	Connected        bool              `json:"connected"`
+	ExistingSettings map[string]string `json:"existing_settings,omitempty"`
+}
+
+// ConnectMCPRequest is the request to connect an MCP server.
+type ConnectMCPRequest struct {
+	Name      string            `json:"name"`
+	Env       map[string]string `json:"env,omitempty"`
+	Transport string            `json:"transport,omitempty"`
+	Command   string            `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Timeout   int               `json:"timeout,omitempty"`
+}
+
+// ConnectMCPResponse is returned when an MCP server is connected.
+type ConnectMCPResponse struct {
+	Name      string   `json:"name"`
+	Connected bool     `json:"connected"`
+	Tools     []string `json:"tools,omitempty"`
+	Error     string   `json:"error,omitempty"`
+}

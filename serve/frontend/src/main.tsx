@@ -8,6 +8,7 @@ import { SpawnTree } from './pages/SpawnTree'
 import { EventStream } from './pages/EventStream'
 import { AgentRegistry } from './pages/AgentRegistry'
 import { MCPServers } from './pages/MCPServers'
+import { Connections } from './pages/Connections'
 import { WorkflowLauncher } from './pages/WorkflowLauncher'
 import { CostDashboard } from './pages/CostDashboard'
 import { Population } from './pages/Population'
@@ -32,6 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="events" element={<EventStream />} />
           <Route path="population" element={<Population />} />
           <Route path="agents" element={<AgentRegistry />} />
+          <Route path="connections" element={<Connections />} />
           <Route path="mcp" element={<MCPServers />} />
           <Route path="workflows" element={<WorkflowLauncher />} />
           <Route path="files" element={<Files />} />
