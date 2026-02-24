@@ -235,9 +235,18 @@ func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 
 			t := interp.Tools()
 
-			// Check if already connected.
-			if t.MCPServerConnected(name) {
+			// Check if already connected (MCP client or built-in).
+			if t.MCPServerConnected(name) || t.BuiltinServerConnected(name) {
 				return fmt.Sprintf("MCP server %q is already connected.", name), nil
+			}
+
+			// Try built-in Go implementation first (no Node.js required).
+			if t.HasBuiltinServer(name) {
+				toolCount, err := t.ConnectBuiltinServer(ctx, name)
+				if err != nil {
+					return "", fmt.Errorf("failed to connect built-in %q: %w", name, err)
+				}
+				return fmt.Sprintf("Connected MCP server **%s** (native Go) — %d tools now available. Tool names are prefixed with `%s__`.", name, toolCount, name), nil
 			}
 
 			// Look up in registry.

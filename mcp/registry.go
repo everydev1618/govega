@@ -24,6 +24,10 @@ type RegistryEntry struct {
 
 	// OptionalEnv lists environment variables that are useful but not required.
 	OptionalEnv []string
+
+	// BuiltinGo indicates this server has a native Go implementation
+	// that runs in-process without requiring Node.js or any external binary.
+	BuiltinGo bool
 }
 
 // DefaultRegistry contains well-known MCP servers.
@@ -56,9 +60,10 @@ var DefaultRegistry = map[string]RegistryEntry{
 	},
 	"fetch": {
 		Name:        "fetch",
-		Description: "HTTP fetch for web content retrieval",
+		Description: "HTTP fetch for web content retrieval (native Go — no Node.js required)",
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-fetch"},
+		BuiltinGo:   true,
 	},
 	"postgres": {
 		Name:        "postgres",
