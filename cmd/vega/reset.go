@@ -14,7 +14,7 @@ import (
 
 func resetCmd(args []string) {
 	fs := flag.NewFlagSet("reset", flag.ExitOnError)
-	dbPath := fs.String("db", ".vega-serve.db", "SQLite database path")
+	dbPath := fs.String("db", vega.DefaultDBPath(), "SQLite database path")
 	yes := fs.Bool("yes", false, "Skip confirmation prompt")
 
 	fs.Usage = func() {

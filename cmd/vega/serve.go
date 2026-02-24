@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/serve"
 )
@@ -27,7 +28,7 @@ func defaultDocument() *dsl.Document {
 func serveCmd(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", ":3001", "HTTP listen address")
-	dbPath := fs.String("db", ".vega-serve.db", "SQLite database path")
+	dbPath := fs.String("db", vega.DefaultDBPath(), "SQLite database path")
 
 	fs.Usage = func() {
 		fmt.Println(`Usage: vega serve [file.vega.yaml] [options]
@@ -44,7 +45,7 @@ Examples:
   vega serve
   vega serve team.vega.yaml
   vega serve team.vega.yaml --addr :8080
-  vega serve team.vega.yaml --db /tmp/vega.db`)
+  vega serve team.vega.yaml --db ~/.vega/custom.db`)
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -74,6 +75,12 @@ Examples:
 		os.Exit(1)
 	}
 	defer interp.Shutdown()
+
+	// Ensure ~/.vega directory exists for the database.
+	if err := vega.EnsureHome(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating vega home: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("Loaded: %s (%d agents, %d workflows)\n",
 		doc.Name, len(doc.Agents), len(doc.Workflows))

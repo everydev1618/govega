@@ -17,6 +17,9 @@ type Agent struct {
 	// Model is the LLM model ID (e.g., "claude-sonnet-4-20250514")
 	Model string
 
+	// FallbackModel is used when all retries with the primary model are exhausted (optional)
+	FallbackModel string
+
 	// System is the system prompt (static or dynamic)
 	System SystemPrompt
 

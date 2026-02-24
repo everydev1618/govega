@@ -8,12 +8,15 @@ import type { ProcessResponse, ProcessDetailResponse } from '../lib/types'
 
 type ViewMode = 'list' | 'kanban'
 
-export function ProcessExplorer() {
-  const { data: processes, loading, refetch } = useAPI(() => api.getProcesses())
+export function Tasks() {
+  const { data: allProcesses, loading, refetch } = useAPI(() => api.getProcesses())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<ProcessDetailResponse | null>(null)
   const [sortKey, setSortKey] = useState<'started_at' | 'status' | 'agent'>('started_at')
   const [viewMode, setViewMode] = useState<ViewMode>('kanban')
+
+  // Filter to only child/task processes (spawn_depth > 0 or has parent)
+  const processes = allProcesses?.filter(p => p.parent_id || p.spawn_depth > 0) || []
 
   // SSE: auto-refresh on process lifecycle events
   const { events } = useSSE()
@@ -28,19 +31,19 @@ export function ProcessExplorer() {
     }
   }, [events, refetch])
 
-  // Poll every 5s while any process is running (metrics aren't pushed via SSE)
+  // Poll every 5s while any task is running
   useEffect(() => {
-    const hasRunning = processes?.some(p => p.status === 'running')
+    const hasRunning = processes.some(p => p.status === 'running')
     if (!hasRunning) return
     const id = setInterval(refetch, 5000)
     return () => clearInterval(id)
   }, [processes, refetch])
 
-  const sorted = processes ? [...processes].sort((a, b) => {
+  const sorted = [...processes].sort((a, b) => {
     if (sortKey === 'started_at') return new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
     if (sortKey === 'status') return a.status.localeCompare(b.status)
     return a.agent.localeCompare(b.agent)
-  }) : []
+  })
 
   const openDetail = async (id: string) => {
     setSelectedId(id)
@@ -59,9 +62,8 @@ export function ProcessExplorer() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Process Explorer</h2>
+        <h2 className="text-2xl font-bold">Tasks</h2>
         <div className="flex items-center gap-4">
-          {/* View toggle */}
           <div className="flex gap-1 text-sm border border-border rounded-lg p-0.5">
             <button
               onClick={() => setViewMode('kanban')}
@@ -77,7 +79,6 @@ export function ProcessExplorer() {
             </button>
           </div>
 
-          {/* Sort controls — only in list mode */}
           {viewMode === 'list' && (
             <div className="flex gap-2 text-sm">
               {(['started_at', 'status', 'agent'] as const).map(key => (
@@ -92,17 +93,16 @@ export function ProcessExplorer() {
       </div>
 
       <div className="flex gap-4">
-        {/* Main content area */}
         <div className="flex-1 min-w-0">
           {viewMode === 'kanban' ? (
             <KanbanBoard
-              processes={processes || []}
+              processes={processes}
               selectedId={selectedId}
               onSelect={openDetail}
             />
           ) : (
             <div className="space-y-2">
-              {sorted.length === 0 && <p className="text-muted-foreground text-sm">No processes running.</p>}
+              {sorted.length === 0 && <p className="text-muted-foreground text-sm">No tasks running.</p>}
               {sorted.map((p: ProcessResponse) => (
                 <div key={p.id} onClick={() => openDetail(p.id)}
                   className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedId === p.id ? 'border-primary bg-accent' : 'border-border bg-card hover:border-primary/50'}`}>
@@ -121,11 +121,10 @@ export function ProcessExplorer() {
           )}
         </div>
 
-        {/* Detail panel */}
         {selectedId && detail && (
           <div className="w-96 shrink-0 border border-border rounded-lg bg-card p-4 space-y-4 max-h-[80vh] overflow-auto">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold">Process {detail.id}</h3>
+              <h3 className="font-bold">Task {detail.id}</h3>
               <button onClick={() => setSelectedId(null)} className="text-muted-foreground hover:text-foreground">&times;</button>
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
@@ -138,7 +137,7 @@ export function ProcessExplorer() {
             {(detail.status === 'running' || detail.status === 'pending') && (
               <button onClick={() => handleKill(detail.id)}
                 className="w-full py-1.5 rounded bg-destructive text-white text-sm hover:bg-destructive/80">
-                Kill Process
+                Kill Task
               </button>
             )}
             <div>

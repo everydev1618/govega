@@ -15,6 +15,11 @@ func Home() string {
 	return filepath.Join(home, ".vega")
 }
 
+// DefaultDBPath returns the default SQLite database path (~/.vega/vega.db).
+func DefaultDBPath() string {
+	return filepath.Join(Home(), "vega.db")
+}
+
 // WorkspacePath returns the default shared workspace directory.
 func WorkspacePath() string {
 	return filepath.Join(Home(), "workspace")

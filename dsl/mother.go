@@ -78,9 +78,11 @@ func MotherAgent(defaultModel string) *Agent {
 		model = "claude-sonnet-4-20250514"
 	}
 	return &Agent{
-		Name:   motherAgentName,
-		Model:  model,
-		System: motherSystemPrompt,
+		Name:          motherAgentName,
+		Model:         model,
+		FallbackModel: "claude-haiku-4-5-20251001",
+		System:        motherSystemPrompt,
+		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
 	}
 }
 

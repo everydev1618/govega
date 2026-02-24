@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
 import { api, APIError } from '../lib/api'
-import type { AgentResponse, ChatEvent, ToolCallState } from '../lib/types'
+import type { AgentResponse, ChatEvent, ToolCallState, FileContentResponse } from '../lib/types'
 
 const HERMES = 'hermes'
 const META_AGENTS = new Set(['hermes', 'mother'])
@@ -91,13 +91,73 @@ function ToolCallPanel({ tc, onToggle }: { tc: ToolCallState; onToggle: () => vo
   )
 }
 
-function TypingIndicator() {
+const NODE_COLORS = ['#60a5fa', '#a78bfa', '#34d399', '#fbbf24']
+
+function toolNarrative(name: string, args: Record<string, unknown>): string {
+  switch (name) {
+    case 'send_to_agent': return `Traveling to ${args.agent || 'an agent'}...`
+    case 'list_agents': return 'Surveying the universe...'
+    case 'remember': return 'Committing to memory...'
+    case 'recall': return 'Searching memories...'
+    case 'forget': return 'Letting go...'
+    case 'set_project': return `Opening ${args.name || 'project'} workspace...`
+    case 'list_projects': return 'Checking project workspaces...'
+    case 'write_file': return 'Writing a file...'
+    case 'read_file': return 'Reading a file...'
+    case 'list_files': return 'Browsing files...'
+    case 'exec': return 'Running a command...'
+    default: return `Using ${name}...`
+  }
+}
+
+function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
+  const coreX = 20, coreY = 20
   return (
-    <span className="inline-flex items-center gap-1 text-muted-foreground py-1">
-      <span className="typing-dot" style={{ animationDelay: '0ms' }} />
-      <span className="typing-dot" style={{ animationDelay: '150ms' }} />
-      <span className="typing-dot" style={{ animationDelay: '300ms' }} />
-    </span>
+    <svg width="140" height="40" viewBox="0 0 140 40" className="block">
+      {/* Core star */}
+      <circle cx={coreX} cy={coreY} r={4} fill="#60a5fa" className="constellation-core" />
+      <circle cx={coreX} cy={coreY} r={7} fill="#60a5fa" opacity={0.15} className="constellation-core" />
+
+      {tools.map((tc, i) => {
+        const x = 44 + i * 24
+        const y = coreY + (i % 2 === 0 ? -6 : 6)
+        const color = NODE_COLORS[i % NODE_COLORS.length]
+        const done = tc.status !== 'running'
+        return (
+          <g key={tc.id}>
+            <line
+              x1={coreX} y1={coreY} x2={x} y2={y}
+              stroke={color} strokeWidth={1} opacity={0.3}
+              className="constellation-line"
+              style={{ animationDelay: `${i * 100}ms` }}
+            />
+            <circle
+              cx={x} cy={y} r={done ? 3.5 : 3}
+              fill={color}
+              opacity={done ? 1 : 0.7}
+              className={done ? 'constellation-node-done' : 'constellation-node'}
+              style={{ animationDelay: `${i * 100}ms` }}
+            />
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
+  const running = [...tools].reverse().find(t => t.status === 'running')
+  const last = tools[tools.length - 1]
+  const target = running || last
+
+  const text = target
+    ? toolNarrative(target.name, target.arguments || {})
+    : 'Thinking...'
+
+  return (
+    <p className="text-xs text-muted-foreground italic mt-1 transition-opacity duration-300">
+      {text}
+    </p>
   )
 }
 
@@ -133,6 +193,168 @@ function ErrorBanner({ error, errorType }: { error: string; errorType?: string }
       </div>
     </div>
   )
+}
+
+// --- Workspace file path detection & card ---
+// Matches absolute paths under ~/.vega/workspace/ or relative paths that look like workspace files
+const WORKSPACE_PATH_RE = /(?:\/[^\s"'<>|&;(){}\[\]\\]*\/\.vega\/workspace\/([^\s"'<>|&;(){}\[\]\\]+))/g
+
+function fileExtIcon(name: string): string {
+  const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : ''
+  switch (ext) {
+    case 'html': case 'htm': return '\u{1F310}'
+    case 'md': case 'markdown': return '\u{1F4DD}'
+    case 'json': return '\u{1F4CB}'
+    case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': case 'webp': return '\u{1F5BC}\uFE0F'
+    case 'pdf': return '\u{1F4C4}'
+    case 'csv': return '\u{1F4CA}'
+    case 'txt': return '\u{1F4C4}'
+    default: return '\u{1F4CE}'
+  }
+}
+
+function FileCard({ relPath, onClick }: { relPath: string; onClick: () => void }) {
+  const name = relPath.split('/').pop() || relPath
+
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-2 my-1 px-3 py-2 rounded-lg border border-border bg-background/50 hover:border-indigo-500/50 hover:bg-accent/30 transition-all text-sm group"
+    >
+      <span className="text-lg">{fileExtIcon(name)}</span>
+      <span className="font-medium text-foreground group-hover:text-indigo-400 transition-colors truncate max-w-xs">{name}</span>
+      <svg className="w-3.5 h-3.5 text-muted-foreground group-hover:text-indigo-400 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+      </svg>
+    </button>
+  )
+}
+
+/** Splits text content, replacing workspace paths with FileCard components */
+function renderWithFileCards(text: string, onFileClick: (relPath: string) => void): ReactNode[] {
+  const parts: ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  const re = new RegExp(WORKSPACE_PATH_RE.source, 'g')
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    const relPath = match[1]
+    parts.push(
+      <FileCard key={match.index} relPath={relPath} onClick={() => onFileClick(relPath)} />
+    )
+    lastIndex = re.lastIndex
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+  return parts
+}
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+function baseType(ct: string): string {
+  return ct.split(';')[0].trim()
+}
+
+function isTextContentType(ct: string): boolean {
+  if (ct.startsWith('text/')) return true
+  if (['application/json', 'application/xml', 'application/javascript'].includes(ct)) return true
+  return false
+}
+
+function ChatFilePreview({ file, onClose }: { file: FileContentResponse; onClose: () => void }) {
+  const ct = baseType(file.content_type)
+  const name = file.path.split('/').pop() || file.path
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-lg">{fileExtIcon(name)}</span>
+            <div className="min-w-0">
+              <h3 className="font-semibold truncate">{name}</h3>
+              <p className="text-xs text-muted-foreground">{ct} &middot; {formatSize(file.size)}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-5">
+          {ct === 'text/html' && (
+            <iframe srcDoc={file.content} sandbox="allow-scripts" className="w-full h-[65vh] rounded-lg border border-border bg-white" title={name} />
+          )}
+          {ct === 'text/markdown' && file.encoding === 'utf-8' && (
+            <div className="prose prose-invert max-w-none text-foreground leading-relaxed">
+              <Markdown>{file.content}</Markdown>
+            </div>
+          )}
+          {ct.startsWith('image/') && ct !== 'image/svg+xml' && file.encoding === 'base64' && (
+            <div className="flex items-center justify-center">
+              <img src={`data:${ct};base64,${file.content}`} alt={name} className="max-w-full max-h-[65vh] object-contain rounded-lg" />
+            </div>
+          )}
+          {ct === 'image/svg+xml' && file.encoding === 'utf-8' && (
+            <div className="flex items-center justify-center" dangerouslySetInnerHTML={{ __html: file.content }} />
+          )}
+          {isTextContentType(ct) && ct !== 'text/markdown' && ct !== 'text/html' && file.encoding === 'utf-8' && (
+            <pre className="text-sm font-mono bg-black/20 rounded-lg p-4 overflow-auto max-h-[65vh] leading-relaxed">
+              {file.content.split('\n').map((line, i) => (
+                <div key={i} className="flex">
+                  <span className="text-muted-foreground/40 select-none w-10 text-right mr-4 flex-shrink-0">{i + 1}</span>
+                  <span className="flex-1 whitespace-pre-wrap break-all">{line}</span>
+                </div>
+              ))}
+            </pre>
+          )}
+          {!isTextContentType(ct) && !ct.startsWith('image/') && (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-4xl mb-3">{fileExtIcon(name)}</p>
+              <p className="font-medium">Binary file</p>
+              <p className="text-sm mt-1">{ct} &middot; {formatSize(file.size)}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Recursively process React children, replacing workspace paths in text nodes */
+function processChildren(children: ReactNode, onFileClick: (relPath: string) => void): ReactNode {
+  if (typeof children === 'string') {
+    if (WORKSPACE_PATH_RE.test(children)) {
+      WORKSPACE_PATH_RE.lastIndex = 0
+      return renderWithFileCards(children, onFileClick)
+    }
+    return children
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, i) => {
+      if (typeof child === 'string') {
+        if (WORKSPACE_PATH_RE.test(child)) {
+          WORKSPACE_PATH_RE.lastIndex = 0
+          return <span key={i}>{renderWithFileCards(child, onFileClick)}</span>
+        }
+        return child
+      }
+      return child
+    })
+  }
+  return children
 }
 
 function UserAvatar() {
@@ -255,6 +477,22 @@ export function Chat() {
   const [handoffFrom, setHandoffFrom] = useState<string | null>(null)
   // Specialist agents (excludes hermes + mother)
   const [specialists, setSpecialists] = useState<AgentResponse[]>([])
+
+  // File preview state
+  const [previewFile, setPreviewFile] = useState<FileContentResponse | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
+  const openFilePreview = useCallback(async (relPath: string) => {
+    setPreviewLoading(true)
+    try {
+      const file = await api.getFileContent(relPath)
+      setPreviewFile(file)
+    } catch {
+      // best-effort
+    } finally {
+      setPreviewLoading(false)
+    }
+  }, [])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -572,10 +810,22 @@ export function Chat() {
               </div>
             ) : (
               <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
-                {msg.streaming && !msg.content && (!msg.toolCalls || msg.toolCalls.length === 0) && (
-                  <TypingIndicator />
+                {msg.streaming && !msg.content && (
+                  <div className="py-1">
+                    <ActivityConstellation tools={msg.toolCalls || []} />
+                    <ActivityNarrative tools={msg.toolCalls || []} />
+                  </div>
                 )}
-                {msg.content && <Markdown>{msg.content}</Markdown>}
+                {msg.content && (
+                  <Markdown components={{
+                    p({ children }) {
+                      return <p>{processChildren(children, openFilePreview)}</p>
+                    },
+                    li({ children }) {
+                      return <li>{processChildren(children, openFilePreview)}</li>
+                    },
+                  }}>{msg.content}</Markdown>
+                )}
                 {msg.streaming && msg.content && (
                   <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
                 )}
@@ -637,6 +887,16 @@ export function Chat() {
         </div>
         <p className="text-xs text-muted-foreground px-1">Enter to send · Shift+Enter for new line</p>
       </div>
+
+      {/* File preview modal */}
+      {previewLoading && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="animate-pulse text-white">Loading preview...</div>
+        </div>
+      )}
+      {previewFile && (
+        <ChatFilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
     </div>
   )
 }
