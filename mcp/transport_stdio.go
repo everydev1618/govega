@@ -149,7 +149,10 @@ func (t *StdioTransport) Send(ctx context.Context, method string, params any) (j
 		return nil, ctx.Err()
 	case <-t.done:
 		return nil, fmt.Errorf("transport closed")
-	case resp := <-respCh:
+	case resp, ok := <-respCh:
+		if !ok || resp == nil {
+			return nil, fmt.Errorf("transport closed before response received")
+		}
 		if resp.Error != nil {
 			return nil, resp.Error
 		}
