@@ -10,6 +10,7 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/mcp"
 	"github.com/google/uuid"
 )
 
@@ -539,6 +540,166 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- MCP Connection Handlers ---
+
+func (s *Server) handleMCPRegistry(w http.ResponseWriter, r *http.Request) {
+	tools := s.interp.Tools()
+
+	// Load existing settings for pre-filling env fields.
+	settingsMap := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		for _, st := range settings {
+			settingsMap[st.Key] = st.Key // just indicate existence, don't leak values
+		}
+	}
+
+	resp := make([]MCPRegistryEntryResponse, 0)
+	for _, entry := range mcp.DefaultRegistry {
+		existing := make(map[string]string)
+		allEnv := append(entry.RequiredEnv, entry.OptionalEnv...)
+		for _, key := range allEnv {
+			if _, ok := settingsMap[key]; ok {
+				existing[key] = "configured"
+			}
+		}
+
+		resp = append(resp, MCPRegistryEntryResponse{
+			Name:             entry.Name,
+			Description:      entry.Description,
+			RequiredEnv:      entry.RequiredEnv,
+			OptionalEnv:      entry.OptionalEnv,
+			BuiltinGo:        entry.BuiltinGo,
+			Connected:        tools.MCPServerConnected(entry.Name),
+			ExistingSettings: existing,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) {
+	var req ConnectMCPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "name is required"})
+		return
+	}
+
+	tools := s.interp.Tools()
+
+	// Check if already connected.
+	if tools.MCPServerConnected(req.Name) {
+		writeJSON(w, http.StatusConflict, ErrorResponse{Error: fmt.Sprintf("server %q is already connected", req.Name)})
+		return
+	}
+
+	var cfg mcp.ServerConfig
+
+	// Check registry first.
+	if entry, ok := mcp.Lookup(req.Name); ok {
+		// Save env values as sensitive settings.
+		for key, val := range req.Env {
+			if val != "" {
+				if err := s.store.UpsertSetting(Setting{Key: key, Value: val, Sensitive: true}); err != nil {
+					slog.Error("failed to save MCP env setting", "key", key, "error", err)
+				}
+			}
+		}
+		s.refreshToolSettings()
+
+		// Build env map: merge stored settings + request env.
+		envMap := make(map[string]string)
+		if settings, err := s.store.ListSettings(); err == nil {
+			for _, st := range settings {
+				envMap[st.Key] = st.Value
+			}
+		}
+		for k, v := range req.Env {
+			if v != "" {
+				envMap[k] = v
+			}
+		}
+
+		cfg = entry.ToServerConfig(envMap)
+	} else {
+		// Custom server.
+		cfg = mcp.ServerConfig{
+			Name:    req.Name,
+			Command: req.Command,
+			Args:    req.Args,
+			URL:     req.URL,
+			Headers: req.Headers,
+			Env:     req.Env,
+		}
+		switch req.Transport {
+		case "http":
+			cfg.Transport = mcp.TransportHTTP
+		case "sse":
+			cfg.Transport = mcp.TransportSSE
+		default:
+			cfg.Transport = mcp.TransportStdio
+		}
+		if req.Timeout > 0 {
+			cfg.Timeout = time.Duration(req.Timeout) * time.Second
+		}
+
+		// Save any env values as sensitive settings.
+		for key, val := range req.Env {
+			if val != "" {
+				if err := s.store.UpsertSetting(Setting{Key: key, Value: val, Sensitive: true}); err != nil {
+					slog.Error("failed to save MCP env setting", "key", key, "error", err)
+				}
+			}
+		}
+		s.refreshToolSettings()
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	numTools, err := tools.ConnectMCPServer(ctx, cfg)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+			Name:      req.Name,
+			Connected: false,
+			Error:     err.Error(),
+		})
+		return
+	}
+
+	// Get tool names for response.
+	statuses := tools.MCPServerStatuses()
+	var toolNames []string
+	for _, st := range statuses {
+		if st.Name == req.Name {
+			toolNames = st.Tools
+			break
+		}
+	}
+
+	_ = numTools
+	writeJSON(w, http.StatusOK, ConnectMCPResponse{
+		Name:      req.Name,
+		Connected: true,
+		Tools:     toolNames,
+	})
+}
+
+func (s *Server) handleDisconnectMCPServer(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "server name is required"})
+		return
+	}
+
+	tools := s.interp.Tools()
+	if err := tools.DisconnectMCPServer(name); err != nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }
 
 // --- Stats Handler ---

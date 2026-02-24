@@ -198,6 +198,36 @@ export interface Setting {
   updated_at: string
 }
 
+// --- MCP Connection Types ---
+
+export interface MCPRegistryEntry {
+  name: string
+  description: string
+  required_env?: string[]
+  optional_env?: string[]
+  builtin_go?: boolean
+  connected: boolean
+  existing_settings?: Record<string, string>
+}
+
+export interface ConnectMCPRequest {
+  name: string
+  env?: Record<string, string>
+  transport?: string
+  command?: string
+  args?: string[]
+  url?: string
+  headers?: Record<string, string>
+  timeout?: number
+}
+
+export interface ConnectMCPResponse {
+  name: string
+  connected: boolean
+  tools?: string[]
+  error?: string
+}
+
 // --- Streaming Chat Types ---
 
 export interface ChatEvent {

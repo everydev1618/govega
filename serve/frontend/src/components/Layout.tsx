@@ -13,9 +13,8 @@ const secondaryNav = [
   { to: '/files', label: 'Files' },
   { to: '/events', label: 'Events' },
   { to: '/spawn-tree', label: 'Spawn Tree' },
-  { to: '/mcp', label: 'MCP' },
+  { to: '/connections', label: 'Connections' },
   { to: '/costs', label: 'Costs' },
-  { to: '/settings', label: 'Settings' },
 ]
 
 function NavItem({ to, label }: { to: string; label: string }) {

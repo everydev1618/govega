@@ -150,6 +150,44 @@ func (t *Tools) MCPServerConnected(name string) bool {
 	return false
 }
 
+// DisconnectMCPServer disconnects a single MCP server by name,
+// removes it from the client list, and unregisters all its tools.
+func (t *Tools) DisconnectMCPServer(name string) error {
+	t.mu.Lock()
+	var found *mcpClientEntry
+	var idx int
+	for i, entry := range t.mcpClients {
+		if entry.config.Name == name {
+			found = entry
+			idx = i
+			break
+		}
+	}
+	if found == nil {
+		t.mu.Unlock()
+		return fmt.Errorf("MCP server %q not found", name)
+	}
+
+	// Remove from slice.
+	t.mcpClients = append(t.mcpClients[:idx], t.mcpClients[idx+1:]...)
+
+	// Remove all tools prefixed with "name__".
+	prefix := name + "__"
+	for toolName := range t.tools {
+		if strings.HasPrefix(toolName, prefix) {
+			delete(t.tools, toolName)
+		}
+	}
+	t.mu.Unlock()
+
+	if err := found.client.Close(); err != nil {
+		return fmt.Errorf("close MCP server %s: %w", name, err)
+	}
+
+	slog.Info("mcp: disconnected server", "server", name)
+	return nil
+}
+
 // DisconnectMCP disconnects all MCP servers.
 func (t *Tools) DisconnectMCP() error {
 	t.mu.Lock()
