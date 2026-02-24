@@ -122,8 +122,9 @@ func (t *Tools) RegisterBuiltins() {
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			command := params["command"].(string)
 
-			// Determine working directory: sandbox if set, else cwd.
-			workdir := t.sandbox
+			// Determine working directory: effective sandbox (includes project subdir) if set, else cwd.
+			sandbox := t.effectiveSandbox()
+			workdir := sandbox
 			if workdir == "" {
 				var err error
 				workdir, err = os.Getwd()
@@ -140,8 +141,8 @@ func (t *Tools) RegisterBuiltins() {
 				}
 				candidate = filepath.Clean(candidate)
 				// Must stay within sandbox (if sandbox is set).
-				if t.sandbox != "" {
-					rel, err := filepath.Rel(t.sandbox, candidate)
+				if sandbox != "" {
+					rel, err := filepath.Rel(sandbox, candidate)
 					if err != nil || strings.HasPrefix(rel, "..") {
 						candidate = workdir // silently fall back to sandbox root
 					}
@@ -165,14 +166,14 @@ func (t *Tools) RegisterBuiltins() {
 
 			// Rewrite any absolute paths in the command that escape the sandbox,
 			// and isolate HOME/TMPDIR so ~ doesn't point outside.
-			if t.sandbox != "" {
-				command = rewriteCommandPaths(command, t.sandbox)
+			if sandbox != "" {
+				command = rewriteCommandPaths(command, sandbox)
 			}
 
 			cmd := exec.CommandContext(execCtx, "sh", "-c", command)
 			cmd.Dir = workdir
-			if t.sandbox != "" {
-				cmd.Env = sandboxEnv(t.sandbox)
+			if sandbox != "" {
+				cmd.Env = sandboxEnv(sandbox)
 			}
 
 			var buf bytes.Buffer

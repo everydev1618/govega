@@ -43,6 +43,29 @@ type SkillsRef interface {
 	GetMatchedSkills() []skills.SkillMatch
 }
 
+// projectState holds the active project name for workspace subdirectories.
+// It is shared by pointer across Filter/WithSkillsRef copies so that when
+// Hermes sets the project, every downstream agent sees it immediately.
+type projectState struct {
+	mu   sync.RWMutex
+	name string
+}
+
+func (ps *projectState) get() string {
+	if ps == nil {
+		return ""
+	}
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+	return ps.name
+}
+
+func (ps *projectState) set(name string) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.name = name
+}
+
 // Tools is a collection of callable tools.
 type Tools struct {
 	tools      map[string]*tool
@@ -50,6 +73,7 @@ type Tools struct {
 	sandbox    string
 	mcpClients []*mcpClientEntry // MCP server clients
 	container  *containerState   // Container routing state
+	project    *projectState     // Active project subdirectory (shared pointer)
 	parent     *Tools            // parent for skill-tool lookups (set by Filter)
 	skillsRef  SkillsRef         // skills prompt for dynamic tool augmentation
 	mu         sync.RWMutex
@@ -111,6 +135,38 @@ func NewTools(opts ...ToolsOption) *Tools {
 	}
 
 	return t
+}
+
+// effectiveSandbox returns the active sandbox path, incorporating the project
+// subdirectory when one is set. If no sandbox is configured, returns "".
+func (t *Tools) effectiveSandbox() string {
+	if t.sandbox == "" {
+		return ""
+	}
+	if proj := t.project.get(); proj != "" {
+		return filepath.Join(t.sandbox, proj)
+	}
+	return t.sandbox
+}
+
+// SetActiveProject sets the active project name for workspace subdirectories.
+// All file and exec operations will target sandbox/<project>/ when set.
+// Pass an empty string to clear the active project.
+func (t *Tools) SetActiveProject(name string) {
+	if t.project == nil {
+		t.project = &projectState{}
+	}
+	t.project.set(name)
+}
+
+// ActiveProject returns the current active project name, or "" if none.
+func (t *Tools) ActiveProject() string {
+	return t.project.get()
+}
+
+// Sandbox returns the base sandbox path (without project subdirectory).
+func (t *Tools) Sandbox() string {
+	return t.sandbox
 }
 
 // WithSandbox restricts file operations to a directory.
@@ -216,7 +272,7 @@ func (t *Tools) Execute(ctx context.Context, name string, params map[string]any)
 	t.mu.RLock()
 	tl, ok := t.tools[name]
 	middleware := t.middleware
-	sandbox := t.sandbox
+	sandbox := t.effectiveSandbox()
 	cs := t.container
 	parent := t.parent
 	t.mu.RUnlock()
@@ -359,6 +415,7 @@ func (t *Tools) Filter(names ...string) *Tools {
 		middleware: t.middleware,
 		sandbox:    t.sandbox,
 		container:  t.container,
+		project:    t.project,
 		parent:     t,
 	}
 
@@ -384,6 +441,7 @@ func (t *Tools) WithSkillsRef(sp SkillsRef) *Tools {
 		middleware: t.middleware,
 		sandbox:    t.sandbox,
 		container:  t.container,
+		project:    t.project,
 		mcpClients: t.mcpClients,
 		parent:     t.parent,
 		skillsRef:  sp,
