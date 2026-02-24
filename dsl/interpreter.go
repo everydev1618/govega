@@ -1163,10 +1163,42 @@ func (i *Interpreter) EnsureAgent(name string) (*vega.Process, error) {
 }
 
 // SendToAgent sends a message to a specific agent and returns the response.
+// If the calling context carries an event sink (from a streaming parent),
+// SendToAgent uses streaming and forwards nested tool_start/tool_end events
+// to the parent sink so the UI can display sub-agent activity in real time.
 func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message string) (string, error) {
 	proc, err := i.ensureAgent(agentName)
 	if err != nil {
 		return "", err
+	}
+
+	// If the parent is streaming, use rich streaming so we can forward
+	// nested tool activity back to the parent's event channel.
+	parentSink := vega.EventSinkFromContext(ctx)
+	if parentSink != nil {
+		stream, err := proc.SendStreamRich(ctx, message)
+		if err != nil {
+			return "", err
+		}
+
+		for event := range stream.Events() {
+			// Only forward tool lifecycle events — skip text_delta and done
+			// to avoid corrupting the parent's response text.
+			if event.Type == vega.ChatEventToolStart || event.Type == vega.ChatEventToolEnd {
+				// Build the nested agent chain.
+				if event.NestedAgent == "" {
+					event.NestedAgent = agentName
+				} else {
+					event.NestedAgent = agentName + "/" + event.NestedAgent
+				}
+				parentSink <- event
+			}
+		}
+
+		if err := stream.Err(); err != nil {
+			return "", err
+		}
+		return stream.Response(), nil
 	}
 
 	response, err := proc.Send(ctx, message)

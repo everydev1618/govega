@@ -20,14 +20,15 @@ const (
 // It carries text deltas alongside tool call lifecycle events so that
 // callers can render tool activity inline with the response text.
 type ChatEvent struct {
-	Type       ChatEventType  `json:"type"`
-	Delta      string         `json:"delta,omitempty"`
-	ToolCallID string         `json:"tool_call_id,omitempty"`
-	ToolName   string         `json:"tool_name,omitempty"`
-	Arguments  map[string]any `json:"arguments,omitempty"`
-	Result     string         `json:"result,omitempty"`
-	DurationMs int64          `json:"duration_ms,omitempty"`
-	Error      string         `json:"error,omitempty"`
+	Type        ChatEventType  `json:"type"`
+	Delta       string         `json:"delta,omitempty"`
+	ToolCallID  string         `json:"tool_call_id,omitempty"`
+	ToolName    string         `json:"tool_name,omitempty"`
+	Arguments   map[string]any `json:"arguments,omitempty"`
+	Result      string         `json:"result,omitempty"`
+	DurationMs  int64          `json:"duration_ms,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	NestedAgent string         `json:"nested_agent,omitempty"`
 }
 
 // ChatStream represents a streaming chat response with structured events.

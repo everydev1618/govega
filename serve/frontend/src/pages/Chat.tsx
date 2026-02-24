@@ -57,6 +57,9 @@ function ToolCallPanel({ tc, onToggle }: { tc: ToolCallState; onToggle: () => vo
       >
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot}`} />
         <span className="font-mono text-xs font-medium text-foreground">{tc.name}</span>
+        {tc.nested_agent && (
+          <span className="text-[10px] text-muted-foreground font-normal">via {tc.nested_agent}</span>
+        )}
         {tc.duration_ms != null && (
           <span className="ml-auto text-xs text-muted-foreground">{tc.duration_ms}ms</span>
         )}
@@ -96,6 +99,7 @@ const NODE_COLORS = ['#60a5fa', '#a78bfa', '#34d399', '#fbbf24']
 function toolNarrative(name: string, args: Record<string, unknown>): string {
   switch (name) {
     case 'send_to_agent': return `Traveling to ${args.agent || 'an agent'}...`
+    case 'delegate': return `Delegating to ${args.agent || 'an agent'}...`
     case 'list_agents': return 'Surveying the universe...'
     case 'remember': return 'Committing to memory...'
     case 'recall': return 'Searching memories...'
@@ -146,13 +150,22 @@ function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
 }
 
 function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
+  // Prioritize nested agent activity — when a delegate is running and nested
+  // tools exist, show the nested agent's narrative instead.
+  const runningNested = [...tools].reverse().find(t => t.status === 'running' && t.nested_agent)
   const running = [...tools].reverse().find(t => t.status === 'running')
   const last = tools[tools.length - 1]
-  const target = running || last
+  const target = runningNested || running || last
 
-  const text = target
-    ? toolNarrative(target.name, target.arguments || {})
-    : 'Thinking...'
+  let text: string
+  if (target?.nested_agent) {
+    const agent = target.nested_agent.split('/').pop() || target.nested_agent
+    text = `${agent}: ${toolNarrative(target.name, target.arguments || {})}`
+  } else if (target) {
+    text = toolNarrative(target.name, target.arguments || {})
+  } else {
+    text = 'Thinking...'
+  }
 
   return (
     <p className="text-xs text-muted-foreground italic mt-1 transition-opacity duration-300">
@@ -590,6 +603,7 @@ export function Chat() {
             arguments: (event.arguments || {}) as Record<string, unknown>,
             status: 'running',
             collapsed: true,
+            nested_agent: event.nested_agent,
           })
           break
         case 'tool_end': {
@@ -810,11 +824,8 @@ export function Chat() {
               </div>
             ) : (
               <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
-                {msg.streaming && !msg.content && (
-                  <div className="py-1">
-                    <ActivityConstellation tools={msg.toolCalls || []} />
-                    <ActivityNarrative tools={msg.toolCalls || []} />
-                  </div>
+                {msg.streaming && !msg.content && !(msg.toolCalls?.length) && (
+                  <p className="text-xs text-muted-foreground italic py-1">Thinking...</p>
                 )}
                 {msg.content && (
                   <Markdown components={{
@@ -828,6 +839,12 @@ export function Chat() {
                 )}
                 {msg.streaming && msg.content && (
                   <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+                )}
+                {msg.streaming && (msg.toolCalls?.some(tc => tc.status === 'running')) && (
+                  <div className="py-1">
+                    <ActivityConstellation tools={msg.toolCalls || []} />
+                    <ActivityNarrative tools={msg.toolCalls || []} />
+                  </div>
                 )}
                 {msg.toolCalls?.map((tc, j) => (
                   <ToolCallPanel key={tc.id} tc={tc} onToggle={() => toggleToolCall(i, j)} />

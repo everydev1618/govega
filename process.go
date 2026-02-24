@@ -17,6 +17,21 @@ type contextKey string
 // processContextKey is the context key for the current process.
 const processContextKey contextKey = "vega.process"
 
+// eventSinkContextKey is the context key for a ChatEvent channel that
+// receives nested tool activity from delegated agent calls.
+const eventSinkContextKey contextKey = "vega.event_sink"
+
+// ContextWithEventSink returns a new context with a ChatEvent sink attached.
+func ContextWithEventSink(ctx context.Context, ch chan<- ChatEvent) context.Context {
+	return context.WithValue(ctx, eventSinkContextKey, ch)
+}
+
+// EventSinkFromContext retrieves the ChatEvent sink from the context, if present.
+func EventSinkFromContext(ctx context.Context) chan<- ChatEvent {
+	ch, _ := ctx.Value(eventSinkContextKey).(chan<- ChatEvent)
+	return ch
+}
+
 // ContextWithProcess returns a new context with the process attached.
 func ContextWithProcess(ctx context.Context, p *Process) context.Context {
 	return context.WithValue(ctx, processContextKey, p)
