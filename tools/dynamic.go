@@ -124,9 +124,32 @@ func (t *Tools) LoadFile(path string) error {
 	return t.RegisterDynamicTool(def)
 }
 
+// mergeSettings returns a new params map with settings as defaults, user params taking precedence.
+func (t *Tools) mergeSettings(params map[string]any) map[string]any {
+	t.mu.RLock()
+	settings := t.settings
+	t.mu.RUnlock()
+
+	if len(settings) == 0 {
+		return params
+	}
+
+	merged := make(map[string]any, len(settings)+len(params))
+	for k, v := range settings {
+		merged[k] = v
+	}
+	for k, v := range params {
+		merged[k] = v // user params take precedence
+	}
+	return merged
+}
+
 // HTTP executor with template interpolation support.
 func (t *Tools) createHTTPExecutor(impl DynamicToolImpl) ToolFunc {
 	return func(ctx context.Context, params map[string]any) (string, error) {
+		// Merge settings into params for template interpolation.
+		params = t.mergeSettings(params)
+
 		// Parse timeout
 		timeout := 30 * time.Second
 		if impl.Timeout != "" {
@@ -250,6 +273,9 @@ func (t *Tools) createHTTPExecutor(impl DynamicToolImpl) ToolFunc {
 // Exec executor with template interpolation support.
 func (t *Tools) createExecExecutor(impl DynamicToolImpl) ToolFunc {
 	return func(ctx context.Context, params map[string]any) (string, error) {
+		// Merge settings into params for template interpolation.
+		params = t.mergeSettings(params)
+
 		// Parse timeout
 		timeout := 30 * time.Second
 		if impl.Timeout != "" {

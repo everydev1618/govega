@@ -585,6 +585,64 @@ func (s *Server) handleSpawnTree(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// --- Settings Handlers ---
+
+func (s *Server) handleListSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.store.ListSettings()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if settings == nil {
+		settings = []Setting{}
+	}
+
+	// Mask sensitive values in response.
+	for i := range settings {
+		if settings[i].Sensitive {
+			settings[i].Value = "********"
+		}
+	}
+
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) handleUpsertSetting(w http.ResponseWriter, r *http.Request) {
+	var req Setting
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Key == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "key is required"})
+		return
+	}
+
+	if err := s.store.UpsertSetting(req); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Refresh settings on the tools collection.
+	s.refreshToolSettings()
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleDeleteSetting(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+	if key == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "key is required"})
+		return
+	}
+
+	if err := s.store.DeleteSetting(key); err != nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "setting not found"})
+		return
+	}
+
+	// Refresh settings on the tools collection.
+	s.refreshToolSettings()
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 // --- Helpers ---
 
 func processToResponse(p *vega.Process) ProcessResponse {

@@ -131,6 +131,14 @@ func (s *SQLiteStore) Init() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_workspace_files_agent ON workspace_files(agent);
 
+	CREATE TABLE IF NOT EXISTS settings (
+		key        TEXT PRIMARY KEY,
+		value      TEXT NOT NULL,
+		sensitive  INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -607,6 +615,67 @@ func (s *SQLiteStore) DeleteAllFromTable(table string) error {
 // Vacuum reclaims unused space in the database.
 func (s *SQLiteStore) Vacuum() {
 	s.db.Exec("VACUUM")
+}
+
+// UpsertSetting creates or updates a setting.
+func (s *SQLiteStore) UpsertSetting(st Setting) error {
+	_, err := s.db.Exec(
+		`INSERT INTO settings (key, value, sensitive, created_at, updated_at)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		 ON CONFLICT(key)
+		 DO UPDATE SET value = excluded.value, sensitive = excluded.sensitive, updated_at = CURRENT_TIMESTAMP`,
+		st.Key, st.Value, st.Sensitive,
+	)
+	return err
+}
+
+// GetSetting returns a setting by key.
+func (s *SQLiteStore) GetSetting(key string) (*Setting, error) {
+	var st Setting
+	err := s.db.QueryRow(
+		`SELECT key, value, sensitive, created_at, updated_at FROM settings WHERE key = ?`, key,
+	).Scan(&st.Key, &st.Value, &st.Sensitive, &st.CreatedAt, &st.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// ListSettings returns all settings.
+func (s *SQLiteStore) ListSettings() ([]Setting, error) {
+	rows, err := s.db.Query(
+		`SELECT key, value, sensitive, created_at, updated_at FROM settings ORDER BY key ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var settings []Setting
+	for rows.Next() {
+		var st Setting
+		if err := rows.Scan(&st.Key, &st.Value, &st.Sensitive, &st.CreatedAt, &st.UpdatedAt); err != nil {
+			return nil, err
+		}
+		settings = append(settings, st)
+	}
+	return settings, rows.Err()
+}
+
+// DeleteSetting removes a setting by key.
+func (s *SQLiteStore) DeleteSetting(key string) error {
+	result, err := s.db.Exec(`DELETE FROM settings WHERE key = ?`, key)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.

@@ -87,6 +87,18 @@ type Store interface {
 
 	// ListWorkspaceFileAgents returns distinct agent names that have written files.
 	ListWorkspaceFileAgents() ([]string, error)
+
+	// UpsertSetting creates or updates a setting.
+	UpsertSetting(s Setting) error
+
+	// GetSetting returns a setting by key.
+	GetSetting(key string) (*Setting, error)
+
+	// ListSettings returns all settings.
+	ListSettings() ([]Setting, error)
+
+	// DeleteSetting removes a setting by key.
+	DeleteSetting(key string) error
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.
@@ -176,6 +188,15 @@ type WorkspaceFile struct {
 	Operation   string    `json:"operation"`
 	Description string    `json:"description,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Setting is a persisted key-value configuration entry.
+type Setting struct {
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	Sensitive bool      `json:"sensitive"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // WorkflowRun is a persisted workflow execution.

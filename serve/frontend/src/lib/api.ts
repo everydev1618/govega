@@ -79,6 +79,16 @@ export const api = {
     return fetchAPI<import('./types').FileMetadataResponse>(`/api/files/metadata${params}`)
   },
 
+  // Settings
+  getSettings: () => fetchAPI<import('./types').Setting[]>('/api/settings'),
+  upsertSetting: (key: string, value: string, sensitive: boolean) =>
+    fetchAPI<{ status: string }>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ key, value, sensitive }),
+    }),
+  deleteSetting: (key: string) =>
+    fetchAPI<{ status: string }>(`/api/settings/${key}`, { method: 'DELETE' }),
+
   // Agent composition
   createAgent: (req: import('./types').CreateAgentRequest) =>
     fetchAPI<import('./types').CreateAgentResponse>('/api/agents', {

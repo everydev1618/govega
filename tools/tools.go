@@ -78,6 +78,10 @@ type Tools struct {
 	skillsRef  SkillsRef         // skills prompt for dynamic tool augmentation
 	mu         sync.RWMutex
 
+	// Settings holds key-value pairs from the settings store that are injected
+	// into dynamic tool template interpolation.
+	settings map[string]string
+
 	// OnFileWrite is called after a successful write_file or append_file operation.
 	// Parameters: ctx, relative path, operation ("write"/"append"), description.
 	OnFileWrite func(ctx context.Context, path, operation, description string)
@@ -162,6 +166,24 @@ func (t *Tools) SetActiveProject(name string) {
 // ActiveProject returns the current active project name, or "" if none.
 func (t *Tools) ActiveProject() string {
 	return t.project.get()
+}
+
+// SetSettings replaces the tool settings map used for dynamic tool interpolation.
+func (t *Tools) SetSettings(m map[string]string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.settings = m
+}
+
+// GetSettings returns a copy of the current settings map.
+func (t *Tools) GetSettings() map[string]string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	cp := make(map[string]string, len(t.settings))
+	for k, v := range t.settings {
+		cp[k] = v
+	}
+	return cp
 }
 
 // Sandbox returns the base sandbox path (without project subdirectory).
