@@ -189,7 +189,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 				}
 			}
 			return i.SendToAgent(ctx, agentName, message)
-		})
+		}, def.Team)
 
 		bbEnabled := def.Delegation != nil && def.Delegation.Blackboard
 		descs := make(map[string]string, len(def.Team))
@@ -214,6 +214,9 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 			systemStr = knowledgeSection + "\n\n" + systemStr
 		}
 	}
+
+	// Inject current date so agents know what day it is.
+	systemStr += "\nToday's date is " + time.Now().Format("January 2, 2006") + "."
 
 	// Inject workspace path so agents know where relative paths resolve.
 	systemStr += "\nYour working directory is " + vega.WorkspacePath()

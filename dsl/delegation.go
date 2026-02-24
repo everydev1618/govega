@@ -20,7 +20,7 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 	if len(team) == 0 {
 		return system
 	}
-	teamSection := "\n\n## Your Team\n\nYou lead a team of agents. Use the `delegate` tool to assign tasks to them and get their responses. Your team members:\n"
+	teamSection := "\n\n## Your Team\n\nYou lead a team of agents. Use the `delegate` tool to assign tasks to them and get their responses. You can ONLY delegate to the agents listed below — do not attempt to delegate to any other agent.\n\nYour team members:\n"
 	for _, name := range team {
 		if desc, ok := agentDescriptions[name]; ok && desc != "" {
 			teamSection += fmt.Sprintf("- **%s** — %s\n", name, desc)
@@ -41,7 +41,22 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 
 // NewDelegateTool returns a tools.ToolDef for the delegate tool.
 // sendFn is called when the tool is invoked to relay a message to another agent.
-func NewDelegateTool(sendFn SendFunc) tools.ToolDef {
+// team constrains which agents can be delegated to; if empty, any agent name is accepted.
+func NewDelegateTool(sendFn SendFunc, team []string) tools.ToolDef {
+	teamSet := make(map[string]bool, len(team))
+	for _, t := range team {
+		teamSet[t] = true
+	}
+
+	agentParam := tools.ParamDef{
+		Type:        "string",
+		Description: "Name of the team member agent to delegate to",
+		Required:    true,
+	}
+	if len(team) > 0 {
+		agentParam.Enum = team
+	}
+
 	return tools.ToolDef{
 		Description: "Delegate a task to another agent on your team and get their response. Use this to assign work to team members.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
@@ -50,14 +65,13 @@ func NewDelegateTool(sendFn SendFunc) tools.ToolDef {
 			if agent == "" || message == "" {
 				return "", fmt.Errorf("both agent and message are required")
 			}
+			if len(teamSet) > 0 && !teamSet[agent] {
+				return "", fmt.Errorf("agent %q is not on your team — you can only delegate to: %s", agent, strings.Join(team, ", "))
+			}
 			return sendFn(ctx, agent, message)
 		},
 		Params: map[string]tools.ParamDef{
-			"agent": {
-				Type:        "string",
-				Description: "Name of the team member agent to delegate to",
-				Required:    true,
-			},
+			"agent":   agentParam,
 			"message": {
 				Type:        "string",
 				Description: "The task or question to send to the agent",
@@ -68,14 +82,15 @@ func NewDelegateTool(sendFn SendFunc) tools.ToolDef {
 }
 
 // RegisterDelegateTool registers the delegate tool on the given Tools instance
-// if it is not already registered. Returns true if registration happened.
-func RegisterDelegateTool(t *tools.Tools, sendFn SendFunc) bool {
+// if it is not already registered. team constrains which agents can be delegated to.
+// Returns true if registration happened.
+func RegisterDelegateTool(t *tools.Tools, sendFn SendFunc, team []string) bool {
 	for _, ts := range t.Schema() {
 		if ts.Name == "delegate" {
 			return false
 		}
 	}
-	t.Register("delegate", NewDelegateTool(sendFn))
+	t.Register("delegate", NewDelegateTool(sendFn, team))
 	return true
 }
 

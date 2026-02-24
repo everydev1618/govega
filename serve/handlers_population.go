@@ -177,7 +177,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	if len(req.Team) > 0 {
 		dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 			return s.interp.SendToAgent(ctx, agent, message)
-		})
+		}, req.Team)
 		toolNames = append(toolNames, "delegate")
 		system = dsl.BuildTeamPrompt(system, req.Team, nil, false)
 	}
@@ -380,7 +380,7 @@ func (s *Server) restoreComposedAgents() {
 		if len(a.Team) > 0 {
 			dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 				return s.interp.SendToAgent(ctx, agent, message)
-			})
+			}, a.Team)
 			hasDel := false
 			for _, t := range toolNames {
 				if t == "delegate" {

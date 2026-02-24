@@ -162,7 +162,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			if len(team) > 0 {
 				RegisterDelegateTool(interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 					return interp.SendToAgent(ctx, agent, message)
-				})
+				}, team)
 				if !containsStr(agentDef.Tools, "delegate") {
 					agentDef.Tools = append(agentDef.Tools, "delegate")
 				}
@@ -264,7 +264,7 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			if len(merged.Team) > 0 {
 				RegisterDelegateTool(interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 					return interp.SendToAgent(ctx, agent, message)
-				})
+				}, merged.Team)
 				if !containsStr(merged.Tools, "delegate") {
 					merged.Tools = append(merged.Tools, "delegate")
 				}
