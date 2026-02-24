@@ -269,6 +269,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Files
 	mux.HandleFunc("GET /api/files", s.handleListFiles)
 	mux.HandleFunc("GET /api/files/read", s.handleReadFile)
+	mux.HandleFunc("DELETE /api/files", s.handleDeleteFile)
 	mux.HandleFunc("GET /api/files/metadata", s.handleListFileMetadata)
 
 	// SSE
