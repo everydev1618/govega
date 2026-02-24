@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -25,7 +26,7 @@ func WithMCPServer(config mcp.ServerConfig) ToolsOption {
 
 		client, err := mcp.NewClient(config)
 		if err != nil {
-			// Log error but don't fail
+			slog.Warn("mcp: failed to create client", "server", config.Name, "error", err)
 			return
 		}
 
@@ -42,24 +43,29 @@ func (t *Tools) ConnectMCP(ctx context.Context) error {
 	clients := t.mcpClients
 	t.mu.Unlock()
 
+	var connected int
 	for _, entry := range clients {
 		if err := entry.client.Connect(ctx); err != nil {
-			return fmt.Errorf("connect MCP server %s: %w", entry.config.Name, err)
+			slog.Warn("mcp: failed to connect server", "server", entry.config.Name, "error", err)
+			continue
 		}
 
 		mcpTools, err := entry.client.DiscoverTools(ctx)
 		if err != nil {
-			return fmt.Errorf("discover tools from %s: %w", entry.config.Name, err)
+			slog.Warn("mcp: failed to discover tools", "server", entry.config.Name, "error", err)
+			continue
 		}
 
 		// Register each MCP tool as a tool
 		for _, mcpTool := range mcpTools {
 			t.registerMCPTool(entry.client, mcpTool)
 		}
+		connected++
+		slog.Info("mcp: connected server", "server", entry.config.Name, "tools", len(mcpTools))
 	}
 
-	// Register the global mcp_read_resource tool if any servers are connected.
-	if len(clients) > 0 {
+	// Register the global mcp_read_resource tool if any servers connected.
+	if connected > 0 {
 		t.registerMCPReadResourceTool()
 	}
 
@@ -93,6 +99,55 @@ func (t *Tools) registerMCPReadResourceTool() {
 			"uri":    {Type: "string", Description: "Resource URI to read", Required: true},
 		},
 	})
+}
+
+// ConnectMCPServer connects a single MCP server by config at runtime,
+// discovers its tools, and registers them. Returns the number of tools found.
+func (t *Tools) ConnectMCPServer(ctx context.Context, config mcp.ServerConfig) (int, error) {
+	client, err := mcp.NewClient(config)
+	if err != nil {
+		return 0, fmt.Errorf("create MCP client %s: %w", config.Name, err)
+	}
+
+	if err := client.Connect(ctx); err != nil {
+		return 0, fmt.Errorf("connect MCP server %s: %w", config.Name, err)
+	}
+
+	mcpTools, err := client.DiscoverTools(ctx)
+	if err != nil {
+		client.Close()
+		return 0, fmt.Errorf("discover tools from %s: %w", config.Name, err)
+	}
+
+	entry := &mcpClientEntry{client: client, config: config}
+	t.mu.Lock()
+	if t.mcpClients == nil {
+		t.mcpClients = make([]*mcpClientEntry, 0)
+	}
+	t.mcpClients = append(t.mcpClients, entry)
+	t.mu.Unlock()
+
+	for _, mcpTool := range mcpTools {
+		t.registerMCPTool(client, mcpTool)
+	}
+
+	// Ensure the global resource tool exists.
+	t.registerMCPReadResourceTool()
+
+	slog.Info("mcp: connected server at runtime", "server", config.Name, "tools", len(mcpTools))
+	return len(mcpTools), nil
+}
+
+// MCPServerConnected reports whether a server with the given name is already connected.
+func (t *Tools) MCPServerConnected(name string) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	for _, entry := range t.mcpClients {
+		if entry.config.Name == name && entry.client.Connected() {
+			return true
+		}
+	}
+	return false
 }
 
 // DisconnectMCP disconnects all MCP servers.

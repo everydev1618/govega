@@ -3,6 +3,7 @@ package dsl
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"strings"
@@ -124,8 +125,7 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := t.ConnectMCP(ctx); err != nil {
-			// Log warning but continue
-			_ = err
+			slog.Warn("mcp: connection phase completed with errors", "error", err)
 		}
 	}
 

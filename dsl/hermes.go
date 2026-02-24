@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/govega/tools"
 )
 
@@ -31,6 +33,8 @@ You roam freely between all agents. You know them, you speak their language, and
 - **set_project** — set the active project workspace so all agents write files into that project's folder
 - **list_projects** — list all project workspaces and see which one is active
 - **list_files** — list files in a directory (use this to see what's in the active workspace)
+- **connect_mcp** — connect an MCP server from the registry (e.g. github, brave-search, filesystem) to give all agents access to its tools
+- **list_mcp_status** — see which MCP servers are currently connected and their tools
 
 You can reach Mother this way too. If the right agent doesn't exist yet, ask Mother to create one:
   send_to_agent(agent="mother", message="create an agent that...")
@@ -125,6 +129,8 @@ func RegisterHermesTools(interp *Interpreter) {
 	}
 
 	t.Register("send_to_agent", newSendToAgentTool(interp))
+	t.Register("connect_mcp", newConnectMCPTool(interp))
+	t.Register("list_mcp_status", newListMCPStatusTool(interp))
 	t.Register("set_project", newSetProjectTool(interp))
 	t.Register("list_projects", newListProjectsTool(interp))
 }
@@ -141,7 +147,7 @@ func InjectHermes(interp *Interpreter, extraTools ...string) error {
 	}
 
 	def := HermesAgent(defaultModel)
-	def.Tools = append([]string{"list_agents", "send_to_agent", "set_project", "list_projects", "list_files"}, extraTools...)
+	def.Tools = append([]string{"list_agents", "send_to_agent", "connect_mcp", "list_mcp_status", "set_project", "list_projects", "list_files"}, extraTools...)
 
 	return interp.AddAgent(hermesAgentName, def)
 }
@@ -214,6 +220,87 @@ func newSendToAgentTool(interp *Interpreter) tools.ToolDef {
 				Required:    true,
 			},
 		},
+	}
+}
+
+// newConnectMCPTool returns a tool that connects an MCP server from the registry at runtime.
+func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
+		Description: "Connect an MCP server from the built-in registry. This makes the server's tools available to all agents. Use list_mcp_status to see what's already connected, and list_mcp_registry (via mother) to see all available servers.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			name, _ := params["name"].(string)
+			if name == "" {
+				return "", fmt.Errorf("name is required")
+			}
+
+			t := interp.Tools()
+
+			// Check if already connected.
+			if t.MCPServerConnected(name) {
+				return fmt.Sprintf("MCP server %q is already connected.", name), nil
+			}
+
+			// Look up in registry.
+			entry, ok := mcp.Lookup(name)
+			if !ok {
+				// List available servers for the error message.
+				var names []string
+				for n := range mcp.DefaultRegistry {
+					names = append(names, n)
+				}
+				return "", fmt.Errorf("MCP server %q not found in registry. Available: %s", name, strings.Join(names, ", "))
+			}
+
+			// Check required env vars.
+			var missing []string
+			for _, key := range entry.RequiredEnv {
+				if os.Getenv(key) == "" {
+					missing = append(missing, key)
+				}
+			}
+			if len(missing) > 0 {
+				return "", fmt.Errorf("missing required environment variables for %q: %s. Set them and try again", name, strings.Join(missing, ", "))
+			}
+
+			// Build config and connect.
+			config := entry.ToServerConfig(nil)
+			connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			toolCount, err := t.ConnectMCPServer(connectCtx, config)
+			if err != nil {
+				return "", fmt.Errorf("failed to connect %q: %w", name, err)
+			}
+
+			return fmt.Sprintf("Connected MCP server **%s** — %d tools now available. Tool names are prefixed with `%s__`.", name, toolCount, name), nil
+		}),
+		Params: map[string]tools.ParamDef{
+			"name": {
+				Type:        "string",
+				Description: "Name of the MCP server from the registry (e.g. 'github', 'brave-search', 'filesystem', 'slack')",
+				Required:    true,
+			},
+		},
+	}
+}
+
+// newListMCPStatusTool returns a tool that shows which MCP servers are connected.
+func newListMCPStatusTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
+		Description: "List all connected MCP servers and their tools.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			statuses := interp.Tools().MCPServerStatuses()
+			if len(statuses) == 0 {
+				return "No MCP servers connected. Use connect_mcp to connect one from the registry.", nil
+			}
+
+			out, err := json.MarshalIndent(statuses, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("marshal statuses: %w", err)
+			}
+			return string(out), nil
+		}),
+		Params: map[string]tools.ParamDef{},
 	}
 }
 
@@ -317,7 +404,7 @@ func newListProjectsTool(interp *Interpreter) tools.ToolDef {
 }
 
 // hermesToolNames are the tools Hermes uses.
-var hermesToolNames = []string{"list_agents", "send_to_agent", "set_project", "list_projects", "list_files"}
+var hermesToolNames = []string{"list_agents", "send_to_agent", "connect_mcp", "list_mcp_status", "set_project", "list_projects", "list_files"}
 
 // IsHermesTool reports whether a tool name is one of Hermes's tools.
 func IsHermesTool(name string) bool {
