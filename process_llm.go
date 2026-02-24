@@ -295,6 +295,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		}
 
 		toolCtx := ContextWithProcess(ctx, p)
+		toolCtx = ContextWithEventSink(toolCtx, events)
 
 		// Execute tools and collect results into a single user message.
 		var toolResults strings.Builder

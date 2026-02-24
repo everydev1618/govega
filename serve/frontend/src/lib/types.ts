@@ -199,6 +199,7 @@ export interface ChatEvent {
   result?: string
   duration_ms?: number
   error?: string
+  nested_agent?: string
 }
 
 export interface ToolCallState {
@@ -209,4 +210,5 @@ export interface ToolCallState {
   duration_ms?: number
   status: 'running' | 'completed' | 'error'
   collapsed: boolean
+  nested_agent?: string
 }
