@@ -17,8 +17,9 @@ type Document struct {
 type Agent struct {
 	Name        string            `yaml:"name"`
 	Extends     string            `yaml:"extends"`
-	Model       string            `yaml:"model"`
-	System      string            `yaml:"system"`
+	Model         string            `yaml:"model"`
+	FallbackModel string            `yaml:"fallback_model"`
+	System        string            `yaml:"system"`
 	Temperature *float64          `yaml:"temperature"`
 	Budget      string            `yaml:"budget"` // e.g., "$0.50"
 	Tools       []string          `yaml:"tools"`

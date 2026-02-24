@@ -265,14 +265,34 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 
 	// Build agent config
 	agent := vega.Agent{
-		Name:   name,
-		Model:  def.Model,
-		System: systemPrompt,
-		Tools:  agentTools,
+		Name:          name,
+		Model:         def.Model,
+		FallbackModel: def.FallbackModel,
+		System:        systemPrompt,
+		Tools:         agentTools,
 	}
 
 	if def.Temperature != nil {
 		agent.Temperature = def.Temperature
+	}
+
+	// Map DSL retry config to core retry policy
+	if def.Retry != nil {
+		bp := vega.BackoffExponential
+		switch def.Retry.Backoff {
+		case "linear":
+			bp = vega.BackoffLinear
+		case "constant":
+			bp = vega.BackoffConstant
+		}
+		agent.Retry = &vega.RetryPolicy{
+			MaxAttempts: def.Retry.MaxAttempts,
+			Backoff: vega.BackoffConfig{
+				Initial:    time.Second,
+				Multiplier: 2.0,
+				Type:       bp,
+			},
+		}
 	}
 
 	// Handle extends (merge parent config)

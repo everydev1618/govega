@@ -110,6 +110,9 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 	if v, ok := m["model"].(string); ok {
 		agent.Model = v
 	}
+	if v, ok := m["fallback_model"].(string); ok {
+		agent.FallbackModel = v
+	}
 	if v, ok := m["system"].(string); ok {
 		agent.System = v
 	}

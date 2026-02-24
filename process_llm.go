@@ -400,6 +400,38 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 		p.mu.Unlock()
 	}
 
+	// If a fallback model is configured, try once with it
+	if p.Agent.FallbackModel != "" && p.Agent.FallbackModel != p.Agent.Model {
+		slog.Info("trying fallback model",
+			"process_id", p.ID,
+			"agent", p.Agent.Name,
+			"fallback_model", p.Agent.FallbackModel,
+		)
+
+		fallbackLLM := llm.NewAnthropic(llm.WithModel(p.Agent.FallbackModel))
+		start := time.Now()
+		resp, err := fallbackLLM.Generate(ctx, messages, tools)
+		latency := time.Since(start)
+
+		if err == nil {
+			slog.Info("fallback model succeeded",
+				"process_id", p.ID,
+				"agent", p.Agent.Name,
+				"fallback_model", p.Agent.FallbackModel,
+				"latency_ms", latency.Milliseconds(),
+			)
+			return resp, nil
+		}
+
+		slog.Warn("fallback model also failed",
+			"process_id", p.ID,
+			"agent", p.Agent.Name,
+			"fallback_model", p.Agent.FallbackModel,
+			"error", err.Error(),
+		)
+		lastErr = err
+	}
+
 	return nil, lastErr
 }
 

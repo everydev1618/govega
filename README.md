@@ -783,7 +783,7 @@ curl -X POST localhost:3001/api/agents/assistant/chat \
 
 **Flags:**
 - `--addr :3001` — HTTP listen address (default `:3001`)
-- `--db .vega-serve.db` — SQLite database path for persistent history
+- `--db ~/.vega/vega.db` — SQLite database path for persistent history
 
 Historical process data, events, and workflow runs persist across restarts via SQLite.
 

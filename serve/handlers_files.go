@@ -215,6 +215,8 @@ func detectContentType(name string) string {
 
 	// Common types that mime package may not know.
 	switch strings.ToLower(ext) {
+	case ".html", ".htm":
+		return "text/html"
 	case ".md", ".markdown":
 		return "text/markdown"
 	case ".yaml", ".yml":
@@ -242,6 +244,10 @@ func detectContentType(name string) string {
 	}
 
 	if ct := mime.TypeByExtension(ext); ct != "" {
+		// Strip parameters like charset (e.g. "text/html; charset=utf-8" → "text/html").
+		if i := strings.IndexByte(ct, ';'); i >= 0 {
+			ct = strings.TrimSpace(ct[:i])
+		}
 		return ct
 	}
 	return "application/octet-stream"

@@ -30,6 +30,7 @@ You roam freely between all agents. You know them, you speak their language, and
 - **forget** — remove a specific memory by ID
 - **set_project** — set the active project workspace so all agents write files into that project's folder
 - **list_projects** — list all project workspaces and see which one is active
+- **list_files** — list files in a directory (use this to see what's in the active workspace)
 
 You can reach Mother this way too. If the right agent doesn't exist yet, ask Mother to create one:
   send_to_agent(agent="mother", message="create an agent that...")
@@ -97,9 +98,11 @@ func HermesAgent(defaultModel string) *Agent {
 		model = "claude-sonnet-4-20250514"
 	}
 	return &Agent{
-		Name:   hermesAgentName,
-		Model:  model,
-		System: hermesSystemPrompt,
+		Name:          hermesAgentName,
+		Model:         model,
+		FallbackModel: "claude-haiku-4-5-20251001",
+		System:        hermesSystemPrompt,
+		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
 	}
 }
 
@@ -138,7 +141,7 @@ func InjectHermes(interp *Interpreter, extraTools ...string) error {
 	}
 
 	def := HermesAgent(defaultModel)
-	def.Tools = append([]string{"list_agents", "send_to_agent", "set_project", "list_projects"}, extraTools...)
+	def.Tools = append([]string{"list_agents", "send_to_agent", "set_project", "list_projects", "list_files"}, extraTools...)
 
 	return interp.AddAgent(hermesAgentName, def)
 }
@@ -314,7 +317,7 @@ func newListProjectsTool(interp *Interpreter) tools.ToolDef {
 }
 
 // hermesToolNames are the tools Hermes uses.
-var hermesToolNames = []string{"list_agents", "send_to_agent", "set_project", "list_projects"}
+var hermesToolNames = []string{"list_agents", "send_to_agent", "set_project", "list_projects", "list_files"}
 
 // IsHermesTool reports whether a tool name is one of Hermes's tools.
 func IsHermesTool(name string) bool {

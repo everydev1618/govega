@@ -12,6 +12,8 @@ import { WorkflowLauncher } from './pages/WorkflowLauncher'
 import { CostDashboard } from './pages/CostDashboard'
 import { Population } from './pages/Population'
 import { Chat } from './pages/Chat'
+import { Tasks } from './pages/Tasks'
+import { Files } from './pages/Files'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -24,12 +26,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="chat/:agent" element={<Chat />} />
           <Route path="overview" element={<Overview />} />
           <Route path="processes" element={<ProcessExplorer />} />
+          <Route path="tasks" element={<Tasks />} />
           <Route path="spawn-tree" element={<SpawnTree />} />
           <Route path="events" element={<EventStream />} />
           <Route path="population" element={<Population />} />
           <Route path="agents" element={<AgentRegistry />} />
           <Route path="mcp" element={<MCPServers />} />
           <Route path="workflows" element={<WorkflowLauncher />} />
+          <Route path="files" element={<Files />} />
           <Route path="costs" element={<CostDashboard />} />
         </Route>
       </Routes>

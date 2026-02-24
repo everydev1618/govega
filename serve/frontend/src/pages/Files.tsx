@@ -44,6 +44,11 @@ function isTextType(ct: string): boolean {
   return false
 }
 
+// Strip charset and other parameters from content type (e.g. "text/html; charset=utf-8" → "text/html")
+function baseType(ct: string): string {
+  return ct.split(';')[0].trim()
+}
+
 // Simple markdown to HTML (handles headers, bold, italic, code blocks, links, lists)
 function renderMarkdown(text: string): string {
   let html = text
@@ -109,7 +114,7 @@ function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string
 function FilePreview({ file, onClose }: { file: FileContentResponse | null; onClose: () => void }) {
   if (!file) return null
 
-  const ct = file.content_type
+  const ct = baseType(file.content_type)
   const name = file.path.split('/').pop() || file.path
 
   return (
@@ -372,7 +377,7 @@ function InlinePreview({ path }: { path: string }) {
     )
   }
 
-  const ct = file.content_type
+  const ct = baseType(file.content_type)
   const name = file.path.split('/').pop() || file.path
 
   return (
@@ -535,13 +540,16 @@ export function Files() {
     setTreeSelectedPath('')
   }, [])
 
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
   const openPreview = useCallback(async (path: string) => {
     setPreviewLoading(true)
+    setPreviewError(null)
     try {
       const file = await api.getFileContent(path)
       setPreviewFile(file)
-    } catch {
-      // ignore
+    } catch (e: any) {
+      setPreviewError(e.message || `Failed to load ${path}`)
     } finally {
       setPreviewLoading(false)
     }
@@ -743,6 +751,23 @@ export function Files() {
       {previewLoading && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="animate-pulse text-white">Loading preview...</div>
+        </div>
+      )}
+      {previewError && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setPreviewError(null)}>
+          <div className="bg-card border border-red-500/30 rounded-xl shadow-2xl p-6 max-w-md text-center"
+            onClick={e => e.stopPropagation()}>
+            <p className="text-4xl mb-3">⚠️</p>
+            <p className="font-medium text-red-400 mb-1">Failed to load file</p>
+            <p className="text-sm text-muted-foreground">{previewError}</p>
+            <button
+              onClick={() => setPreviewError(null)}
+              className="mt-4 px-4 py-2 text-sm bg-accent hover:bg-accent/80 rounded-lg transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
       <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
