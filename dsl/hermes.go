@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/everydev1618/govega/tools"
 )
@@ -24,6 +28,8 @@ You roam freely between all agents. You know them, you speak their language, and
 - **remember** — save important information to long-term memory (projects, decisions, tasks, preferences)
 - **recall** — search your memory for past conversations, project details, or decisions
 - **forget** — remove a specific memory by ID
+- **set_project** — set the active project workspace so all agents write files into that project's folder
+- **list_projects** — list all project workspaces and see which one is active
 
 You can reach Mother this way too. If the right agent doesn't exist yet, ask Mother to create one:
   send_to_agent(agent="mother", message="create an agent that...")
@@ -44,6 +50,14 @@ You have long-term memory across conversations. Use it proactively:
 - When the user asks about something from a past conversation — **recall** it
 - When you see an active topic in your memory context, use **recall** to get full details before responding
 - Save with clear topics and tags so you can find things later
+
+## Projects
+
+Each project gets its own workspace folder. When work begins, use **set_project** to activate the right project — all agents will automatically write files there. Use your judgment:
+- If the user mentions a specific project name, set it.
+- If you're starting new work and no project is active, create one with a descriptive kebab-case name.
+- Use **list_projects** to see existing projects before creating a new one.
+- Clear the project (empty name) only if the user explicitly asks for generic workspace mode.
 
 ## Principles
 
@@ -108,6 +122,8 @@ func RegisterHermesTools(interp *Interpreter) {
 	}
 
 	t.Register("send_to_agent", newSendToAgentTool(interp))
+	t.Register("set_project", newSetProjectTool(interp))
+	t.Register("list_projects", newListProjectsTool(interp))
 }
 
 // InjectHermes adds Hermes to the interpreter.
@@ -122,7 +138,7 @@ func InjectHermes(interp *Interpreter, extraTools ...string) error {
 	}
 
 	def := HermesAgent(defaultModel)
-	def.Tools = append([]string{"list_agents", "send_to_agent"}, extraTools...)
+	def.Tools = append([]string{"list_agents", "send_to_agent", "set_project", "list_projects"}, extraTools...)
 
 	return interp.AddAgent(hermesAgentName, def)
 }
@@ -198,8 +214,107 @@ func newSendToAgentTool(interp *Interpreter) tools.ToolDef {
 	}
 }
 
+// sanitizeProjectName normalizes a project name to lowercase alphanumeric + hyphens.
+var projectNameRe = regexp.MustCompile(`[^a-z0-9-]+`)
+
+func sanitizeProjectName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = projectNameRe.ReplaceAllString(name, "-")
+	name = strings.Trim(name, "-")
+	return name
+}
+
+// newSetProjectTool returns a tool that sets the active project workspace.
+func newSetProjectTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
+		Description: "Set the active project workspace. All agents will read/write files in ~/.vega/workspace/<project>/. Pass an empty name to clear the active project.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			name, _ := params["name"].(string)
+			t := interp.Tools()
+
+			if name == "" {
+				t.SetActiveProject("")
+				return "Project cleared. Using default workspace.", nil
+			}
+
+			name = sanitizeProjectName(name)
+			if name == "" {
+				return "", fmt.Errorf("invalid project name: must contain alphanumeric characters")
+			}
+
+			// Create the project directory under the sandbox.
+			sandbox := t.Sandbox()
+			if sandbox == "" {
+				return "", fmt.Errorf("no workspace sandbox configured")
+			}
+			projDir := filepath.Join(sandbox, name)
+			if err := os.MkdirAll(projDir, 0755); err != nil {
+				return "", fmt.Errorf("create project directory: %w", err)
+			}
+
+			t.SetActiveProject(name)
+			return fmt.Sprintf("Active project set to **%s**. Workspace: %s", name, projDir), nil
+		}),
+		Params: map[string]tools.ParamDef{
+			"name": {
+				Type:        "string",
+				Description: "Project name (will be sanitized to lowercase kebab-case). Empty string clears the active project.",
+				Required:    true,
+			},
+		},
+	}
+}
+
+// newListProjectsTool returns a tool that lists all project workspaces.
+func newListProjectsTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
+		Description: "List all project workspaces and show which one is currently active.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			t := interp.Tools()
+			sandbox := t.Sandbox()
+			if sandbox == "" {
+				return "No workspace sandbox configured.", nil
+			}
+
+			entries, err := os.ReadDir(sandbox)
+			if err != nil {
+				return "No projects yet.", nil
+			}
+
+			active := t.ActiveProject()
+
+			type projectInfo struct {
+				Name   string `json:"name"`
+				Active bool   `json:"active,omitempty"`
+			}
+
+			var projects []projectInfo
+			for _, e := range entries {
+				if !e.IsDir() {
+					continue
+				}
+				projects = append(projects, projectInfo{
+					Name:   e.Name(),
+					Active: e.Name() == active,
+				})
+			}
+
+			if len(projects) == 0 {
+				return "No projects yet.", nil
+			}
+
+			out, err := json.MarshalIndent(projects, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("marshal projects: %w", err)
+			}
+			return string(out), nil
+		}),
+		Params: map[string]tools.ParamDef{},
+	}
+}
+
 // hermesToolNames are the tools Hermes uses.
-var hermesToolNames = []string{"list_agents", "send_to_agent"}
+var hermesToolNames = []string{"list_agents", "send_to_agent", "set_project", "list_projects"}
 
 // IsHermesTool reports whether a tool name is one of Hermes's tools.
 func IsHermesTool(name string) bool {
