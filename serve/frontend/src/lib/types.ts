@@ -188,6 +188,16 @@ export interface FileMetadataResponse {
   agents: string[]
 }
 
+// --- Settings Types ---
+
+export interface Setting {
+  key: string
+  value: string
+  sensitive: boolean
+  created_at: string
+  updated_at: string
+}
+
 // --- Streaming Chat Types ---
 
 export interface ChatEvent {

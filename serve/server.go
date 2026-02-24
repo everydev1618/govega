@@ -88,6 +88,9 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("init database: %w", err)
 	}
 
+	// Load settings into tools collection.
+	s.refreshToolSettings()
+
 	// Wire file-write tracking callback.
 	s.interp.Tools().OnFileWrite = func(ctx context.Context, path, operation, description string) {
 		agentName := ""
@@ -272,6 +275,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/files", s.handleDeleteFile)
 	mux.HandleFunc("GET /api/files/metadata", s.handleListFileMetadata)
 
+	// Settings
+	mux.HandleFunc("GET /api/settings", s.handleListSettings)
+	mux.HandleFunc("PUT /api/settings", s.handleUpsertSetting)
+	mux.HandleFunc("DELETE /api/settings/{key}", s.handleDeleteSetting)
+
 	// SSE
 	mux.HandleFunc("GET /api/events", s.handleSSE)
 
@@ -430,6 +438,21 @@ func (s *Server) injectHermes() {
 	if err := dsl.InjectHermes(s.interp, "remember", "recall", "forget"); err != nil {
 		slog.Warn("failed to inject Hermes agent", "error", err)
 	}
+}
+
+// refreshToolSettings loads all settings from the store and sets them on the
+// interpreter's tools collection so dynamic tools can reference them.
+func (s *Server) refreshToolSettings() {
+	settings, err := s.store.ListSettings()
+	if err != nil {
+		slog.Error("failed to load settings for tools", "error", err)
+		return
+	}
+	m := make(map[string]string, len(settings))
+	for _, st := range settings {
+		m[st.Key] = st.Value
+	}
+	s.interp.Tools().SetSettings(m)
 }
 
 func truncate(s string, max int) string {
