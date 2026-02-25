@@ -50,11 +50,19 @@ func (t *StdioTransport) Connect(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// Resolve binary path — auto-download from GitHub Releases if needed.
+	command := t.config.Command
+	if t.config.GitHubRepo != "" {
+		if resolved, err := EnsureBinary(ctx, t.config.GitHubRepo, command); err == nil {
+			command = resolved
+		}
+	}
+
 	// Create command — use exec.Command (not CommandContext) so the subprocess
 	// lifecycle is not tied to the connect context. The connect context may have
 	// a short timeout for the handshake, but the process must survive beyond it.
 	// The process is cleaned up by Close() when the transport is shut down.
-	t.cmd = exec.Command(t.config.Command, t.config.Args...)
+	t.cmd = exec.Command(command, t.config.Args...)
 
 	// Set environment
 	if len(t.config.Env) > 0 {

@@ -28,6 +28,9 @@ type RegistryEntry struct {
 	// BuiltinGo indicates this server has a native Go implementation
 	// that runs in-process without requiring Node.js or any external binary.
 	BuiltinGo bool
+
+	// GitHubRepo is the "owner/repo" for auto-downloading release binaries.
+	GitHubRepo string
 }
 
 // DefaultRegistry contains well-known MCP servers.
@@ -112,6 +115,7 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Description: "SynkedUp landscape business management (customers, projects, calendar, items, users)",
 		Command:     "synkedup-vega-mcp",
 		RequiredEnv: []string{"SYNKEDUP_API_URL", "SYNKEDUP_USERNAME", "SYNKEDUP_PASSWORD"},
+		GitHubRepo:  "etiennesu/synkedup-vega-mcp",
 	},
 }
 
@@ -151,6 +155,8 @@ func (e RegistryEntry) ToServerConfig(overrideEnv map[string]string) ServerConfi
 	for k, v := range overrideEnv {
 		cfg.Env[k] = v
 	}
+
+	cfg.GitHubRepo = e.GitHubRepo
 
 	return cfg
 }
