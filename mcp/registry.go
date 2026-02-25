@@ -107,6 +107,12 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-sequential-thinking"},
 	},
+	"synkedup": {
+		Name:        "synkedup",
+		Description: "SynkedUp landscape business management (customers, projects, calendar, items, users)",
+		Command:     "synkedup-vega-mcp",
+		RequiredEnv: []string{"SYNKEDUP_API_URL", "SYNKEDUP_USERNAME", "SYNKEDUP_PASSWORD"},
+	},
 }
 
 // Lookup finds a registry entry by name.
