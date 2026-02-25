@@ -20,6 +20,7 @@ type builtinMCPServer struct {
 // builtinServers maps server names to their Go implementations.
 var builtinServers = map[string]*builtinMCPServer{
 	"fetch": fetchServer(),
+	"mssql": mssqlServer(),
 }
 
 // HasBuiltinServer reports whether a Go-native implementation exists for the named MCP server.
@@ -66,6 +67,21 @@ func (t *Tools) ConnectBuiltinServer(ctx context.Context, name string) (int, err
 		count++
 	}
 	return count, nil
+}
+
+// DisconnectBuiltinServer unregisters all tools from a built-in Go MCP server.
+func (t *Tools) DisconnectBuiltinServer(name string) error {
+	server, ok := builtinServers[name]
+	if !ok {
+		return fmt.Errorf("no built-in server %q", name)
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for toolName := range server.tools {
+		delete(t.tools, name+"__"+toolName)
+	}
+	return nil
 }
 
 // --- Fetch server ---
