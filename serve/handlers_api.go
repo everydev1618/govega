@@ -586,6 +586,8 @@ func (s *Server) handleMCPRegistry(w http.ResponseWriter, r *http.Request) {
 		for _, key := range allEnv {
 			if _, ok := settingsMap[key]; ok {
 				existing[key] = "configured"
+			} else if os.Getenv(key) != "" {
+				existing[key] = "configured"
 			}
 		}
 

@@ -41,57 +41,14 @@ interface ChatMessage {
   errorType?: 'auth' | 'rate_limit' | 'generic'
 }
 
-function ToolCallPanel({ tc, onToggle }: { tc: ToolCallState; onToggle: () => void }) {
-  const statusDot =
-    tc.status === 'running'
-      ? 'bg-yellow-400 animate-pulse'
-      : tc.status === 'error'
-        ? 'bg-red-400'
-        : 'bg-green-400'
+function statusDotClass(tc: ToolCallState): string {
+  return tc.status === 'running' ? 'bg-yellow-400 animate-pulse'
+    : tc.status === 'error' ? 'bg-red-400' : 'bg-green-400'
+}
 
-  return (
-    <div className="my-2 rounded-lg border border-border bg-background/50 text-sm overflow-hidden">
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full px-3 py-2 hover:bg-accent/30 transition-colors text-left"
-      >
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot}`} />
-        <span className="font-mono text-xs font-medium text-foreground">{tc.name}</span>
-        {tc.nested_agent && (
-          <span className="text-[10px] text-muted-foreground font-normal">via {tc.nested_agent}</span>
-        )}
-        {tc.duration_ms != null && (
-          <span className="ml-auto text-xs text-muted-foreground">{tc.duration_ms}ms</span>
-        )}
-        <svg
-          className={`w-3 h-3 text-muted-foreground transition-transform ${tc.collapsed ? '' : 'rotate-180'}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {!tc.collapsed && (
-        <div className="px-3 pb-2 space-y-1.5 border-t border-border pt-2">
-          {tc.arguments && Object.keys(tc.arguments).length > 0 && (
-            <div>
-              <span className="text-xs text-muted-foreground">Arguments</span>
-              <pre className="mt-0.5 text-xs font-mono bg-background rounded p-2 overflow-x-auto border border-border whitespace-pre-wrap">
-                {JSON.stringify(tc.arguments, null, 2)}
-              </pre>
-            </div>
-          )}
-          {tc.result != null && (
-            <div>
-              <span className="text-xs text-muted-foreground">Result</span>
-              <pre className="mt-0.5 text-xs font-mono bg-background rounded p-2 overflow-x-auto border border-border whitespace-pre-wrap max-h-60">
-                {tc.result}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
+function shortToolName(name: string): string {
+  const idx = name.indexOf('__')
+  return idx >= 0 ? name.slice(idx + 2) : name
 }
 
 const NODE_COLORS = ['#60a5fa', '#a78bfa', '#34d399', '#fbbf24']
@@ -494,6 +451,7 @@ export function Chat() {
   // File preview state
   const [previewFile, setPreviewFile] = useState<FileContentResponse | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const openFilePreview = useCallback(async (relPath: string) => {
     setPreviewLoading(true)
@@ -597,6 +555,11 @@ export function Chat() {
           updated.content += event.delta || ''
           break
         case 'tool_start':
+          // Ensure a newline break before tool calls so post-tool text
+          // doesn't run into pre-tool text.
+          if (updated.content && !updated.content.endsWith('\n')) {
+            updated.content += '\n'
+          }
           updated.toolCalls!.push({
             id: event.tool_call_id!,
             name: event.tool_name!,
@@ -720,14 +683,45 @@ export function Chat() {
 
   const goBackToHermes = () => switchToAgent(HERMES)
 
-  const toggleToolCall = (msgIdx: number, tcIdx: number) => {
-    setMessages(prev => {
-      const msgs = [...prev]
-      const msg = { ...msgs[msgIdx], toolCalls: [...(msgs[msgIdx].toolCalls || [])] }
-      msg.toolCalls![tcIdx] = { ...msg.toolCalls![tcIdx], collapsed: !msg.toolCalls![tcIdx].collapsed }
-      msgs[msgIdx] = msg
-      return msgs
+  const copyTranscript = useCallback(() => {
+    const lines = messages.map(msg => {
+      const role = msg.role === 'user' ? 'User' : activeAgent
+      let text = `[${role}]\n${msg.content}`
+      if (msg.toolCalls?.length) {
+        for (const tc of msg.toolCalls) {
+          text += `\n  [tool: ${tc.name}] status=${tc.status}`
+          if (tc.arguments && Object.keys(tc.arguments).length > 0) {
+            text += `\n    args: ${JSON.stringify(tc.arguments)}`
+          }
+          if (tc.result != null) {
+            text += `\n    result: ${tc.result}`
+          }
+        }
+      }
+      if (msg.error) {
+        text += `\n  [error] ${msg.error}`
+      }
+      return text
     })
+    const transcript = `--- Chat Transcript (${activeAgent}) ---\n${new Date().toISOString()}\n\n${lines.join('\n\n')}`
+    navigator.clipboard.writeText(transcript).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [messages, activeAgent])
+
+  const toggleToolCall = (msgIdx: number, tcIdx: number) => {
+    setMessages(prev => prev.map((msg, i) => {
+      if (i !== msgIdx || !msg.toolCalls) return msg
+      const wasCollapsed = msg.toolCalls[tcIdx].collapsed
+      return {
+        ...msg,
+        toolCalls: msg.toolCalls.map((tc, j) => ({
+          ...tc,
+          collapsed: j === tcIdx ? !wasCollapsed : true,
+        })),
+      }
+    }))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -777,6 +771,21 @@ export function Chat() {
           activeAgent={activeAgent}
           onSelect={switchToAgent}
         />
+        <button
+          onClick={copyTranscript}
+          title="Copy transcript"
+          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+        >
+          {copied ? (
+            <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+            </svg>
+          )}
+        </button>
         <button
           onClick={clearChat}
           title="Clear chat"
@@ -846,9 +855,46 @@ export function Chat() {
                     <ActivityNarrative tools={msg.toolCalls || []} />
                   </div>
                 )}
-                {msg.toolCalls?.map((tc, j) => (
-                  <ToolCallPanel key={tc.id} tc={tc} onToggle={() => toggleToolCall(i, j)} />
-                ))}
+                {msg.toolCalls && msg.toolCalls.length > 0 && (
+                  <div className="my-2">
+                    {/* Tab bar */}
+                    <div className="flex flex-row flex-wrap gap-1.5">
+                      {msg.toolCalls.map((tc, j) => (
+                        <button key={tc.id} onClick={() => toggleToolCall(i, j)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono
+                            border transition-colors ${!tc.collapsed
+                              ? 'border-indigo-500/50 bg-indigo-500/10 text-foreground'
+                              : 'border-border bg-background/50 text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
+                            }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(tc)}`} />
+                          <span>{shortToolName(tc.name)}</span>
+                          {tc.duration_ms != null && <span className="text-muted-foreground">{tc.duration_ms}ms</span>}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Expanded detail panel for the selected tab */}
+                    {msg.toolCalls.map((tc, j) => !tc.collapsed && (
+                      <div key={tc.id} className="mt-2 rounded-lg border border-border bg-background/50 px-3 py-2 space-y-1.5 text-sm">
+                        {tc.arguments && Object.keys(tc.arguments).length > 0 && (
+                          <div>
+                            <span className="text-xs text-muted-foreground">args</span>
+                            <pre className="mt-0.5 text-xs font-mono bg-background rounded p-2 overflow-x-auto border border-border whitespace-pre-wrap">
+                              {JSON.stringify(tc.arguments, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        {tc.result != null && (
+                          <div>
+                            <span className="text-xs text-muted-foreground">result</span>
+                            <pre className="mt-0.5 text-xs font-mono bg-background rounded p-2 overflow-x-auto border border-border whitespace-pre-wrap max-h-60">
+                              {tc.result}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {msg.error && <ErrorBanner error={msg.error} errorType={msg.errorType} />}
               </div>
             )}

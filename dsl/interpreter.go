@@ -256,9 +256,17 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	}
 
 	// Build agent tools — filter if agent has explicit tools, then wire skill-tools.
+	// Always include connected MCP/builtin server tools (prefixed with "server__")
+	// so agents can use any connected external service.
 	agentTools := i.tools
 	if len(def.Tools) > 0 {
-		agentTools = i.tools.Filter(def.Tools...)
+		toolNames := append([]string{}, def.Tools...)
+		for _, schema := range i.tools.Schema() {
+			if strings.Contains(schema.Name, "__") {
+				toolNames = append(toolNames, schema.Name)
+			}
+		}
+		agentTools = i.tools.Filter(toolNames...)
 	}
 
 	// If agent has skills, set skillsRef so skill-declared tools augment the schema dynamically.
