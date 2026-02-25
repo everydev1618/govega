@@ -38,6 +38,10 @@ type LLMResponse struct {
 	InputTokens  int
 	OutputTokens int
 
+	// Cache token counts (Anthropic prompt caching)
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+
 	// Cost in USD
 	CostUSD float64
 
@@ -90,6 +94,10 @@ type StreamEvent struct {
 
 	// OutputTokens after message end
 	OutputTokens int
+
+	// Cache token counts (Anthropic prompt caching)
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
 }
 
 // StreamEventType categorizes stream events.
@@ -133,8 +141,9 @@ var modelPricing = map[string]struct {
 	"claude-3-haiku-20240307":    {0.25, 1.25},
 }
 
-// CalculateCost calculates the cost of a request.
-func CalculateCost(model string, inputTokens, outputTokens int) float64 {
+// CalculateCost calculates the cost of a request including prompt cache tokens.
+// Cache writes cost 125% of base input price; cache reads cost 10%.
+func CalculateCost(model string, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int) float64 {
 	pricing, ok := modelPricing[model]
 	if !ok {
 		// Default pricing if model not found
@@ -143,6 +152,8 @@ func CalculateCost(model string, inputTokens, outputTokens int) float64 {
 
 	inputCost := float64(inputTokens) / 1_000_000 * pricing.InputPer1M
 	outputCost := float64(outputTokens) / 1_000_000 * pricing.OutputPer1M
+	cacheWriteCost := float64(cacheCreationTokens) / 1_000_000 * pricing.InputPer1M * 1.25
+	cacheReadCost := float64(cacheReadTokens) / 1_000_000 * pricing.InputPer1M * 0.10
 
-	return inputCost + outputCost
+	return inputCost + outputCost + cacheWriteCost + cacheReadCost
 }

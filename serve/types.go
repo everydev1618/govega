@@ -72,16 +72,18 @@ type InputResponse struct {
 
 // StatsResponse contains aggregate metrics.
 type StatsResponse struct {
-	TotalProcesses   int     `json:"total_processes"`
-	RunningProcesses int     `json:"running_processes"`
-	CompletedProcesses int   `json:"completed_processes"`
-	FailedProcesses  int     `json:"failed_processes"`
-	TotalInputTokens  int    `json:"total_input_tokens"`
-	TotalOutputTokens int    `json:"total_output_tokens"`
-	TotalCostUSD     float64 `json:"total_cost_usd"`
-	TotalToolCalls   int     `json:"total_tool_calls"`
-	TotalErrors      int     `json:"total_errors"`
-	Uptime           string  `json:"uptime"`
+	TotalProcesses         int     `json:"total_processes"`
+	RunningProcesses       int     `json:"running_processes"`
+	CompletedProcesses     int     `json:"completed_processes"`
+	FailedProcesses        int     `json:"failed_processes"`
+	TotalInputTokens       int     `json:"total_input_tokens"`
+	TotalOutputTokens      int     `json:"total_output_tokens"`
+	TotalCacheCreationTokens int   `json:"total_cache_creation_tokens"`
+	TotalCacheReadTokens   int     `json:"total_cache_read_tokens"`
+	TotalCostUSD           float64 `json:"total_cost_usd"`
+	TotalToolCalls         int     `json:"total_tool_calls"`
+	TotalErrors            int     `json:"total_errors"`
+	Uptime                 string  `json:"uptime"`
 }
 
 // SpawnTreeNodeResponse is the API representation of a spawn tree node.

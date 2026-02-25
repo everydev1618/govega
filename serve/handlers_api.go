@@ -1056,6 +1056,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		m := p.Metrics()
 		stats.TotalInputTokens += m.InputTokens
 		stats.TotalOutputTokens += m.OutputTokens
+		stats.TotalCacheCreationTokens += m.CacheCreationInputTokens
+		stats.TotalCacheReadTokens += m.CacheReadInputTokens
 		stats.TotalCostUSD += m.CostUSD
 		stats.TotalToolCalls += m.ToolCalls
 		stats.TotalErrors += m.Errors
