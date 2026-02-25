@@ -145,6 +145,13 @@ export interface CreateAgentRequest {
   temperature?: number
 }
 
+export interface UpdateAgentRequest {
+  model?: string
+  system?: string
+  team?: string[]
+  temperature?: number
+}
+
 export interface CreateAgentResponse {
   name: string
   model: string

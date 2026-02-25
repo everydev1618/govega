@@ -269,6 +269,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Agent composition
 	mux.HandleFunc("POST /api/agents", s.handleCreateAgent)
+	mux.HandleFunc("PUT /api/agents/{name}", s.handleUpdateAgent)
 	mux.HandleFunc("DELETE /api/agents/{name}", s.handleDeleteAgent)
 
 	// Chat
