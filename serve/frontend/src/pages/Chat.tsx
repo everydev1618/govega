@@ -72,29 +72,29 @@ function toolNarrative(name: string, args: Record<string, unknown>): string {
 }
 
 function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
-  const coreX = 28, coreY = 28
-  const allDone = tools.every(tc => tc.status !== 'running')
+  const coreX = 18, coreY = 18
+  const svgW = Math.min(18 + tools.length * 24 + 16, 180)
   return (
-    <svg width="200" height="56" viewBox="0 0 200 56" className="block">
+    <svg width={svgW} height="36" viewBox={`0 0 ${svgW} 36`} className="block">
       {/* Core star */}
-      <circle cx={coreX} cy={coreY} r={5} fill={allDone ? '#60a5fa' : '#60a5fa'} className={allDone ? '' : 'constellation-core'} opacity={allDone ? 0.8 : 1} />
-      <circle cx={coreX} cy={coreY} r={10} fill="#60a5fa" opacity={allDone ? 0.08 : 0.12} className={allDone ? '' : 'constellation-core'} />
+      <circle cx={coreX} cy={coreY} r={4} fill="#60a5fa" className="constellation-core" />
+      <circle cx={coreX} cy={coreY} r={8} fill="#60a5fa" opacity={0.1} className="constellation-core" />
 
       {tools.map((tc, i) => {
-        const x = 58 + i * 30
-        const y = coreY + (i % 2 === 0 ? -9 : 9)
+        const x = 40 + i * 24
+        const y = coreY + (i % 2 === 0 ? -7 : 7)
         const color = NODE_COLORS[i % NODE_COLORS.length]
         const done = tc.status !== 'running'
         return (
           <g key={tc.id}>
             <line
               x1={coreX} y1={coreY} x2={x} y2={y}
-              stroke={color} strokeWidth={1.2} opacity={0.35}
+              stroke={color} strokeWidth={1} opacity={0.3}
               className="constellation-line"
               style={{ animationDelay: `${i * 100}ms` }}
             />
             <circle
-              cx={x} cy={y} r={done ? 4.5 : 4}
+              cx={x} cy={y} r={done ? 3.5 : 3}
               fill={color}
               opacity={done ? 1 : 0.7}
               className={done ? 'constellation-node-done' : 'constellation-node'}
@@ -108,8 +108,6 @@ function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
 }
 
 function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
-  // Prioritize nested agent activity — when a delegate is running and nested
-  // tools exist, show the nested agent's narrative instead.
   const runningNested = [...tools].reverse().find(t => t.status === 'running' && t.nested_agent)
   const running = [...tools].reverse().find(t => t.status === 'running')
   const last = tools[tools.length - 1]
@@ -126,9 +124,9 @@ function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
   }
 
   return (
-    <p className="text-sm text-muted-foreground italic mt-1.5 transition-opacity duration-300">
+    <span className="text-xs text-muted-foreground italic ml-1">
       {text}
-    </p>
+    </span>
   )
 }
 
@@ -870,8 +868,8 @@ export function Chat() {
                   <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
                 )}
                 {msg.toolCalls && msg.toolCalls.length > 0 && (
-                  <div className="my-2">
-                    {/* Tab bar */}
+                  <div className="my-1.5">
+                    {/* Tool badges */}
                     <div className="flex flex-row flex-wrap gap-1.5">
                       {msg.toolCalls.map((tc, j) => (
                         <button key={tc.id} onClick={() => toggleToolCall(i, j)}
@@ -886,13 +884,11 @@ export function Chat() {
                         </button>
                       ))}
                     </div>
-                    {/* Activity constellation — live narrative while running, settled after */}
-                    {msg.toolCalls.length > 0 && (
-                      <div className="pt-2 pb-1">
+                    {/* Constellation + narrative — only while tools are running */}
+                    {msg.streaming && msg.toolCalls.some(tc => tc.status === 'running') && (
+                      <div className="flex items-center gap-1 pt-1.5 constellation-activity">
                         <ActivityConstellation tools={msg.toolCalls} />
-                        {msg.streaming && msg.toolCalls.some(tc => tc.status === 'running') && (
-                          <ActivityNarrative tools={msg.toolCalls} />
-                        )}
+                        <ActivityNarrative tools={msg.toolCalls} />
                       </div>
                     )}
                     {/* Expanded detail panel for the selected tab */}

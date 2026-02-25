@@ -22,8 +22,17 @@
 }
 
 @keyframes constellation-line-draw {
-  from { stroke-dashoffset: 30; }
+  from { stroke-dashoffset: 24; }
   to { stroke-dashoffset: 0; }
+}
+
+@keyframes constellation-activity-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 40px; }
+}
+
+.constellation-activity {
+  animation: constellation-activity-in 300ms ease-out both;
 }
 
 .constellation-core {
@@ -31,14 +40,14 @@
 }
 
 .constellation-node {
-  animation: constellation-fade-in 400ms ease-out both, constellation-glow 3s ease-in-out infinite;
+  animation: constellation-fade-in 350ms ease-out both, constellation-glow 3s ease-in-out infinite;
 }
 
 .constellation-node-done {
-  animation: constellation-fade-in 400ms ease-out both;
+  animation: constellation-fade-in 350ms ease-out both;
 }
 
 .constellation-line {
-  stroke-dasharray: 30;
-  animation: constellation-line-draw 500ms ease-out both;
+  stroke-dasharray: 24;
+  animation: constellation-line-draw 400ms ease-out both;
 }
