@@ -112,6 +112,10 @@ type Server struct {
 	extractLLM   llm.LLM
 	extractLLMMu sync.Once
 
+	// extractSem limits memory extraction to one at a time; extra
+	// requests are dropped rather than queued.
+	extractSem chan struct{}
+
 	// streams tracks active chat streams keyed by agent name, decoupled
 	// from any particular SSE client connection.
 	streamsMu sync.Mutex
@@ -121,10 +125,11 @@ type Server struct {
 // New creates a new Server.
 func New(interp *dsl.Interpreter, cfg Config) *Server {
 	return &Server{
-		interp:  interp,
-		broker:  NewEventBroker(),
-		cfg:     cfg,
-		streams: make(map[string]*activeStream),
+		interp:     interp,
+		broker:     NewEventBroker(),
+		cfg:        cfg,
+		streams:    make(map[string]*activeStream),
+		extractSem: make(chan struct{}, 1),
 	}
 }
 

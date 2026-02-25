@@ -28,6 +28,15 @@ type topicUpdate struct {
 
 // extractMemory runs an async LLM call to extract memory from the latest exchange.
 func (s *Server) extractMemory(userID, agent, userMsg, response string) {
+	// Only one extraction at a time; skip if another is in progress.
+	select {
+	case s.extractSem <- struct{}{}:
+		defer func() { <-s.extractSem }()
+	default:
+		slog.Debug("memory extraction skipped: another extraction in progress")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
