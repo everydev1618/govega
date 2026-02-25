@@ -74,39 +74,28 @@ function toolNarrative(name: string, args: Record<string, unknown>): string {
 function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
   const cx = 20, cy = 20
   const orbitR = 12
-  const orbitDuration = 4 // seconds per revolution
 
   return (
     <svg width="40" height="40" viewBox="0 0 40 40" className="block">
-      {/* Central planet (larger) */}
+      {/* Central planet */}
       <circle cx={cx} cy={cy} r={5} fill="#a78bfa" opacity={0.12} className="constellation-core" />
       <circle cx={cx} cy={cy} r={3} fill="#a78bfa" opacity={0.7} />
 
-      {/* Orbiting tool dots */}
+      {/* Orbiting tool dots — all orbit while stream is active */}
       {tools.map((tc, i) => {
         const color = NODE_COLORS[i % NODE_COLORS.length]
-        const done = tc.status !== 'running'
-        const angle = (i / Math.max(tools.length, 1)) * 2 * Math.PI
-
-        if (done) {
-          return (
-            <circle key={tc.id}
-              cx={cx + orbitR * Math.cos(angle)}
-              cy={cy + orbitR * Math.sin(angle)}
-              r={3} fill={color} opacity={0.9}
-              className="constellation-node-done"
-            />
-          )
-        }
+        const startAngle = (360 * i) / Math.max(tools.length, 1)
+        const dur = 3 + i * 0.7
 
         return (
-          <g key={tc.id}
-            className="constellation-orbit"
-            style={{
-              transformOrigin: `${cx}px ${cy}px`,
-              animationDuration: `${orbitDuration}s`,
-              animationDelay: `${-(i / Math.max(tools.length, 1)) * orbitDuration}s`,
-            }}>
+          <g key={tc.id}>
+            <animateTransform
+              attributeName="transform" type="rotate"
+              from={`${startAngle} ${cx} ${cy}`}
+              to={`${startAngle + 360} ${cx} ${cy}`}
+              dur={`${dur}s`}
+              repeatCount="indefinite"
+            />
             <circle
               cx={cx + orbitR} cy={cy}
               r={2.5} fill={color} opacity={0.8}
