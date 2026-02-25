@@ -115,8 +115,9 @@ export function AgentRegistry() {
   const openEdit = (agent: AgentResponse) => {
     setEditingAgent(agent)
     setEditForm({
-      model: agent.model,
-      system: agent.system,
+      name: agent.name,
+      model: agent.model || '',
+      system: agent.system || '',
     })
   }
 
@@ -489,9 +490,9 @@ export function AgentRegistry() {
       {/* Edit Agent Modal */}
       {editingAgent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingAgent(null)}>
-          <div className="w-full max-w-lg mx-4 p-6 rounded-lg bg-card border border-border space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-lg">Edit {editingAgent.name}</h3>
+          <div className="w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col p-6 rounded-lg bg-card border border-border" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Edit Agent</h3>
               <button onClick={() => setEditingAgent(null)} className="text-muted-foreground hover:text-foreground transition-colors">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -499,27 +500,40 @@ export function AgentRegistry() {
               </button>
             </div>
 
-            <div>
-              <label className="block text-sm text-muted-foreground mb-1">Model</label>
-              <input
-                type="text"
-                value={editForm.model || ''}
-                onChange={e => setEditForm(f => ({ ...f, model: e.target.value }))}
-                className="w-full px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary font-mono"
-              />
+            <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={editForm.name || ''}
+                    onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1">Model</label>
+                  <input
+                    type="text"
+                    value={editForm.model || ''}
+                    onChange={e => setEditForm(f => ({ ...f, model: e.target.value }))}
+                    className="w-full px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col">
+                <label className="block text-sm text-muted-foreground mb-1">System Prompt</label>
+                <textarea
+                  value={editForm.system || ''}
+                  onChange={e => setEditForm(f => ({ ...f, system: e.target.value }))}
+                  rows={20}
+                  className="w-full flex-1 px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary font-mono text-xs leading-relaxed"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm text-muted-foreground mb-1">System Prompt</label>
-              <textarea
-                value={editForm.system || ''}
-                onChange={e => setEditForm(f => ({ ...f, system: e.target.value }))}
-                rows={12}
-                className="w-full px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary font-mono text-xs"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-border mt-4">
               <button
                 onClick={() => setEditingAgent(null)}
                 className="px-4 py-2 rounded text-sm text-muted-foreground hover:text-foreground transition-colors"
