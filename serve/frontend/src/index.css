@@ -51,3 +51,6 @@
   stroke-dasharray: 24;
   animation: constellation-line-draw 400ms ease-out both;
 }
+
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }

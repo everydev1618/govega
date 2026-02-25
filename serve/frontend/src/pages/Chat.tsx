@@ -550,6 +550,30 @@ export function Chat() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // Tab bar state
+  const [openTabs, setOpenTabs] = useState<string[]>([HERMES])
+
+  const ensureTab = useCallback((name: string) => {
+    setOpenTabs(prev => prev.includes(name) ? prev : [...prev, name])
+  }, [])
+
+  const closeTab = useCallback((name: string) => {
+    if (name === HERMES) return
+    setOpenTabs(prev => {
+      const idx = prev.indexOf(name)
+      if (idx < 0) return prev
+      const next = prev.filter(t => t !== name)
+      if (next.length === 0) return [HERMES]
+      // If closing the active tab, switch to adjacent or fallback to Hermes
+      if (name === activeAgent) {
+        const newActive = next[Math.min(idx, next.length - 1)] || HERMES
+        // Defer the agent switch to avoid state conflicts
+        setTimeout(() => switchToAgent(newActive), 0)
+      }
+      return next
+    })
+  }, [activeAgent]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // @-mention autocomplete state
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
@@ -595,6 +619,15 @@ export function Chat() {
       fetchAgents()
     }
   }, [events, fetchAgents])
+
+  // Auto-add a tab when activeAgent changes (covers switchToAgent, handoff, URL nav, initial load)
+  useEffect(() => { ensureTab(activeAgent) }, [activeAgent, ensureTab])
+
+  // Prune tabs for deleted agents (except hermes/mother which aren't in specialists)
+  useEffect(() => {
+    const specialistNames = new Set(specialists.map(a => a.name))
+    setOpenTabs(prev => prev.filter(t => META_AGENTS.has(t) || specialistNames.has(t)))
+  }, [specialists])
 
   // Track reconnection abort controller so we can cancel on unmount/agent switch
   const reconnectAbortRef = useRef<AbortController | null>(null)
@@ -847,8 +880,6 @@ export function Chat() {
     try { await api.resetChat(activeAgent) } catch { /* best-effort */ }
   }
 
-  const goBackToHermes = () => switchToAgent(HERMES)
-
   const copyTranscript = useCallback(() => {
     const lines = messages.map(msg => {
       const role = msg.role === 'user' ? 'User' : activeAgent
@@ -985,37 +1016,8 @@ export function Chat() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
-      {/* Header */}
-      <div className={`flex items-center gap-3 pb-3 border-b mb-3 transition-colors ${isHermes ? 'border-border' : 'border-primary/40'}`}>
-        {!isHermes && (
-          <button
-            onClick={goBackToHermes}
-            title="Back to Hermes"
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-            </svg>
-          </button>
-        )}
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold transition-colors ${isHermes ? 'bg-primary/20 text-primary' : 'bg-emerald-500/20 text-emerald-400'}`}>
-          {activeAgent[0]?.toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">{activeAgent}</h2>
-            {!isHermes && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 leading-none">
-                via Hermes
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {isHermes
-              ? 'Cosmic orchestrator — routes your goals across the whole agent universe'
-              : 'Specialist agent · your messages go directly here'}
-          </p>
-        </div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-end gap-1.5 pb-1.5">
         <AgentPicker
           agents={specialists}
           activeAgent={activeAgent}
@@ -1046,6 +1048,14 @@ export function Chat() {
           </svg>
         </button>
       </div>
+
+      {/* Tab bar */}
+      <TabBar
+        tabs={openTabs}
+        activeAgent={activeAgent}
+        onSelect={switchToAgent}
+        onClose={closeTab}
+      />
 
       {/* Messages */}
       <div ref={messagesRef} className="flex-1 overflow-auto space-y-5 pb-4 relative">
