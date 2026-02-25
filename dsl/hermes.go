@@ -260,10 +260,11 @@ func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 				return "", fmt.Errorf("MCP server %q not found in registry. Available: %s", name, strings.Join(names, ", "))
 			}
 
-			// Check required env vars.
+			// Check required env vars (stored settings take precedence over os env).
+			settings := t.GetSettings()
 			var missing []string
 			for _, key := range entry.RequiredEnv {
-				if os.Getenv(key) == "" {
+				if settings[key] == "" && os.Getenv(key) == "" {
 					missing = append(missing, key)
 				}
 			}
@@ -272,7 +273,7 @@ func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 			}
 
 			// Build config and connect.
-			config := entry.ToServerConfig(nil)
+			config := entry.ToServerConfig(settings)
 			connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 
