@@ -260,6 +260,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
 
+	// Snapshot baseline metrics before the stream so we can compute per-response delta.
+	baseMetrics := proc.Metrics()
+	streamStart := time.Now()
+
 	stream, err := s.interp.StreamToAgent(ctx, name, req.Message)
 	if err != nil {
 		cancel()
@@ -291,9 +295,19 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		response := stream.Response()
 		streamErr := stream.Err()
 
+		// Compute per-response metrics delta.
+		finalMetrics := proc.Metrics()
+		delta := &vega.ChatEventMetrics{
+			InputTokens:  finalMetrics.InputTokens - baseMetrics.InputTokens,
+			OutputTokens: finalMetrics.OutputTokens - baseMetrics.OutputTokens,
+			CostUSD:      finalMetrics.CostUSD - baseMetrics.CostUSD,
+			DurationMs:   time.Since(streamStart).Milliseconds(),
+		}
+
 		as.mu.Lock()
 		as.response = response
 		as.err = streamErr
+		as.metrics = delta
 		as.mu.Unlock()
 		close(as.done)
 		as.finish() // close all subscriber channels
@@ -396,6 +410,7 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 	case <-as.done:
 		as.mu.Lock()
 		streamErr := as.err
+		doneMetrics := as.metrics
 		as.mu.Unlock()
 
 		if streamErr != nil {
@@ -403,7 +418,7 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 			errData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventError, Error: friendlyMsg})
 			fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
 		}
-		doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone})
+		doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone, Metrics: doneMetrics})
 		fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
 		flusher.Flush()
 		return
@@ -418,6 +433,7 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 				// Stream finished — send final events.
 				as.mu.Lock()
 				streamErr := as.err
+				doneMetrics := as.metrics
 				as.mu.Unlock()
 
 				if streamErr != nil {
@@ -427,7 +443,7 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 					flusher.Flush()
 				}
 
-				doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone})
+				doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone, Metrics: doneMetrics})
 				fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
 				flusher.Flush()
 				return

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
 import { api, APIError } from '../lib/api'
-import type { AgentResponse, ChatEvent, ToolCallState, FileContentResponse } from '../lib/types'
+import type { AgentResponse, ChatEvent, ChatEventMetrics, ToolCallState, FileContentResponse } from '../lib/types'
 
 const HERMES = 'hermes'
 const META_AGENTS = new Set(['hermes', 'mother'])
@@ -39,6 +39,7 @@ interface ChatMessage {
   streaming?: boolean
   error?: string
   errorType?: 'auth' | 'rate_limit' | 'generic'
+  metrics?: ChatEventMetrics
 }
 
 function statusDotClass(tc: ToolCallState): string {
@@ -796,6 +797,7 @@ export function Chat() {
         }
         case 'done':
           updated.streaming = false
+          if (event.metrics) updated.metrics = event.metrics
           break
       }
 
@@ -1232,6 +1234,19 @@ export function Chat() {
                   </div>
                 )}
                 {msg.error && <ErrorBanner error={msg.error} errorType={msg.errorType} />}
+                {msg.metrics && !msg.streaming && (
+                  <div className="mt-1.5 text-[11px] text-muted-foreground/60 text-right font-mono">
+                    {msg.metrics.cost_usd >= 0.01
+                      ? `$${msg.metrics.cost_usd.toFixed(2)}`
+                      : `$${msg.metrics.cost_usd.toFixed(4)}`}
+                    {' · '}
+                    {(msg.metrics.input_tokens + msg.metrics.output_tokens).toLocaleString()} tokens
+                    {' · '}
+                    {msg.metrics.duration_ms >= 1000
+                      ? `${(msg.metrics.duration_ms / 1000).toFixed(1)}s`
+                      : `${msg.metrics.duration_ms}ms`}
+                  </div>
+                )}
               </div>
             )}
             {msg.role === 'user' && <UserAvatar />}
