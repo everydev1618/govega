@@ -72,33 +72,44 @@ function toolNarrative(name: string, args: Record<string, unknown>): string {
 }
 
 function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
-  const coreX = 18, coreY = 18
-  const svgW = Math.min(18 + tools.length * 24 + 16, 180)
-  return (
-    <svg width={svgW} height="36" viewBox={`0 0 ${svgW} 36`} className="block">
-      {/* Core star */}
-      <circle cx={coreX} cy={coreY} r={4} fill="#60a5fa" className="constellation-core" />
-      <circle cx={coreX} cy={coreY} r={8} fill="#60a5fa" opacity={0.1} className="constellation-core" />
+  const cx = 20, cy = 20
+  const orbitR = 12
+  const orbitDuration = 4 // seconds per revolution
 
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40" className="block">
+      {/* Central planet (larger) */}
+      <circle cx={cx} cy={cy} r={5} fill="#a78bfa" opacity={0.12} className="constellation-core" />
+      <circle cx={cx} cy={cy} r={3} fill="#a78bfa" opacity={0.7} />
+
+      {/* Orbiting tool dots */}
       {tools.map((tc, i) => {
-        const x = 40 + i * 24
-        const y = coreY + (i % 2 === 0 ? -7 : 7)
         const color = NODE_COLORS[i % NODE_COLORS.length]
         const done = tc.status !== 'running'
-        return (
-          <g key={tc.id}>
-            <line
-              x1={coreX} y1={coreY} x2={x} y2={y}
-              stroke={color} strokeWidth={1} opacity={0.3}
-              className="constellation-line"
-              style={{ animationDelay: `${i * 100}ms` }}
+        const angle = (i / Math.max(tools.length, 1)) * 2 * Math.PI
+
+        if (done) {
+          return (
+            <circle key={tc.id}
+              cx={cx + orbitR * Math.cos(angle)}
+              cy={cy + orbitR * Math.sin(angle)}
+              r={3} fill={color} opacity={0.9}
+              className="constellation-node-done"
             />
+          )
+        }
+
+        return (
+          <g key={tc.id}
+            className="constellation-orbit"
+            style={{
+              transformOrigin: `${cx}px ${cy}px`,
+              animationDuration: `${orbitDuration}s`,
+              animationDelay: `${-(i / Math.max(tools.length, 1)) * orbitDuration}s`,
+            }}>
             <circle
-              cx={x} cy={y} r={done ? 3.5 : 3}
-              fill={color}
-              opacity={done ? 1 : 0.7}
-              className={done ? 'constellation-node-done' : 'constellation-node'}
-              style={{ animationDelay: `${i * 100}ms` }}
+              cx={cx + orbitR} cy={cy}
+              r={2.5} fill={color} opacity={0.8}
             />
           </g>
         )
