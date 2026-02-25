@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/vega-population/population"
 )
 
@@ -124,6 +126,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.popClient != nil {
 		s.restoreComposedAgents()
 	}
+
+	// Auto-connect built-in Go MCP servers whose required env vars are set.
+	s.autoConnectBuiltinServers(ctx)
 
 	// Register memory tools before injecting meta-agents so they can use them.
 	RegisterMemoryTools(s.interp)
@@ -388,6 +393,34 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// autoConnectBuiltinServers connects any built-in Go MCP servers whose
+// required environment variables are already set (e.g. from ~/.vega/env).
+func (s *Server) autoConnectBuiltinServers(ctx context.Context) {
+	t := s.interp.Tools()
+	for _, entry := range mcp.DefaultRegistry {
+		if !entry.BuiltinGo || !t.HasBuiltinServer(entry.Name) {
+			continue
+		}
+		// Check all required env vars are present.
+		allSet := true
+		for _, key := range entry.RequiredEnv {
+			if os.Getenv(key) == "" {
+				allSet = false
+				break
+			}
+		}
+		if !allSet {
+			continue
+		}
+		n, err := t.ConnectBuiltinServer(ctx, entry.Name)
+		if err != nil {
+			slog.Warn("auto-connect builtin server failed", "server", entry.Name, "error", err)
+			continue
+		}
+		slog.Info("auto-connected builtin MCP server", "server", entry.Name, "tools", n)
+	}
 }
 
 // injectMother adds the Mother meta-agent to the interpreter with persistence

@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -181,28 +183,43 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 	go func() {
 		defer close(eventCh)
 
-		httpReq, err := a.createHTTPRequest(ctx, req)
-		if err != nil {
-			eventCh <- StreamEvent{Type: StreamEventError, Error: err}
-			return
-		}
-
-		httpResp, err := a.httpClient.Do(httpReq)
-		if err != nil {
-			eventCh <- StreamEvent{Type: StreamEventError, Error: err}
-			return
-		}
-		defer httpResp.Body.Close()
-
-		if httpResp.StatusCode != http.StatusOK {
-			body, readErr := io.ReadAll(httpResp.Body)
-			if readErr != nil {
-				eventCh <- StreamEvent{
-					Type:  StreamEventError,
-					Error: fmt.Errorf("API error %d (failed to read body: %v)", httpResp.StatusCode, readErr),
-				}
+		const maxRetries = 5
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			httpReq, err := a.createHTTPRequest(ctx, req)
+			if err != nil {
+				eventCh <- StreamEvent{Type: StreamEventError, Error: err}
 				return
 			}
+
+			httpResp, err := a.httpClient.Do(httpReq)
+			if err != nil {
+				eventCh <- StreamEvent{Type: StreamEventError, Error: err}
+				return
+			}
+
+			if httpResp.StatusCode == http.StatusOK {
+				a.parseSSE(httpResp.Body, eventCh)
+				httpResp.Body.Close()
+				return
+			}
+
+			body, _ := io.ReadAll(httpResp.Body)
+
+			// Retry on 429 (rate limit) and 529 (overloaded).
+			if (httpResp.StatusCode == 429 || httpResp.StatusCode == 529) && attempt < maxRetries {
+				wait := retryAfterDelay(httpResp, attempt)
+				slog.Warn("API rate limited (stream), retrying", "status", httpResp.StatusCode, "attempt", attempt+1, "wait", wait)
+				httpResp.Body.Close()
+				select {
+				case <-time.After(wait):
+					continue
+				case <-ctx.Done():
+					eventCh <- StreamEvent{Type: StreamEventError, Error: ctx.Err()}
+					return
+				}
+			}
+
+			httpResp.Body.Close()
 			eventCh <- StreamEvent{
 				Type:  StreamEventError,
 				Error: fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body)),
@@ -210,7 +227,7 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 			return
 		}
 
-		a.parseSSE(httpResp.Body, eventCh)
+		eventCh <- StreamEvent{Type: StreamEventError, Error: fmt.Errorf("max retries exceeded")}
 	}()
 
 	return eventCh, nil
@@ -415,32 +432,65 @@ func (a *AnthropicLLM) createHTTPRequest(ctx context.Context, req *anthropicRequ
 }
 
 func (a *AnthropicLLM) doRequest(ctx context.Context, req *anthropicRequest) (*anthropicResponse, error) {
-	httpReq, err := a.createHTTPRequest(ctx, req)
-	if err != nil {
-		return nil, err
-	}
+	const maxRetries = 5
 
-	httpResp, err := a.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
-	}
-	defer httpResp.Body.Close()
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		httpReq, err := a.createHTTPRequest(ctx, req)
+		if err != nil {
+			return nil, err
+		}
 
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
+		httpResp, err := a.httpClient.Do(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("http request: %w", err)
+		}
 
-	if httpResp.StatusCode != http.StatusOK {
+		body, err := io.ReadAll(httpResp.Body)
+		httpResp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read response: %w", err)
+		}
+
+		if httpResp.StatusCode == http.StatusOK {
+			var resp anthropicResponse
+			if err := json.Unmarshal(body, &resp); err != nil {
+				return nil, fmt.Errorf("unmarshal response: %w", err)
+			}
+			return &resp, nil
+		}
+
+		// Retry on 429 (rate limit) and 529 (overloaded).
+		if (httpResp.StatusCode == 429 || httpResp.StatusCode == 529) && attempt < maxRetries {
+			wait := retryAfterDelay(httpResp, attempt)
+			slog.Warn("API rate limited, retrying", "status", httpResp.StatusCode, "attempt", attempt+1, "wait", wait)
+			select {
+			case <-time.After(wait):
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
 		return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
 	}
 
-	var resp anthropicResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
-	}
+	return nil, fmt.Errorf("max retries exceeded")
+}
 
-	return &resp, nil
+// retryAfterDelay returns how long to wait before retrying a rate-limited request.
+// It respects the retry-after header if present, otherwise uses exponential backoff.
+func retryAfterDelay(resp *http.Response, attempt int) time.Duration {
+	if ra := resp.Header.Get("retry-after"); ra != "" {
+		if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	// Exponential backoff: 5s, 10s, 20s, 40s, 60s
+	wait := time.Duration(5<<uint(attempt)) * time.Second
+	if wait > 60*time.Second {
+		wait = 60 * time.Second
+	}
+	return wait
 }
 
 func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Duration) (*LLMResponse, error) {
