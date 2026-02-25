@@ -92,6 +92,15 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-puppeteer"},
 	},
+	"mssql": {
+		Name:        "mssql",
+		Description: "Microsoft SQL Server database access (native Go — no Node.js required)",
+		Command:     "npx",
+		Args:        []string{"-y", "@connorbritain/mssql-mcp-server@latest"},
+		RequiredEnv: []string{"SERVER_NAME", "DATABASE_NAME", "SQL_USERNAME", "SQL_PASSWORD"},
+		OptionalEnv: []string{"SQL_PORT", "SQL_AUTH_MODE", "TRUST_SERVER_CERTIFICATE"},
+		BuiltinGo:   true,
+	},
 	"sequential-thinking": {
 		Name:        "sequential-thinking",
 		Description: "Dynamic reasoning and thought revision",

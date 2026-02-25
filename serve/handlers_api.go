@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	vega "github.com/everydev1618/govega"
@@ -524,8 +526,8 @@ func (s *Server) handleRunWorkflow(w http.ResponseWriter, r *http.Request) {
 // --- MCP Handlers ---
 
 func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
-	tools := s.interp.Tools()
-	statuses := tools.MCPServerStatuses()
+	t := s.interp.Tools()
+	statuses := t.MCPServerStatuses()
 
 	resp := make([]MCPServerResponse, 0, len(statuses))
 	for _, st := range statuses {
@@ -537,6 +539,28 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 			Command:   st.Command,
 			Tools:     st.Tools,
 		})
+	}
+
+	// Include connected built-in Go servers that aren't already listed.
+	listed := make(map[string]bool, len(resp))
+	for _, r := range resp {
+		listed[r.Name] = true
+	}
+	for _, entry := range mcp.DefaultRegistry {
+		if entry.BuiltinGo && !listed[entry.Name] && t.BuiltinServerConnected(entry.Name) {
+			var toolNames []string
+			for _, schema := range t.Schema() {
+				if strings.HasPrefix(schema.Name, entry.Name+"__") {
+					toolNames = append(toolNames, schema.Name)
+				}
+			}
+			resp = append(resp, MCPServerResponse{
+				Name:      entry.Name,
+				Connected: true,
+				Transport: "builtin",
+				Tools:     toolNames,
+			})
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -571,7 +595,7 @@ func (s *Server) handleMCPRegistry(w http.ResponseWriter, r *http.Request) {
 			RequiredEnv:      entry.RequiredEnv,
 			OptionalEnv:      entry.OptionalEnv,
 			BuiltinGo:        entry.BuiltinGo,
-			Connected:        tools.MCPServerConnected(entry.Name),
+			Connected:        tools.MCPServerConnected(entry.Name) || tools.BuiltinServerConnected(entry.Name),
 			ExistingSettings: existing,
 		})
 	}
@@ -588,8 +612,8 @@ func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) 
 
 	tools := s.interp.Tools()
 
-	// Check if already connected.
-	if tools.MCPServerConnected(req.Name) {
+	// Check if already connected (MCP subprocess or built-in Go server).
+	if tools.MCPServerConnected(req.Name) || tools.BuiltinServerConnected(req.Name) {
 		writeJSON(w, http.StatusConflict, ErrorResponse{Error: fmt.Sprintf("server %q is already connected", req.Name)})
 		return
 	}
@@ -619,6 +643,39 @@ func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) 
 			if v != "" {
 				envMap[k] = v
 			}
+		}
+
+		// If this registry entry has a native Go implementation, use it
+		// instead of spawning an external process.
+		if entry.BuiltinGo && tools.HasBuiltinServer(req.Name) {
+			for k, v := range envMap {
+				os.Setenv(k, v)
+			}
+			numTools, err := tools.ConnectBuiltinServer(r.Context(), req.Name)
+			if err != nil {
+				writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+					Name:      req.Name,
+					Connected: false,
+					Error:     err.Error(),
+				})
+				return
+			}
+
+			// Collect tool names from the builtin server schema.
+			var toolNames []string
+			for _, schema := range tools.Schema() {
+				if strings.HasPrefix(schema.Name, req.Name+"__") {
+					toolNames = append(toolNames, schema.Name)
+				}
+			}
+
+			_ = numTools
+			writeJSON(w, http.StatusOK, ConnectMCPResponse{
+				Name:      req.Name,
+				Connected: true,
+				Tools:     toolNames,
+			})
+			return
 		}
 
 		cfg = entry.ToServerConfig(envMap)
@@ -693,8 +750,15 @@ func (s *Server) handleDisconnectMCPServer(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	tools := s.interp.Tools()
-	if err := tools.DisconnectMCPServer(name); err != nil {
+	t := s.interp.Tools()
+
+	// Try builtin server first, then MCP subprocess.
+	if t.BuiltinServerConnected(name) {
+		if err := t.DisconnectBuiltinServer(name); err != nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
+			return
+		}
+	} else if err := t.DisconnectMCPServer(name); err != nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
 		return
 	}
