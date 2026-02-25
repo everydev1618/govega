@@ -739,6 +739,26 @@ agents:
       - github__create_issue
 ```
 
+#### Auto-Download of MCP Server Binaries
+
+Some MCP servers are standalone binaries distributed via GitHub Releases. Vega can automatically download these when the binary isn't found on your system.
+
+**How it works:**
+
+1. If the binary is on your `$PATH`, it is used as-is (system installs always win)
+2. If a cached copy exists in `~/.vega/bin/`, it is used
+3. Otherwise, Vega downloads the latest release from GitHub and caches it in `~/.vega/bin/`
+
+This is transparent — no extra configuration is needed. Registry entries that support auto-download have a `GitHubRepo` field pointing to their GitHub repository. Currently the `synkedup` MCP server supports this.
+
+**Example:** The `synkedup` server binary (`synkedup-vega-mcp`) is automatically downloaded from [etiennesu/synkedup-vega-mcp](https://github.com/etiennesu/synkedup-vega-mcp/releases) on first use. Subsequent runs use the cached binary.
+
+To force a re-download, delete the cached binary:
+
+```bash
+rm ~/.vega/bin/synkedup-vega-mcp
+```
+
 ### Web Dashboard & REST API
 
 Monitor and control your agents through a browser-based dashboard:
@@ -1244,6 +1264,7 @@ vega/
 ├── mcp/               # Model Context Protocol client
 │   ├── types.go       # MCP types and JSON-RPC
 │   ├── client.go      # MCP client implementation
+│   ├── download.go    # Auto-download binaries from GitHub Releases
 │   ├── transport_stdio.go  # Subprocess transport with logging
 │   └── transport_http.go   # HTTP/SSE transport
 ├── skills/            # Agent skills system

@@ -87,6 +87,9 @@ type ServerConfig struct {
 
 	// Timeout for operations (default: 30s).
 	Timeout time.Duration
+
+	// GitHubRepo is "owner/repo" for auto-download of release binaries.
+	GitHubRepo string
 }
 
 // ServerInfo contains information about the connected MCP server.

@@ -25,6 +25,11 @@ func WorkspacePath() string {
 	return filepath.Join(Home(), "workspace")
 }
 
+// BinPath returns the directory for auto-downloaded binaries (~/.vega/bin).
+func BinPath() string {
+	return filepath.Join(Home(), "bin")
+}
+
 // EnsureHome creates the Vega home and workspace directories if they don't exist.
 func EnsureHome() error {
 	return os.MkdirAll(WorkspacePath(), 0o755)
