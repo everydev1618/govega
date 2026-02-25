@@ -50,8 +50,11 @@ func (t *StdioTransport) Connect(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// Create command
-	t.cmd = exec.CommandContext(ctx, t.config.Command, t.config.Args...)
+	// Create command — use exec.Command (not CommandContext) so the subprocess
+	// lifecycle is not tied to the connect context. The connect context may have
+	// a short timeout for the handshake, but the process must survive beyond it.
+	// The process is cleaned up by Close() when the transport is shut down.
+	t.cmd = exec.Command(t.config.Command, t.config.Args...)
 
 	// Set environment
 	if len(t.config.Env) > 0 {
