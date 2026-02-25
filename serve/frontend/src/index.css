@@ -52,5 +52,9 @@
   animation: constellation-line-draw 400ms ease-out both;
 }
 
+.org-chart-container {
+  animation: constellation-fade-in 500ms ease-out both;
+}
+
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }

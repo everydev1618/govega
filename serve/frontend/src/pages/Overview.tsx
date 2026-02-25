@@ -2,6 +2,7 @@ import { useAPI } from '../hooks/useAPI'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
 import { Link } from 'react-router-dom'
+import { AgentOrgChart } from '../components/AgentOrgChart'
 
 export function Overview() {
   const { data: stats, loading } = useAPI(() => api.getStats())
@@ -75,41 +76,9 @@ export function Overview() {
         </div>
       )}
 
-      {/* Active agents summary */}
+      {/* Agent org chart */}
       {agents && agents.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold">Agents</h3>
-            <Link to="/agents" className="text-xs text-primary hover:underline">View all</Link>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {agents.slice(0, 6).map(agent => (
-              <div key={agent.name} className="p-3 rounded-lg bg-card border border-border">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{agent.name}</span>
-                  {agent.source === 'composed' && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400">composed</span>
-                  )}
-                  {agent.process_status && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded ml-auto ${
-                      agent.process_status === 'running' ? 'bg-blue-900/50 text-blue-400' :
-                      agent.process_status === 'completed' ? 'bg-green-900/50 text-green-400' :
-                      'bg-muted text-muted-foreground'
-                    }`}>
-                      {agent.process_status}
-                    </span>
-                  )}
-                </div>
-                {agent.model && (
-                  <p className="text-xs text-muted-foreground mt-1 font-mono">{agent.model}</p>
-                )}
-                {agent.tools && agent.tools.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">{agent.tools.length} tools</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        <AgentOrgChart agents={agents} />
       )}
 
       {/* Workflows summary */}
