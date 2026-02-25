@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -29,6 +30,10 @@ type StdioTransport struct {
 	// Notification handling
 	notifyHandler func(method string, params json.RawMessage)
 	notifyMu      sync.RWMutex
+
+	// Stderr capture for diagnostics
+	stderrLines []string
+	stderrMu    sync.Mutex
 
 	// Lifecycle
 	done     chan struct{}
@@ -162,6 +167,9 @@ func (t *StdioTransport) Send(ctx context.Context, method string, params any) (j
 		return nil, fmt.Errorf("transport closed")
 	case resp, ok := <-respCh:
 		if !ok || resp == nil {
+			if stderr := t.recentStderr(); stderr != "" {
+				return nil, fmt.Errorf("transport closed before response received. Server stderr:\n%s", stderr)
+			}
 			return nil, fmt.Errorf("transport closed before response received")
 		}
 		if resp.Error != nil {
@@ -251,7 +259,7 @@ func (t *StdioTransport) readLoop() {
 	t.pendingMu.Unlock()
 }
 
-// readStderr reads stderr and logs it for debugging.
+// readStderr reads stderr, logs it, and buffers recent lines for diagnostics.
 func (t *StdioTransport) readStderr() {
 	scanner := bufio.NewScanner(t.stderr)
 	for scanner.Scan() {
@@ -261,6 +269,21 @@ func (t *StdioTransport) readStderr() {
 				"server", t.config.Name,
 				"line", line,
 			)
+			t.stderrMu.Lock()
+			if len(t.stderrLines) < 20 {
+				t.stderrLines = append(t.stderrLines, line)
+			}
+			t.stderrMu.Unlock()
 		}
 	}
+}
+
+// recentStderr returns buffered stderr output for error diagnostics.
+func (t *StdioTransport) recentStderr() string {
+	t.stderrMu.Lock()
+	defer t.stderrMu.Unlock()
+	if len(t.stderrLines) == 0 {
+		return ""
+	}
+	return strings.Join(t.stderrLines, "\n")
 }
