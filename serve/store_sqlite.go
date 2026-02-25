@@ -139,6 +139,12 @@ func (s *SQLiteStore) Init() error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS mcp_servers (
+		name       TEXT PRIMARY KEY,
+		config     TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -676,6 +682,45 @@ func (s *SQLiteStore) DeleteSetting(key string) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// UpsertMCPServer persists an MCP server connection config.
+func (s *SQLiteStore) UpsertMCPServer(name, configJSON string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO mcp_servers (name, config, created_at)
+		 VALUES (?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(name)
+		 DO UPDATE SET config = excluded.config`,
+		name, configJSON,
+	)
+	return err
+}
+
+// DeleteMCPServer removes a persisted MCP server connection.
+func (s *SQLiteStore) DeleteMCPServer(name string) error {
+	_, err := s.db.Exec(`DELETE FROM mcp_servers WHERE name = ?`, name)
+	return err
+}
+
+// ListMCPServers returns all persisted MCP server configs.
+func (s *SQLiteStore) ListMCPServers() ([]MCPServerConfig, error) {
+	rows, err := s.db.Query(
+		`SELECT name, config FROM mcp_servers ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var servers []MCPServerConfig
+	for rows.Next() {
+		var sc MCPServerConfig
+		if err := rows.Scan(&sc.Name, &sc.ConfigJSON); err != nil {
+			return nil, err
+		}
+		servers = append(servers, sc)
+	}
+	return servers, rows.Err()
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.

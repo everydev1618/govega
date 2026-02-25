@@ -672,6 +672,7 @@ func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) 
 			}
 
 			_ = numTools
+			s.persistMCPServer(req)
 			writeJSON(w, http.StatusOK, ConnectMCPResponse{
 				Name:      req.Name,
 				Connected: true,
@@ -738,6 +739,7 @@ func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) 
 	}
 
 	_ = numTools
+	s.persistMCPServer(req)
 	writeJSON(w, http.StatusOK, ConnectMCPResponse{
 		Name:      req.Name,
 		Connected: true,
@@ -765,7 +767,35 @@ func (s *Server) handleDisconnectMCPServer(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Remove from persistence so it won't auto-reconnect on restart.
+	if sqlStore, ok := s.store.(*SQLiteStore); ok {
+		sqlStore.DeleteMCPServer(name)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
+}
+
+// persistMCPServer saves the MCP server connect request so it auto-reconnects on restart.
+func (s *Server) persistMCPServer(req ConnectMCPRequest) {
+	sqlStore, ok := s.store.(*SQLiteStore)
+	if !ok {
+		return
+	}
+	// Strip env values — they're already saved as sensitive settings.
+	// We keep the keys so we know which settings to load on reconnect.
+	stripped := req
+	stripped.Env = make(map[string]string, len(req.Env))
+	for k := range req.Env {
+		stripped.Env[k] = ""
+	}
+	configJSON, err := json.Marshal(stripped)
+	if err != nil {
+		slog.Error("failed to marshal MCP server config", "name", req.Name, "error", err)
+		return
+	}
+	if err := sqlStore.UpsertMCPServer(req.Name, string(configJSON)); err != nil {
+		slog.Error("failed to persist MCP server", "name", req.Name, "error", err)
+	}
 }
 
 // --- Stats Handler ---
