@@ -45,6 +45,8 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 		// Update metrics
 		metrics.InputTokens += resp.InputTokens
 		metrics.OutputTokens += resp.OutputTokens
+		metrics.CacheCreationInputTokens += resp.CacheCreationInputTokens
+		metrics.CacheReadInputTokens += resp.CacheReadInputTokens
 		metrics.CostUSD += resp.CostUSD
 		metrics.LatencyMs += resp.LatencyMs
 

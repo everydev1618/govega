@@ -145,15 +145,17 @@ const (
 
 // ProcessMetrics tracks process usage.
 type ProcessMetrics struct {
-	Iterations   int
-	InputTokens  int
-	OutputTokens int
-	CostUSD      float64
-	StartedAt    time.Time
-	CompletedAt  time.Time
-	LastActiveAt time.Time
-	ToolCalls    int
-	Errors       int
+	Iterations               int
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+	CostUSD                  float64
+	StartedAt                time.Time
+	CompletedAt              time.Time
+	LastActiveAt             time.Time
+	ToolCalls                int
+	Errors                   int
 }
 
 // SendResult is the result of a Send operation.
@@ -165,12 +167,14 @@ type SendResult struct {
 
 // CallMetrics tracks a single LLM call.
 type CallMetrics struct {
-	InputTokens  int
-	OutputTokens int
-	CostUSD      float64
-	LatencyMs    int64
-	ToolCalls    []string
-	Retries      int
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+	CostUSD                  float64
+	LatencyMs                int64
+	ToolCalls                []string
+	Retries                  int
 }
 
 // Status returns the current process status.
@@ -250,6 +254,8 @@ func (p *Process) Send(ctx context.Context, message string) (string, error) {
 	p.mu.Lock()
 	p.metrics.InputTokens += callMetrics.InputTokens
 	p.metrics.OutputTokens += callMetrics.OutputTokens
+	p.metrics.CacheCreationInputTokens += callMetrics.CacheCreationInputTokens
+	p.metrics.CacheReadInputTokens += callMetrics.CacheReadInputTokens
 	p.metrics.CostUSD += callMetrics.CostUSD
 	p.metrics.ToolCalls += len(callMetrics.ToolCalls)
 	p.mu.Unlock()

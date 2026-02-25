@@ -80,11 +80,23 @@ func NewAnthropic(opts ...AnthropicOption) *AnthropicLLM {
 	return a
 }
 
+// cacheControl marks a block for Anthropic prompt caching.
+type cacheControl struct {
+	Type string `json:"type"` // "ephemeral"
+}
+
+// systemBlock is a structured system prompt block with optional cache control.
+type systemBlock struct {
+	Type         string        `json:"type"`
+	Text         string        `json:"text"`
+	CacheControl *cacheControl `json:"cache_control,omitempty"`
+}
+
 // anthropicRequest is the API request format.
 type anthropicRequest struct {
 	Model       string           `json:"model"`
 	Messages    []anthropicMsg   `json:"messages"`
-	System      string           `json:"system,omitempty"`
+	System      any              `json:"system,omitempty"` // string or []systemBlock
 	MaxTokens   int              `json:"max_tokens"`
 	Temperature *float64         `json:"temperature,omitempty"`
 	Tools       []anthropicTool  `json:"tools,omitempty"`
@@ -108,9 +120,10 @@ type contentBlock struct {
 
 
 type anthropicTool struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"input_schema"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	InputSchema  map[string]any `json:"input_schema"`
+	CacheControl *cacheControl  `json:"cache_control,omitempty"`
 }
 
 // anthropicResponse is the API response format.
@@ -122,9 +135,11 @@ type anthropicResponse struct {
 	Model        string         `json:"model"`
 	StopReason   string         `json:"stop_reason"`
 	StopSequence string         `json:"stop_sequence"`
-	Usage        struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+	Usage struct {
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	} `json:"usage"`
 }
 
@@ -244,7 +259,11 @@ func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stre
 	var anthropicMsgs []anthropicMsg
 	for _, msg := range messages {
 		if msg.Role == RoleSystem {
-			req.System = msg.Content
+			req.System = []systemBlock{{
+				Type:         "text",
+				Text:         msg.Content,
+				CacheControl: &cacheControl{Type: "ephemeral"},
+			}}
 			continue
 		}
 
@@ -268,14 +287,19 @@ func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stre
 	}
 	req.Messages = anthropicMsgs
 
-	// Convert tools
+	// Convert tools and mark the last one with cache_control to cache the
+	// entire prefix (system + tools) for prompt caching.
 	if len(tools) > 0 {
-		for _, t := range tools {
-			req.Tools = append(req.Tools, anthropicTool{
+		for i, t := range tools {
+			at := anthropicTool{
 				Name:        t.Name,
 				Description: t.Description,
 				InputSchema: t.InputSchema,
-			})
+			}
+			if i == len(tools)-1 {
+				at.CacheControl = &cacheControl{Type: "ephemeral"}
+			}
+			req.Tools = append(req.Tools, at)
 		}
 	}
 
@@ -495,13 +519,16 @@ func retryAfterDelay(resp *http.Response, attempt int) time.Duration {
 
 func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Duration) (*LLMResponse, error) {
 	result := &LLMResponse{
-		InputTokens:  resp.Usage.InputTokens,
-		OutputTokens: resp.Usage.OutputTokens,
-		LatencyMs:    latency.Milliseconds(),
+		InputTokens:              resp.Usage.InputTokens,
+		OutputTokens:             resp.Usage.OutputTokens,
+		CacheCreationInputTokens: resp.Usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     resp.Usage.CacheReadInputTokens,
+		LatencyMs:                latency.Milliseconds(),
 	}
 
-	// Calculate cost
-	result.CostUSD = CalculateCost(resp.Model, result.InputTokens, result.OutputTokens)
+	// Calculate cost (including cache token costs)
+	result.CostUSD = CalculateCost(resp.Model, result.InputTokens, result.OutputTokens,
+		result.CacheCreationInputTokens, result.CacheReadInputTokens)
 
 	// Parse stop reason
 	switch resp.StopReason {
@@ -565,14 +592,18 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 		var msg struct {
 			Message struct {
 				Usage struct {
-					InputTokens int `json:"input_tokens"`
+					InputTokens              int `json:"input_tokens"`
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+					CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 				} `json:"usage"`
 			} `json:"message"`
 		}
 		json.Unmarshal([]byte(data), &msg)
 		eventCh <- StreamEvent{
-			Type:        StreamEventMessageStart,
-			InputTokens: msg.Message.Usage.InputTokens,
+			Type:                     StreamEventMessageStart,
+			InputTokens:              msg.Message.Usage.InputTokens,
+			CacheCreationInputTokens: msg.Message.Usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     msg.Message.Usage.CacheReadInputTokens,
 		}
 
 	case "content_block_start":
