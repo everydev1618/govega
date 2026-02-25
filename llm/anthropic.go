@@ -16,12 +16,16 @@ import (
 	"time"
 )
 
+// DefaultMaxConcurrent is the default maximum number of in-flight API requests.
+const DefaultMaxConcurrent = 5
+
 // AnthropicLLM is an LLM implementation using the Anthropic API.
 type AnthropicLLM struct {
 	apiKey     string
 	baseURL    string
 	httpClient *http.Client
 	model      string
+	semaphore  chan struct{} // limits concurrent API requests
 }
 
 // AnthropicOption configures the Anthropic client.
@@ -55,6 +59,15 @@ func WithHTTPClient(client *http.Client) AnthropicOption {
 	}
 }
 
+// WithMaxConcurrent sets the maximum number of concurrent API requests.
+func WithMaxConcurrent(n int) AnthropicOption {
+	return func(a *AnthropicLLM) {
+		if n > 0 {
+			a.semaphore = make(chan struct{}, n)
+		}
+	}
+}
+
 // Default Anthropic configuration values
 const (
 	DefaultAnthropicTimeout = 5 * time.Minute
@@ -70,7 +83,8 @@ func NewAnthropic(opts ...AnthropicOption) *AnthropicLLM {
 		httpClient: &http.Client{
 			Timeout: DefaultAnthropicTimeout,
 		},
-		model: DefaultAnthropicModel,
+		model:     DefaultAnthropicModel,
+		semaphore: make(chan struct{}, DefaultMaxConcurrent),
 	}
 
 	for _, opt := range opts {
@@ -197,6 +211,15 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 
 	go func() {
 		defer close(eventCh)
+
+		// Acquire concurrency semaphore.
+		select {
+		case a.semaphore <- struct{}{}:
+			defer func() { <-a.semaphore }()
+		case <-ctx.Done():
+			eventCh <- StreamEvent{Type: StreamEventError, Error: ctx.Err()}
+			return
+		}
 
 		const maxRetries = 5
 		for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -456,6 +479,14 @@ func (a *AnthropicLLM) createHTTPRequest(ctx context.Context, req *anthropicRequ
 }
 
 func (a *AnthropicLLM) doRequest(ctx context.Context, req *anthropicRequest) (*anthropicResponse, error) {
+	// Acquire concurrency semaphore.
+	select {
+	case a.semaphore <- struct{}{}:
+		defer func() { <-a.semaphore }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
 	const maxRetries = 5
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -524,6 +555,10 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 		CacheCreationInputTokens: resp.Usage.CacheCreationInputTokens,
 		CacheReadInputTokens:     resp.Usage.CacheReadInputTokens,
 		LatencyMs:                latency.Milliseconds(),
+	}
+
+	if resp.Usage.CacheReadInputTokens > 0 || resp.Usage.CacheCreationInputTokens > 0 {
+		slog.Debug("prompt cache", "read", resp.Usage.CacheReadInputTokens, "created", resp.Usage.CacheCreationInputTokens)
 	}
 
 	// Calculate cost (including cache token costs)
