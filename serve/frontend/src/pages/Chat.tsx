@@ -1192,7 +1192,7 @@ export function Chat() {
                     },
                   }}>{msg.content}</Markdown>
                 )}
-                {msg.streaming && msg.content && !(msg.toolCalls?.some(tc => tc.status === 'running')) && (
+                {msg.streaming && msg.content && !(msg.toolCalls?.length) && (
                   <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
                 )}
                 {msg.toolCalls && msg.toolCalls.length > 0 && (
