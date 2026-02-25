@@ -267,7 +267,7 @@ export function Connections() {
                       )}
                     </label>
                     <input
-                      type="password"
+                      type="text"
                       placeholder={hasExisting ? '(using saved value)' : `Enter ${key}`}
                       value={envValues[key] || ''}
                       onChange={(e) => setEnvValues(prev => ({ ...prev, [key]: e.target.value }))}
@@ -448,7 +448,7 @@ export function Connections() {
                 className="flex-1 px-3 py-2 rounded bg-background border border-border text-sm font-mono disabled:opacity-50"
               />
               <input
-                type={settingSensitive ? 'password' : 'text'}
+                type="text"
                 placeholder="Value"
                 value={settingValue}
                 onChange={e => setSettingValue(e.target.value)}

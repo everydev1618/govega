@@ -65,5 +65,9 @@
   animation: constellation-fade-in 500ms ease-out both;
 }
 
+.constellation-node-interactive:hover {
+  filter: brightness(1.3);
+}
+
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }

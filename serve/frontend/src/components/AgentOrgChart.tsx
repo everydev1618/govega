@@ -261,8 +261,8 @@ export function AgentOrgChart({ agents }: Props) {
 
             return (
               <g key={n.agent.name}
-                className="cursor-pointer"
-                onClick={() => navigate(`/chat/${n.agent.name}`)}
+                className="cursor-pointer constellation-node-interactive"
+                onClick={(e) => { e.stopPropagation(); navigate(`/chat/${n.agent.name}`) }}
                 onMouseEnter={(e) => {
                   const svg = (e.currentTarget.ownerSVGElement as SVGSVGElement)
                   const pt = svg.createSVGPoint()
@@ -275,6 +275,10 @@ export function AgentOrgChart({ agents }: Props) {
                 }}
                 onMouseLeave={() => setTooltip(null)}
               >
+                {/* Invisible hit area for easier clicking */}
+                <circle cx={n.x} cy={n.y} r={n.r + 14}
+                  fill="transparent" />
+
                 {/* Glow halo */}
                 <circle cx={n.x} cy={n.y} r={n.r + 6}
                   fill={color} opacity={0.08} />
