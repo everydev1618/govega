@@ -47,6 +47,15 @@
   animation: constellation-fade-in 350ms ease-out both;
 }
 
+@keyframes constellation-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.constellation-orbit {
+  animation: constellation-orbit 4s linear infinite;
+}
+
 .constellation-line {
   stroke-dasharray: 24;
   animation: constellation-line-draw 400ms ease-out both;

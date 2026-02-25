@@ -183,16 +183,17 @@ func (s *Server) Start(ctx context.Context) error {
 		s.popClient = popClient
 	}
 
-	// Restore composed agents from persistence.
+	// Auto-connect MCP servers BEFORE restoring agents so that MCP tools
+	// are registered in the global tool collection when agents spawn.
+	// Without this ordering, spawnAgent's Filter() silently drops MCP tool
+	// names that don't yet exist, leaving agents without their MCP tools.
+	s.autoConnectBuiltinServers(ctx)
+	s.autoConnectPersistedServers(ctx)
+
+	// Restore composed agents from persistence (after MCP servers are connected).
 	if s.popClient != nil {
 		s.restoreComposedAgents()
 	}
-
-	// Auto-connect built-in Go MCP servers whose required env vars are set.
-	s.autoConnectBuiltinServers(ctx)
-
-	// Reconnect persisted MCP servers from previous sessions.
-	s.autoConnectPersistedServers(ctx)
 
 	// Register memory tools before injecting meta-agents so they can use them.
 	RegisterMemoryTools(s.interp)
