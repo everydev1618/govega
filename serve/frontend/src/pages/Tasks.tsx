@@ -15,8 +15,10 @@ export function Tasks() {
   const [sortKey, setSortKey] = useState<'started_at' | 'status' | 'agent'>('started_at')
   const [viewMode, setViewMode] = useState<ViewMode>('kanban')
 
-  // Filter to only child/task processes (spawn_depth > 0 or has parent)
-  const processes = allProcesses?.filter(p => p.parent_id || p.spawn_depth > 0) || []
+  // Show child/task processes, plus any top-level process that is actively working.
+  const processes = allProcesses?.filter(p =>
+    p.parent_id || p.spawn_depth > 0 || p.status === 'running' || p.status === 'pending'
+  ) || []
 
   // SSE: auto-refresh on process lifecycle events
   const { events } = useSSE()

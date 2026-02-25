@@ -17,16 +17,76 @@ import (
 	"github.com/everydev1618/vega-population/population"
 )
 
-// activeStream tracks a server-side chat stream that runs independently of
-// any connected SSE client. The goroutine producing events writes to the
-// events channel; one or more SSE handlers read from it via the relay loop.
-type activeStream struct {
-	events chan vega.ChatEvent // buffered, written by goroutine
-	done   chan struct{}       // closed when stream completes
+// streamSubscriber is a single SSE client subscribed to an active stream.
+type streamSubscriber struct {
+	ch     chan vega.ChatEvent
+	closed bool
+}
 
-	mu       sync.Mutex // guards response and err
-	response string     // set after done
-	err      error      // set after done
+// activeStream tracks a server-side chat stream that runs independently of
+// any connected SSE client. Events are buffered in history so reconnecting
+// clients can replay them. Multiple subscribers can listen concurrently.
+type activeStream struct {
+	agentName string
+	done      chan struct{} // closed when stream completes
+
+	mu          sync.Mutex
+	history     []vega.ChatEvent    // all events received, for replay
+	subscribers []*streamSubscriber // active SSE subscribers
+	response    string              // set after done
+	err         error               // set after done
+}
+
+// publish sends an event to all active subscribers and appends it to history.
+func (as *activeStream) publish(event vega.ChatEvent) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	as.history = append(as.history, event)
+	for _, sub := range as.subscribers {
+		if !sub.closed {
+			select {
+			case sub.ch <- event:
+			default: // subscriber too slow, skip
+			}
+		}
+	}
+}
+
+// subscribe returns a snapshot of all past events plus a channel for future
+// events. The caller must call unsubscribe when done.
+func (as *activeStream) subscribe() ([]vega.ChatEvent, chan vega.ChatEvent) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	snapshot := make([]vega.ChatEvent, len(as.history))
+	copy(snapshot, as.history)
+	ch := make(chan vega.ChatEvent, 256)
+	as.subscribers = append(as.subscribers, &streamSubscriber{ch: ch})
+	return snapshot, ch
+}
+
+// unsubscribe removes a subscriber channel.
+func (as *activeStream) unsubscribe(ch chan vega.ChatEvent) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	for _, sub := range as.subscribers {
+		if sub.ch == ch {
+			sub.closed = true
+			// Don't close — the finish() method handles closing all channels.
+			return
+		}
+	}
+}
+
+// finish closes all subscriber channels. Called when the stream completes.
+func (as *activeStream) finish() {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	for _, sub := range as.subscribers {
+		if !sub.closed {
+			sub.closed = true
+			close(sub.ch)
+		}
+	}
 }
 
 // Config holds server configuration.
@@ -52,7 +112,7 @@ type Server struct {
 	extractLLM   llm.LLM
 	extractLLMMu sync.Once
 
-	// streams tracks active chat streams that run server-side, decoupled
+	// streams tracks active chat streams keyed by agent name, decoupled
 	// from any particular SSE client connection.
 	streamsMu sync.Mutex
 	streams   map[string]*activeStream
@@ -277,6 +337,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/{name}/chat", s.handleChatHistory)
 	mux.HandleFunc("POST /api/agents/{name}/chat", s.handleChat)
 	mux.HandleFunc("POST /api/agents/{name}/chat/stream", s.handleChatStream)
+	mux.HandleFunc("GET /api/agents/{name}/chat/stream", s.handleChatStreamReconnect)
+	mux.HandleFunc("GET /api/agents/{name}/chat/status", s.handleChatStatus)
 	mux.HandleFunc("DELETE /api/agents/{name}/chat", s.handleClearChat)
 
 	// Memory

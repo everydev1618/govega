@@ -126,6 +126,54 @@ export const api = {
   resetChat: (agent: string) =>
     fetchAPI<{ status: string }>(`/api/agents/${agent}/chat`, { method: 'DELETE' }),
 
+  // Chat status — check if agent has an active stream
+  chatStatus: (agent: string) =>
+    fetchAPI<{ streaming: boolean }>(`/api/agents/${agent}/chat/status`),
+
+  // Reconnect to an active stream — replays buffered events then continues live
+  chatStreamReconnect: (
+    agent: string,
+    onEvent: (event: import('./types').ChatEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    return fetch(`${BASE}/api/agents/${agent}/chat/stream`, {
+      method: 'GET',
+      signal,
+    }).then(async (res) => {
+      if (!res.ok) return // no active stream or error
+      const ct = res.headers.get('content-type') || ''
+      if (!ct.includes('text/event-stream')) return // not streaming (JSON status response)
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop()!
+
+        let currentData: string | null = null
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            currentData = line.slice(6)
+          } else if (line === '' && currentData !== null) {
+            try {
+              onEvent(JSON.parse(currentData))
+            } catch { /* skip malformed */ }
+            currentData = null
+          }
+        }
+      }
+    }).catch((err) => {
+      if (err.name === 'AbortError') return
+      // Silently ignore reconnection failures
+    })
+  },
+
   // Streaming chat
   chatStream: (
     agent: string,
