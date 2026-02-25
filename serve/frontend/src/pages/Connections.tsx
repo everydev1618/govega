@@ -18,6 +18,7 @@ export function Connections() {
   const [envValues, setEnvValues] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState<string | null>(null)
 
   // Expanded tool lists per server.
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
@@ -85,6 +86,23 @@ export function Connections() {
       setError(err.message || 'Failed to disconnect')
     } finally {
       setDisconnecting(null)
+    }
+  }
+
+  const handleRefresh = async (name: string) => {
+    setRefreshing(name)
+    setError(null)
+    try {
+      const res = await api.refreshMCPServer(name)
+      if (res.error) {
+        setError(res.error)
+      } else {
+        refetchAll()
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to refresh')
+    } finally {
+      setRefreshing(null)
     }
   }
 
@@ -202,6 +220,8 @@ export function Connections() {
                   onToggleTools={() => toggleTools(server.name)}
                   onDisconnect={() => handleDisconnect(server.name)}
                   disconnecting={disconnecting === server.name}
+                  onRefresh={() => handleRefresh(server.name)}
+                  refreshing={refreshing === server.name}
                 />
               ))}
             </div>
@@ -548,12 +568,16 @@ function ServerCard({
   onToggleTools,
   onDisconnect,
   disconnecting,
+  onRefresh,
+  refreshing,
 }: {
   server: MCPServerResponse
   expanded: boolean
   onToggleTools: () => void
   onDisconnect: () => void
   disconnecting: boolean
+  onRefresh: () => void
+  refreshing: boolean
 }) {
   return (
     <div className="p-4 rounded-lg bg-card border border-border space-y-3">
@@ -562,13 +586,23 @@ function ServerCard({
           <h4 className="font-semibold">{server.name}</h4>
           <span className="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400">connected</span>
         </div>
-        <button
-          onClick={onDisconnect}
-          disabled={disconnecting}
-          className="text-xs px-3 py-1 rounded bg-red-900/40 hover:bg-red-900/60 text-red-400 font-medium disabled:opacity-50 transition-colors"
-        >
-          {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onRefresh}
+            disabled={refreshing || disconnecting}
+            className="text-xs px-3 py-1 rounded bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-400 font-medium disabled:opacity-50 transition-colors"
+            title="Reconnect server and re-discover tools"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button
+            onClick={onDisconnect}
+            disabled={disconnecting || refreshing}
+            className="text-xs px-3 py-1 rounded bg-red-900/40 hover:bg-red-900/60 text-red-400 font-medium disabled:opacity-50 transition-colors"
+          >
+            {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+          </button>
+        </div>
       </div>
 
       <div className="text-sm text-muted-foreground space-y-0.5">

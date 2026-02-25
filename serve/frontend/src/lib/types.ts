@@ -146,6 +146,7 @@ export interface CreateAgentRequest {
 }
 
 export interface UpdateAgentRequest {
+  name?: string
   model?: string
   system?: string
   team?: string[]

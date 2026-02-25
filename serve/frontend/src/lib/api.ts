@@ -52,6 +52,10 @@ export const api = {
     }),
   disconnectMCPServer: (name: string) =>
     fetchAPI<{ status: string }>(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  refreshMCPServer: (name: string) =>
+    fetchAPI<import('./types').ConnectMCPResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/refresh`, {
+      method: 'POST',
+    }),
   getStats: () => fetchAPI<import('./types').StatsResponse>('/api/stats'),
   getSpawnTree: () => fetchAPI<import('./types').SpawnTreeNode[]>('/api/spawn-tree'),
 

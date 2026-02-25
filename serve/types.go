@@ -226,6 +226,7 @@ type CreateAgentResponse struct {
 
 // UpdateAgentRequest is the request to update an existing composed agent.
 type UpdateAgentRequest struct {
+	Name        *string  `json:"name,omitempty"`
 	Model       *string  `json:"model,omitempty"`
 	System      *string  `json:"system,omitempty"`
 	Team        []string `json:"team,omitempty"`

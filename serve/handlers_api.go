@@ -77,12 +77,22 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Resolve the effective default model for agents with no explicit model.
+	defaultModel := ""
+	if doc.Settings != nil {
+		defaultModel = doc.Settings.DefaultModel
+	}
+
 	resp := make([]AgentResponse, 0, len(doc.Agents))
 	for name, def := range doc.Agents {
+		model := def.Model
+		if model == "" {
+			model = defaultModel
+		}
 		ar := AgentResponse{
 			Name:   name,
-			Model:  def.Model,
-			System: truncate(def.System, 500),
+			Model:  model,
+			System: def.System,
 			Tools:  def.Tools,
 		}
 		if proc, ok := agents[name]; ok {
@@ -773,6 +783,153 @@ func (s *Server) handleDisconnectMCPServer(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
+}
+
+func (s *Server) handleRefreshMCPServer(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "server name is required"})
+		return
+	}
+
+	t := s.interp.Tools()
+
+	// Load persisted config so we can reconnect after disconnect.
+	sqlStore, ok := s.store.(*SQLiteStore)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
+		return
+	}
+
+	servers, err := sqlStore.ListMCPServers()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
+		return
+	}
+
+	var req ConnectMCPRequest
+	var found bool
+	for _, sc := range servers {
+		if sc.Name == name {
+			if err := json.Unmarshal([]byte(sc.ConfigJSON), &req); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to parse server config"})
+				return
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("server %q not found in persisted configs", name)})
+		return
+	}
+
+	// Load settings for env resolution.
+	envMap := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		for _, st := range settings {
+			envMap[st.Key] = st.Value
+		}
+	}
+	for k := range req.Env {
+		if val, ok := envMap[k]; ok {
+			req.Env[k] = val
+		}
+	}
+
+	// Disconnect the existing server.
+	if t.BuiltinServerConnected(name) {
+		if err := t.DisconnectBuiltinServer(name); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("disconnect failed: %s", err)})
+			return
+		}
+	} else if t.MCPServerConnected(name) {
+		if err := t.DisconnectMCPServer(name); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("disconnect failed: %s", err)})
+			return
+		}
+	}
+
+	// Reconnect.
+	var toolNames []string
+	if entry, ok := mcp.Lookup(req.Name); ok {
+		if entry.BuiltinGo && t.HasBuiltinServer(req.Name) {
+			for k, v := range envMap {
+				os.Setenv(k, v)
+			}
+			if _, err := t.ConnectBuiltinServer(r.Context(), req.Name); err != nil {
+				writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+					Name: req.Name, Connected: false, Error: err.Error(),
+				})
+				return
+			}
+			for _, schema := range t.Schema() {
+				if strings.HasPrefix(schema.Name, req.Name+"__") {
+					toolNames = append(toolNames, schema.Name)
+				}
+			}
+		} else {
+			cfg := entry.ToServerConfig(envMap)
+			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			defer cancel()
+			if _, err := t.ConnectMCPServer(ctx, cfg); err != nil {
+				writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+					Name: req.Name, Connected: false, Error: err.Error(),
+				})
+				return
+			}
+			statuses := t.MCPServerStatuses()
+			for _, st := range statuses {
+				if st.Name == req.Name {
+					toolNames = st.Tools
+					break
+				}
+			}
+		}
+	} else {
+		// Custom server.
+		cfg := mcp.ServerConfig{
+			Name:    req.Name,
+			Command: req.Command,
+			Args:    req.Args,
+			URL:     req.URL,
+			Headers: req.Headers,
+			Env:     req.Env,
+		}
+		switch req.Transport {
+		case "http":
+			cfg.Transport = mcp.TransportHTTP
+		case "sse":
+			cfg.Transport = mcp.TransportSSE
+		default:
+			cfg.Transport = mcp.TransportStdio
+		}
+		if req.Timeout > 0 {
+			cfg.Timeout = time.Duration(req.Timeout) * time.Second
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		if _, err := t.ConnectMCPServer(ctx, cfg); err != nil {
+			writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+				Name: req.Name, Connected: false, Error: err.Error(),
+			})
+			return
+		}
+		statuses := t.MCPServerStatuses()
+		for _, st := range statuses {
+			if st.Name == req.Name {
+				toolNames = st.Tools
+				break
+			}
+		}
+	}
+
+	slog.Info("refreshed MCP server", "server", name, "tools", len(toolNames))
+	writeJSON(w, http.StatusOK, ConnectMCPResponse{
+		Name:      name,
+		Connected: true,
+		Tools:     toolNames,
+	})
 }
 
 // persistMCPServer saves the MCP server connect request so it auto-reconnects on restart.

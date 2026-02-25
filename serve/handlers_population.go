@@ -260,6 +260,10 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Merge updates.
+	newName := name
+	if req.Name != nil && *req.Name != "" {
+		newName = *req.Name
+	}
 	if req.Model != nil {
 		existing.Model = *req.Model
 	}
@@ -276,6 +280,12 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	// Remove old agent from interpreter.
 	if err := s.interp.RemoveAgent(name); err != nil {
 		slog.Warn("failed to remove agent for update", "agent", name, "error", err)
+	}
+
+	// If renamed, delete old persistence entry.
+	if newName != name {
+		s.store.DeleteComposedAgent(name)
+		existing.Name = newName
 	}
 
 	// Build DSL agent definition.
@@ -299,14 +309,14 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agentDef := &dsl.Agent{
-		Name:        name,
+		Name:        newName,
 		Model:       existing.Model,
 		System:      system,
 		Tools:       toolNames,
 		Temperature: existing.Temperature,
 	}
 
-	if err := s.interp.AddAgent(name, agentDef); err != nil {
+	if err := s.interp.AddAgent(newName, agentDef); err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to re-create agent: " + err.Error()})
 		return
 	}
@@ -314,10 +324,10 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	// Persist updated agent.
 	existing.CreatedAt = time.Now()
 	if err := s.store.InsertComposedAgent(*existing); err != nil {
-		slog.Error("failed to persist updated agent", "agent", name, "error", err)
+		slog.Error("failed to persist updated agent", "agent", newName, "error", err)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "updated", "name": name})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated", "name": newName})
 }
 
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
