@@ -103,6 +103,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(req),
     }),
+  updateAgent: (name: string, req: import('./types').UpdateAgentRequest) =>
+    fetchAPI<{ status: string }>(`/api/agents/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    }),
   deleteAgent: (name: string) =>
     fetchAPI<{ status: string }>(`/api/agents/${name}`, { method: 'DELETE' }),
 

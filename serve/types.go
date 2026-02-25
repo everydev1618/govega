@@ -224,6 +224,14 @@ type CreateAgentResponse struct {
 	ProcessID string   `json:"process_id,omitempty"`
 }
 
+// UpdateAgentRequest is the request to update an existing composed agent.
+type UpdateAgentRequest struct {
+	Model       *string  `json:"model,omitempty"`
+	System      *string  `json:"system,omitempty"`
+	Team        []string `json:"team,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+}
+
 // --- MCP Connection Types ---
 
 // MCPRegistryEntryResponse describes a registry entry for the connections page.

@@ -72,28 +72,29 @@ function toolNarrative(name: string, args: Record<string, unknown>): string {
 }
 
 function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
-  const coreX = 20, coreY = 20
+  const coreX = 28, coreY = 28
+  const allDone = tools.every(tc => tc.status !== 'running')
   return (
-    <svg width="140" height="40" viewBox="0 0 140 40" className="block">
+    <svg width="200" height="56" viewBox="0 0 200 56" className="block">
       {/* Core star */}
-      <circle cx={coreX} cy={coreY} r={4} fill="#60a5fa" className="constellation-core" />
-      <circle cx={coreX} cy={coreY} r={7} fill="#60a5fa" opacity={0.15} className="constellation-core" />
+      <circle cx={coreX} cy={coreY} r={5} fill={allDone ? '#60a5fa' : '#60a5fa'} className={allDone ? '' : 'constellation-core'} opacity={allDone ? 0.8 : 1} />
+      <circle cx={coreX} cy={coreY} r={10} fill="#60a5fa" opacity={allDone ? 0.08 : 0.12} className={allDone ? '' : 'constellation-core'} />
 
       {tools.map((tc, i) => {
-        const x = 44 + i * 24
-        const y = coreY + (i % 2 === 0 ? -6 : 6)
+        const x = 58 + i * 30
+        const y = coreY + (i % 2 === 0 ? -9 : 9)
         const color = NODE_COLORS[i % NODE_COLORS.length]
         const done = tc.status !== 'running'
         return (
           <g key={tc.id}>
             <line
               x1={coreX} y1={coreY} x2={x} y2={y}
-              stroke={color} strokeWidth={1} opacity={0.3}
+              stroke={color} strokeWidth={1.2} opacity={0.35}
               className="constellation-line"
               style={{ animationDelay: `${i * 100}ms` }}
             />
             <circle
-              cx={x} cy={y} r={done ? 3.5 : 3}
+              cx={x} cy={y} r={done ? 4.5 : 4}
               fill={color}
               opacity={done ? 1 : 0.7}
               className={done ? 'constellation-node-done' : 'constellation-node'}
@@ -125,7 +126,7 @@ function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
   }
 
   return (
-    <p className="text-xs text-muted-foreground italic mt-1 transition-opacity duration-300">
+    <p className="text-sm text-muted-foreground italic mt-1.5 transition-opacity duration-300">
       {text}
     </p>
   )
@@ -732,6 +733,7 @@ export function Chat() {
   }
 
   const isHermes = activeAgent === HERMES
+  const agentNames = new Set([HERMES, 'mother', ...specialists.map(a => a.name)])
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
@@ -844,16 +846,28 @@ export function Chat() {
                     li({ children }) {
                       return <li>{processChildren(children, openFilePreview)}</li>
                     },
+                    strong({ children }) {
+                      const text = typeof children === 'string' ? children
+                        : Array.isArray(children) ? children.map(c => typeof c === 'string' ? c : '').join('')
+                        : ''
+                      if (text && agentNames.has(text)) {
+                        return (
+                          <strong
+                            className="cursor-pointer text-primary hover:underline decoration-primary/50"
+                            onClick={(e) => { e.stopPropagation(); switchToAgent(text) }}
+                            title={`Switch to ${text}`}
+                            role="button"
+                          >
+                            {children}
+                          </strong>
+                        )
+                      }
+                      return <strong>{children}</strong>
+                    },
                   }}>{msg.content}</Markdown>
                 )}
-                {msg.streaming && msg.content && (
+                {msg.streaming && msg.content && !(msg.toolCalls?.some(tc => tc.status === 'running')) && (
                   <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
-                )}
-                {msg.streaming && (msg.toolCalls?.some(tc => tc.status === 'running')) && (
-                  <div className="py-1">
-                    <ActivityConstellation tools={msg.toolCalls || []} />
-                    <ActivityNarrative tools={msg.toolCalls || []} />
-                  </div>
                 )}
                 {msg.toolCalls && msg.toolCalls.length > 0 && (
                   <div className="my-2">
@@ -872,6 +886,15 @@ export function Chat() {
                         </button>
                       ))}
                     </div>
+                    {/* Activity constellation — live narrative while running, settled after */}
+                    {msg.toolCalls.length > 0 && (
+                      <div className="pt-2 pb-1">
+                        <ActivityConstellation tools={msg.toolCalls} />
+                        {msg.streaming && msg.toolCalls.some(tc => tc.status === 'running') && (
+                          <ActivityNarrative tools={msg.toolCalls} />
+                        )}
+                      </div>
+                    )}
                     {/* Expanded detail panel for the selected tab */}
                     {msg.toolCalls.map((tc, j) => !tc.collapsed && (
                       <div key={tc.id} className="mt-2 rounded-lg border border-border bg-background/50 px-3 py-2 space-y-1.5 text-sm">

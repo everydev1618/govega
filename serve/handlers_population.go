@@ -227,6 +227,99 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	if name == "mother" {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Mother cannot be updated"})
+		return
+	}
+
+	var req UpdateAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	// Look up existing composed agent.
+	composed, err := s.store.ListComposedAgents()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to list agents"})
+		return
+	}
+	var existing *ComposedAgent
+	for i := range composed {
+		if composed[i].Name == name {
+			existing = &composed[i]
+			break
+		}
+	}
+	if existing == nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("composed agent %q not found", name)})
+		return
+	}
+
+	// Merge updates.
+	if req.Model != nil {
+		existing.Model = *req.Model
+	}
+	if req.System != nil {
+		existing.System = *req.System
+	}
+	if req.Team != nil {
+		existing.Team = req.Team
+	}
+	if req.Temperature != nil {
+		existing.Temperature = req.Temperature
+	}
+
+	// Remove old agent from interpreter.
+	if err := s.interp.RemoveAgent(name); err != nil {
+		slog.Warn("failed to remove agent for update", "agent", name, "error", err)
+	}
+
+	// Build DSL agent definition.
+	system := existing.System
+	var toolNames []string
+	for _, skillName := range existing.Skills {
+		names, err := s.registerSkillTools(skillName)
+		if err != nil {
+			slog.Warn("failed to register skill tools", "skill", skillName, "error", err)
+			continue
+		}
+		toolNames = append(toolNames, names...)
+	}
+
+	if len(existing.Team) > 0 {
+		dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
+			return s.interp.SendToAgent(ctx, agent, message)
+		}, existing.Team)
+		toolNames = append(toolNames, "delegate")
+		system = dsl.BuildTeamPrompt(system, existing.Team, nil, false)
+	}
+
+	agentDef := &dsl.Agent{
+		Name:        name,
+		Model:       existing.Model,
+		System:      system,
+		Tools:       toolNames,
+		Temperature: existing.Temperature,
+	}
+
+	if err := s.interp.AddAgent(name, agentDef); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to re-create agent: " + err.Error()})
+		return
+	}
+
+	// Persist updated agent.
+	existing.CreatedAt = time.Now()
+	if err := s.store.InsertComposedAgent(*existing); err != nil {
+		slog.Error("failed to persist updated agent", "agent", name, "error", err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated", "name": name})
+}
+
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 

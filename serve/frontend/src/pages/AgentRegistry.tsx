@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAPI } from '../hooks/useAPI'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
-import type { PopulationInstalledItem, CreateAgentRequest, ProcessResponse } from '../lib/types'
+import type { PopulationInstalledItem, CreateAgentRequest, ProcessResponse, AgentResponse, UpdateAgentRequest } from '../lib/types'
 
 export function AgentRegistry() {
   const navigate = useNavigate()
@@ -17,6 +17,9 @@ export function AgentRegistry() {
   const [selectedTeam, setSelectedTeam] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
+  const [editingAgent, setEditingAgent] = useState<AgentResponse | null>(null)
+  const [editForm, setEditForm] = useState<UpdateAgentRequest>({})
+  const [saving, setSaving] = useState(false)
 
   // Fetch live process data for metrics
   const { data: processes, refetch: refetchProcesses } = useAPI(() => api.getProcesses())
@@ -106,6 +109,28 @@ export function AgentRegistry() {
       refetch()
     } catch {
       // ignore
+    }
+  }
+
+  const openEdit = (agent: AgentResponse) => {
+    setEditingAgent(agent)
+    setEditForm({
+      model: agent.model,
+      system: agent.system,
+    })
+  }
+
+  const saveEdit = async () => {
+    if (!editingAgent) return
+    setSaving(true)
+    try {
+      await api.updateAgent(editingAgent.name, editForm)
+      setEditingAgent(null)
+      refetch()
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -228,7 +253,7 @@ export function AgentRegistry() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {agents?.map(agent => {
           const proc = agent.process_id ? processMap.get(agent.process_id) : undefined
           const isRunning = proc?.status === 'running'
@@ -260,96 +285,127 @@ export function AgentRegistry() {
             }
           }
 
+          const promptExpanded = expandedAgents.has(agent.name + ':prompt')
+          const togglePrompt = () => {
+            setExpandedAgents(prev => {
+              const next = new Set(prev)
+              if (next.has(agent.name + ':prompt')) next.delete(agent.name + ':prompt')
+              else next.add(agent.name + ':prompt')
+              return next
+            })
+          }
+
           return (
           <div key={agent.name} className="p-4 rounded-lg bg-card border border-border space-y-2">
-            {/* Header: avatar + name + badges + action buttons */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold uppercase">
-                  {agent.name[0]}
-                </div>
-                <h3 className="font-semibold">{agent.name}</h3>
-                {agent.source === 'composed' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400">composed</span>
-                )}
-                {agent.process_status && (
-                  <span className={`text-xs px-2 py-0.5 rounded ${
-                    agent.process_status === 'running' ? 'bg-blue-900/50 text-blue-400' :
-                    agent.process_status === 'completed' ? 'bg-green-900/50 text-green-400' :
-                    'bg-muted text-muted-foreground'
-                  }`}>
-                    {agent.process_status}
-                  </span>
-                )}
-                {isRunning && (
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                  </span>
-                )}
+            {/* Agent name */}
+            <div className="flex items-center gap-2">
+              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold uppercase">
+                {agent.name[0]}
               </div>
-              <div className="flex items-center gap-1.5">
+              <h3 className="font-semibold text-lg">{agent.name}</h3>
+              {isRunning && (
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+              )}
+            </div>
+
+            {/* Status row */}
+            <div className="flex items-center gap-1.5 flex-wrap pl-10">
+              {agent.source === 'composed' && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400">composed</span>
+              )}
+              {agent.process_status && (
+                <span className={`text-xs px-2 py-0.5 rounded ${
+                  agent.process_status === 'running' ? 'bg-blue-900/50 text-blue-400' :
+                  agent.process_status === 'completed' ? 'bg-green-900/50 text-green-400' :
+                  'bg-muted text-muted-foreground'
+                }`}>
+                  {agent.process_status}
+                </span>
+              )}
+              {agent.model && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{agent.model}</span>
+              )}
+              {toolCount > 0 && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{toolCount} tool{toolCount !== 1 ? 's' : ''}</span>
+              )}
+              {teamCount > 0 && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/30 text-green-400">{teamCount} team</span>
+              )}
+              <div className="flex-1" />
+              {agent.source === 'composed' && (
                 <button
-                  onClick={() => navigate(`/chat/${agent.name}`)}
-                  className="text-xs px-2.5 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
-                  title={`Chat with ${agent.name}`}
+                  onClick={() => openEdit(agent)}
+                  className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                  title={`Edit ${agent.name}`}
                 >
-                  Chat
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
                 </button>
+              )}
+              <button
+                onClick={() => navigate(`/chat/${agent.name}`)}
+                className="text-xs px-2.5 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
+                title={`Chat with ${agent.name}`}
+              >
+                Chat
+              </button>
+              <button
+                onClick={() => navigate(`/files?agent=${encodeURIComponent(agent.name)}`)}
+                className="text-xs px-2 py-1 rounded bg-indigo-900/30 text-indigo-400 hover:bg-indigo-900/50 transition-colors"
+                title={`Files by ${agent.name}`}
+              >
+                Files
+              </button>
+              {agent.source === 'composed' && (
                 <button
-                  onClick={() => navigate(`/files?agent=${encodeURIComponent(agent.name)}`)}
-                  className="text-xs px-2 py-1 rounded bg-indigo-900/30 text-indigo-400 hover:bg-indigo-900/50 transition-colors"
-                  title={`Files by ${agent.name}`}
+                  onClick={() => deleteAgent(agent.name)}
+                  className="text-xs px-1.5 py-1 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"
+                  title="Delete agent"
                 >
-                  Files
+                  x
                 </button>
-                {agent.source === 'composed' && (
+              )}
+            </div>
+
+            {/* System prompt — expandable */}
+            {agent.system && (
+              <div className="pl-10">
+                <p className={`text-xs text-muted-foreground whitespace-pre-wrap ${promptExpanded ? '' : 'line-clamp-3'}`}>
+                  {agent.system}
+                </p>
+                {agent.system.length > 100 && (
                   <button
-                    onClick={() => deleteAgent(agent.name)}
-                    className="text-xs px-1.5 py-1 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"
-                    title="Delete agent"
+                    onClick={togglePrompt}
+                    className="text-xs text-primary hover:text-primary/80 transition-colors mt-1"
                   >
-                    x
+                    {promptExpanded ? 'Show less' : 'Show more'}
                   </button>
                 )}
               </div>
-            </div>
-
-            {/* Model */}
-            {agent.model && (
-              <div className="font-mono text-xs text-muted-foreground pl-10">{agent.model}</div>
             )}
 
-            {/* System prompt — compact, 2 lines */}
-            {agent.system && (
-              <p className="text-xs text-muted-foreground line-clamp-2 pl-10">{agent.system}</p>
-            )}
-
-            {/* Summary line + expand toggle */}
-            <div className="flex items-center justify-between pl-10">
-              <div className="text-xs text-muted-foreground">
-                {toolCount > 0 && <span>{toolCount} tool{toolCount !== 1 ? 's' : ''}</span>}
-                {toolCount > 0 && teamCount > 0 && <span className="mx-1.5">&middot;</span>}
-                {teamCount > 0 && <span>{teamCount} team member{teamCount !== 1 ? 's' : ''}</span>}
-                {toolCount === 0 && teamCount === 0 && agent.process_id && (
-                  <span>PID {agent.process_id.substring(0, 8)}</span>
-                )}
-              </div>
-              {(toolCount > 0 || teamCount > 0 || proc || agent.process_id) && (
+            {/* Expand toggle for details */}
+            {(toolCount > 0 || teamCount > 0 || proc || agent.process_id) && (
+              <div className="flex items-center justify-end pl-10">
                 <button
                   onClick={toggleExpand}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors p-1"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors p-1 flex items-center gap-1"
                   title={isExpanded ? 'Collapse' : 'Expand details'}
                 >
+                  <span>Details</span>
                   <svg
-                    className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Expanded details */}
             {isExpanded && (
@@ -429,6 +485,58 @@ export function AgentRegistry() {
           )
         })}
       </div>
+
+      {/* Edit Agent Modal */}
+      {editingAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingAgent(null)}>
+          <div className="w-full max-w-lg mx-4 p-6 rounded-lg bg-card border border-border space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Edit {editingAgent.name}</h3>
+              <button onClick={() => setEditingAgent(null)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">Model</label>
+              <input
+                type="text"
+                value={editForm.model || ''}
+                onChange={e => setEditForm(f => ({ ...f, model: e.target.value }))}
+                className="w-full px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">System Prompt</label>
+              <textarea
+                value={editForm.system || ''}
+                onChange={e => setEditForm(f => ({ ...f, system: e.target.value }))}
+                rows={12}
+                className="w-full px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary font-mono text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setEditingAgent(null)}
+                className="px-4 py-2 rounded text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={saving}
+                className="px-4 py-2 rounded bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
