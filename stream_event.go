@@ -16,19 +16,28 @@ const (
 	ChatEventDone      ChatEventType = "done"
 )
 
+// ChatEventMetrics holds token/cost/duration stats for a completed response.
+type ChatEventMetrics struct {
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+	DurationMs   int64   `json:"duration_ms"`
+}
+
 // ChatEvent is a structured event emitted during a streaming chat response.
 // It carries text deltas alongside tool call lifecycle events so that
 // callers can render tool activity inline with the response text.
 type ChatEvent struct {
-	Type        ChatEventType  `json:"type"`
-	Delta       string         `json:"delta,omitempty"`
-	ToolCallID  string         `json:"tool_call_id,omitempty"`
-	ToolName    string         `json:"tool_name,omitempty"`
-	Arguments   map[string]any `json:"arguments,omitempty"`
-	Result      string         `json:"result,omitempty"`
-	DurationMs  int64          `json:"duration_ms,omitempty"`
-	Error       string         `json:"error,omitempty"`
-	NestedAgent string         `json:"nested_agent,omitempty"`
+	Type        ChatEventType     `json:"type"`
+	Delta       string            `json:"delta,omitempty"`
+	ToolCallID  string            `json:"tool_call_id,omitempty"`
+	ToolName    string            `json:"tool_name,omitempty"`
+	Arguments   map[string]any    `json:"arguments,omitempty"`
+	Result      string            `json:"result,omitempty"`
+	DurationMs  int64             `json:"duration_ms,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	NestedAgent string            `json:"nested_agent,omitempty"`
+	Metrics     *ChatEventMetrics `json:"metrics,omitempty"`
 }
 
 // ChatStream represents a streaming chat response with structured events.

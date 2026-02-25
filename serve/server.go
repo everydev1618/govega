@@ -35,6 +35,7 @@ type activeStream struct {
 	subscribers []*streamSubscriber // active SSE subscribers
 	response    string              // set after done
 	err         error               // set after done
+	metrics     *vega.ChatEventMetrics // set after done
 }
 
 // publish sends an event to all active subscribers and appends it to history.

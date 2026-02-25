@@ -238,6 +238,13 @@ export interface ConnectMCPResponse {
 
 // --- Streaming Chat Types ---
 
+export interface ChatEventMetrics {
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+  duration_ms: number
+}
+
 export interface ChatEvent {
   type: 'text_delta' | 'tool_start' | 'tool_end' | 'error' | 'done'
   delta?: string
@@ -248,6 +255,7 @@ export interface ChatEvent {
   duration_ms?: number
   error?: string
   nested_agent?: string
+  metrics?: ChatEventMetrics
 }
 
 export interface ToolCallState {
