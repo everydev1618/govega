@@ -16,6 +16,7 @@ export function AgentRegistry() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([])
   const [selectedTeam, setSelectedTeam] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
 
   // Fetch live process data for metrics
   const { data: processes, refetch: refetchProcesses } = useAPI(() => api.getProcesses())
@@ -231,22 +232,46 @@ export function AgentRegistry() {
         {agents?.map(agent => {
           const proc = agent.process_id ? processMap.get(agent.process_id) : undefined
           const isRunning = proc?.status === 'running'
+          const isExpanded = expandedAgents.has(agent.name)
+          const toggleExpand = () => {
+            setExpandedAgents(prev => {
+              const next = new Set(prev)
+              if (next.has(agent.name)) next.delete(agent.name)
+              else next.add(agent.name)
+              return next
+            })
+          }
+          const toolsExcludeDelegate = agent.tools?.filter(t => t !== 'delegate') ?? []
+          const toolCount = toolsExcludeDelegate.length
+          const teamCount = agent.team?.length ?? 0
+
+          // Group tools by MCP server prefix (e.g. "synkedup__foo" → group "synkedup")
+          const toolGroups = new Map<string, string[]>()
+          for (const tool of toolsExcludeDelegate) {
+            const sep = tool.indexOf('__')
+            if (sep > 0) {
+              const prefix = tool.substring(0, sep)
+              const shortName = tool.substring(sep + 2)
+              if (!toolGroups.has(prefix)) toolGroups.set(prefix, [])
+              toolGroups.get(prefix)!.push(shortName)
+            } else {
+              if (!toolGroups.has('')) toolGroups.set('', [])
+              toolGroups.get('')!.push(tool)
+            }
+          }
+
           return (
-          <div key={agent.name} className="p-4 rounded-lg bg-card border border-border space-y-3">
+          <div key={agent.name} className="p-4 rounded-lg bg-card border border-border space-y-2">
+            {/* Header: avatar + name + badges + action buttons */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {isRunning && (
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-                  </span>
-                )}
+                <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold uppercase">
+                  {agent.name[0]}
+                </div>
                 <h3 className="font-semibold">{agent.name}</h3>
                 {agent.source === 'composed' && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400">composed</span>
                 )}
-              </div>
-              <div className="flex items-center gap-1.5">
                 {agent.process_status && (
                   <span className={`text-xs px-2 py-0.5 rounded ${
                     agent.process_status === 'running' ? 'bg-blue-900/50 text-blue-400' :
@@ -256,16 +281,24 @@ export function AgentRegistry() {
                     {agent.process_status}
                   </span>
                 )}
+                {isRunning && (
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => navigate(`/chat/${agent.name}`)}
-                  className="text-xs px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                  className="text-xs px-2.5 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
                   title={`Chat with ${agent.name}`}
                 >
                   Chat
                 </button>
                 <button
                   onClick={() => navigate(`/files?agent=${encodeURIComponent(agent.name)}`)}
-                  className="text-xs px-2 py-0.5 rounded bg-indigo-900/30 text-indigo-400 hover:bg-indigo-900/50 transition-colors"
+                  className="text-xs px-2 py-1 rounded bg-indigo-900/30 text-indigo-400 hover:bg-indigo-900/50 transition-colors"
                   title={`Files by ${agent.name}`}
                 >
                   Files
@@ -273,7 +306,7 @@ export function AgentRegistry() {
                 {agent.source === 'composed' && (
                   <button
                     onClick={() => deleteAgent(agent.name)}
-                    className="text-xs px-1.5 py-0.5 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"
+                    className="text-xs px-1.5 py-1 rounded bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"
                     title="Delete agent"
                   >
                     x
@@ -282,71 +315,114 @@ export function AgentRegistry() {
               </div>
             </div>
 
+            {/* Model */}
             {agent.model && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">Model: </span>
-                <span className="font-mono text-xs">{agent.model}</span>
-              </div>
+              <div className="font-mono text-xs text-muted-foreground pl-10">{agent.model}</div>
             )}
 
-            {/* Live metrics from process */}
-            {proc && (
-              <div className="grid grid-cols-3 gap-2 text-xs py-2 px-3 rounded bg-muted/50 border border-border/50">
-                <div>
-                  <div className="text-muted-foreground">Iterations</div>
-                  <div className="font-medium">{proc.metrics.iterations}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Tokens</div>
-                  <div className="font-medium">{proc.metrics.input_tokens + proc.metrics.output_tokens}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Cost</div>
-                  <div className="font-medium">${proc.metrics.cost_usd.toFixed(4)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Tool Calls</div>
-                  <div className="font-medium">{proc.metrics.tool_calls}</div>
-                </div>
-                {proc.metrics.last_active_at && (
-                  <div className="col-span-2">
-                    <div className="text-muted-foreground">Last Active</div>
-                    <div className="font-medium">{new Date(proc.metrics.last_active_at).toLocaleTimeString()}</div>
-                  </div>
+            {/* System prompt — compact, 2 lines */}
+            {agent.system && (
+              <p className="text-xs text-muted-foreground line-clamp-2 pl-10">{agent.system}</p>
+            )}
+
+            {/* Summary line + expand toggle */}
+            <div className="flex items-center justify-between pl-10">
+              <div className="text-xs text-muted-foreground">
+                {toolCount > 0 && <span>{toolCount} tool{toolCount !== 1 ? 's' : ''}</span>}
+                {toolCount > 0 && teamCount > 0 && <span className="mx-1.5">&middot;</span>}
+                {teamCount > 0 && <span>{teamCount} team member{teamCount !== 1 ? 's' : ''}</span>}
+                {toolCount === 0 && teamCount === 0 && agent.process_id && (
+                  <span>PID {agent.process_id.substring(0, 8)}</span>
                 )}
               </div>
-            )}
+              {(toolCount > 0 || teamCount > 0 || proc || agent.process_id) && (
+                <button
+                  onClick={toggleExpand}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors p-1"
+                  title={isExpanded ? 'Collapse' : 'Expand details'}
+                >
+                  <svg
+                    className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              )}
+            </div>
 
-            {agent.system && (
-              <p className="text-xs text-muted-foreground line-clamp-3">{agent.system}</p>
-            )}
+            {/* Expanded details */}
+            {isExpanded && (
+              <div className="space-y-3 pt-2 border-t border-border/50">
+                {/* Live metrics */}
+                {proc && (
+                  <div className="grid grid-cols-3 gap-2 text-xs py-2 px-3 rounded bg-muted/50 border border-border/50">
+                    <div>
+                      <div className="text-muted-foreground">Iterations</div>
+                      <div className="font-medium">{proc.metrics.iterations}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Tokens</div>
+                      <div className="font-medium">{proc.metrics.input_tokens + proc.metrics.output_tokens}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Cost</div>
+                      <div className="font-medium">${proc.metrics.cost_usd.toFixed(4)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Tool Calls</div>
+                      <div className="font-medium">{proc.metrics.tool_calls}</div>
+                    </div>
+                    {proc.metrics.last_active_at && (
+                      <div className="col-span-2">
+                        <div className="text-muted-foreground">Last Active</div>
+                        <div className="font-medium">{new Date(proc.metrics.last_active_at).toLocaleTimeString()}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-            {agent.team && agent.team.length > 0 && (
-              <div>
-                <span className="text-xs text-muted-foreground">Team: </span>
-                <div className="flex flex-wrap gap-1 mt-0.5">
-                  {agent.team.map(member => (
-                    <span key={member} className="text-xs px-2 py-0.5 rounded bg-green-900/30 text-green-400">
-                      {member}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+                {/* Team members */}
+                {agent.team && agent.team.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Team: </span>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {agent.team.map(member => (
+                        <span key={member} className="text-xs px-2 py-0.5 rounded bg-green-900/30 text-green-400">
+                          {member}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {agent.tools && agent.tools.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {agent.tools.filter(t => t !== 'delegate').map(tool => (
-                  <span key={tool} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                    {tool}
-                  </span>
-                ))}
-              </div>
-            )}
+                {/* Tools — grouped by MCP server */}
+                {toolCount > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-xs text-muted-foreground">Tools:</span>
+                    {Array.from(toolGroups.entries()).map(([prefix, tools]) => (
+                      <div key={prefix || '_builtin'}>
+                        {prefix && (
+                          <div className="text-xs font-medium text-muted-foreground mt-1">{prefix} ({tools.length})</div>
+                        )}
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {tools.map(tool => (
+                            <span key={`${prefix}__${tool}`} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                              {tool}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-            {agent.process_id && (
-              <div className="text-xs text-muted-foreground">
-                PID: <span className="font-mono">{agent.process_id}</span>
+                {/* PID */}
+                {agent.process_id && (
+                  <div className="text-xs text-muted-foreground">
+                    PID: <span className="font-mono">{agent.process_id}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
