@@ -268,24 +268,24 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a server-side active stream to decouple from the HTTP connection.
-	streamID := uuid.New().String()[:8]
+	// Create a server-side active stream keyed by agent name.
 	as := &activeStream{
-		events: make(chan vega.ChatEvent, 256),
-		done:   make(chan struct{}),
+		agentName: name,
+		done:      make(chan struct{}),
 	}
 
 	s.streamsMu.Lock()
-	s.streams[streamID] = as
+	s.streams[name] = as
 	s.streamsMu.Unlock()
 
 	// Detached goroutine: relay events from the LLM ChatStream into the
-	// activeStream, persist the result, then clean up.
+	// activeStream via publish (which buffers and broadcasts to subscribers),
+	// persist the result, then clean up.
 	go func() {
 		defer cancel()
 
 		for event := range stream.Events() {
-			as.events <- event
+			as.publish(event)
 		}
 
 		response := stream.Response()
@@ -296,7 +296,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		as.err = streamErr
 		as.mu.Unlock()
 		close(as.done)
-		close(as.events)
+		as.finish() // close all subscriber channels
 
 		// Persist assistant response even if no client is listening.
 		if streamErr != nil {
@@ -311,16 +311,61 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			go s.extractMemory(userID, baseAgent, req.Message, response)
 		}
 
-		// Keep the stream in the map briefly so a reconnecting client
-		// could theoretically find it, then remove it.
+		// Keep the stream in the map briefly so late reconnects can see
+		// the final state, then remove it.
 		time.Sleep(30 * time.Second)
 		s.streamsMu.Lock()
-		delete(s.streams, streamID)
+		delete(s.streams, name)
 		s.streamsMu.Unlock()
 	}()
 
-	// --- SSE relay: forward events to the connected client ---
+	// --- SSE relay: subscribe and forward events to the connected client ---
+	s.relayStreamSSE(w, r, as)
+}
 
+// handleChatStatus returns whether an agent has an active (in-progress) stream.
+func (s *Server) handleChatStatus(w http.ResponseWriter, r *http.Request) {
+	name := s.chatAgentName(r.PathValue("name"), r)
+
+	s.streamsMu.Lock()
+	as := s.streams[name]
+	s.streamsMu.Unlock()
+
+	streaming := false
+	if as != nil {
+		select {
+		case <-as.done:
+			// Stream already finished but hasn't been cleaned up yet.
+		default:
+			streaming = true
+		}
+	}
+
+	writeJSON(w, http.StatusOK, ChatStatusResponse{Streaming: streaming})
+}
+
+// handleChatStreamReconnect allows a client to reconnect to an in-progress
+// chat stream. It replays all buffered events, then continues with live
+// events via SSE. If the stream is already done, it replays everything and
+// sends a done event.
+func (s *Server) handleChatStreamReconnect(w http.ResponseWriter, r *http.Request) {
+	name := s.chatAgentName(r.PathValue("name"), r)
+
+	s.streamsMu.Lock()
+	as := s.streams[name]
+	s.streamsMu.Unlock()
+
+	if as == nil {
+		writeJSON(w, http.StatusOK, ChatStatusResponse{Streaming: false})
+		return
+	}
+
+	s.relayStreamSSE(w, r, as)
+}
+
+// relayStreamSSE subscribes to an active stream and relays events as SSE.
+// It replays buffered history first, then continues with live events.
+func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *activeStream) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -332,9 +377,43 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Subscribe — get all past events plus a channel for future ones.
+	history, ch := as.subscribe()
+	defer as.unsubscribe(ch)
+
+	// Replay buffered history.
+	for _, event := range history {
+		data, err := json.Marshal(event)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+	}
+	flusher.Flush()
+
+	// If stream already finished, send final events and return.
+	select {
+	case <-as.done:
+		as.mu.Lock()
+		streamErr := as.err
+		as.mu.Unlock()
+
+		if streamErr != nil {
+			_, friendlyMsg := classifyHTTPError(streamErr)
+			errData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventError, Error: friendlyMsg})
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
+		}
+		doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone})
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
+		flusher.Flush()
+		return
+	default:
+	}
+
+	// Stream live events.
 	for {
 		select {
-		case event, ok := <-as.events:
+		case event, ok := <-ch:
 			if !ok {
 				// Stream finished — send final events.
 				as.mu.Lock()
@@ -361,8 +440,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 
 		case <-r.Context().Done():
-			// Client disconnected — handler returns but the goroutine
-			// keeps running and will persist the response.
+			// Client disconnected — stream keeps running.
 			return
 		}
 	}

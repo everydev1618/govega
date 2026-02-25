@@ -133,6 +133,11 @@ type MemoryResponse struct {
 	Layers  []UserMemory `json:"layers"`
 }
 
+// ChatStatusResponse indicates whether an agent has an active stream.
+type ChatStatusResponse struct {
+	Streaming bool `json:"streaming"`
+}
+
 // ErrorResponse is returned on API errors.
 type ErrorResponse struct {
 	Error   string `json:"error"`

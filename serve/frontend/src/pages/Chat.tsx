@@ -110,8 +110,7 @@ function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
 function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
   const runningNested = [...tools].reverse().find(t => t.status === 'running' && t.nested_agent)
   const running = [...tools].reverse().find(t => t.status === 'running')
-  const last = tools[tools.length - 1]
-  const target = runningNested || running || last
+  const target = runningNested || running
 
   let text: string
   if (target?.nested_agent) {
@@ -416,6 +415,105 @@ function AgentPicker({
   )
 }
 
+function MentionDropdown({
+  agents,
+  selectedIndex,
+  onSelect,
+  onHover,
+}: {
+  agents: string[]
+  selectedIndex: number
+  onSelect: (name: string) => void
+  onHover: (index: number) => void
+}) {
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const item = listRef.current?.children[selectedIndex] as HTMLElement | undefined
+    item?.scrollIntoView({ block: 'nearest' })
+  }, [selectedIndex])
+
+  if (agents.length === 0) {
+    return (
+      <div className="px-3 py-2 text-xs text-muted-foreground">No matching agents</div>
+    )
+  }
+
+  return (
+    <div ref={listRef} className="max-h-48 overflow-y-auto py-1">
+      {agents.map((name, i) => (
+        <button
+          key={name}
+          onMouseDown={e => { e.preventDefault(); onSelect(name) }}
+          onMouseEnter={() => onHover(i)}
+          className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm transition-colors text-left ${
+            i === selectedIndex ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/30'
+          }`}
+        >
+          <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
+            {name[0]?.toUpperCase()}
+          </div>
+          <span className="truncate font-medium">{name}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function TabBar({
+  tabs,
+  activeAgent,
+  onSelect,
+  onClose,
+}: {
+  tabs: string[]
+  activeAgent: string
+  onSelect: (name: string) => void
+  onClose: (name: string) => void
+}) {
+  return (
+    <div className="flex overflow-x-auto scrollbar-none border-b border-border -mx-1">
+      {tabs.map(name => {
+        const active = name === activeAgent
+        const isHermes = name === HERMES
+        const borderColor = active
+          ? isHermes ? 'border-primary' : 'border-emerald-500'
+          : 'border-transparent'
+        return (
+          <button
+            key={name}
+            onClick={() => onSelect(name)}
+            className={`group flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors flex-shrink-0 ${borderColor} ${
+              active
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+            }`}
+          >
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-semibold ${
+              isHermes ? 'bg-primary/20 text-primary' : 'bg-emerald-500/20 text-emerald-400'
+            }`}>
+              {name[0]?.toUpperCase()}
+            </div>
+            <span className="truncate max-w-[8rem]">{name}</span>
+            {!isHermes && (
+              <span
+                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClose(name) }}
+                className={`ml-0.5 p-0.5 rounded hover:bg-accent transition-colors ${
+                  active ? 'text-muted-foreground hover:text-foreground' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function VegaStar() {
   return (
     <pre className="text-xs leading-snug font-mono select-none inline-block text-left" aria-hidden="true">
@@ -451,6 +549,13 @@ export function Chat() {
   const [previewFile, setPreviewFile] = useState<FileContentResponse | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  // @-mention autocomplete state
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionStartPos, setMentionStartPos] = useState(0)
+  const mentionRef = useRef<HTMLDivElement>(null)
 
   const openFilePreview = useCallback(async (relPath: string) => {
     setPreviewLoading(true)
@@ -491,10 +596,22 @@ export function Chat() {
     }
   }, [events, fetchAgents])
 
-  // Load history for the active agent whenever it changes
+  // Track reconnection abort controller so we can cancel on unmount/agent switch
+  const reconnectAbortRef = useRef<AbortController | null>(null)
+
+  // Load history for the active agent whenever it changes, then check for
+  // an active stream and reconnect to it automatically.
   useEffect(() => {
+    // Cancel any previous reconnection attempt
+    if (reconnectAbortRef.current) {
+      reconnectAbortRef.current.abort()
+      reconnectAbortRef.current = null
+    }
+
     setLoaded(false)
     setMessages([])
+    setSending(false)
+
     api.chatHistory(activeAgent)
       .then(history => {
         if (history?.length) {
@@ -505,8 +622,38 @@ export function Chat() {
         }
       })
       .catch(() => {})
-      .finally(() => setLoaded(true))
-  }, [activeAgent])
+      .finally(() => {
+        setLoaded(true)
+
+        // After history loads, check if agent has an active stream to reconnect to
+        api.chatStatus(activeAgent)
+          .then(status => {
+            if (!status?.streaming) return
+
+            // Add a placeholder assistant message and reconnect to the stream
+            setMessages(prev => [...prev, { role: 'assistant', content: '', toolCalls: [], streaming: true }])
+            setSending(true)
+
+            const abort = new AbortController()
+            reconnectAbortRef.current = abort
+
+            let finalContent = ''
+            const wrappedHandler = (event: import('../lib/types').ChatEvent) => {
+              if (event.type === 'text_delta') finalContent += event.delta || ''
+              handleEvent(event)
+            }
+
+            api.chatStreamReconnect(activeAgent, wrappedHandler, abort.signal)
+              .then(() => checkForHandoff(finalContent))
+              .catch(() => {})
+              .finally(() => {
+                setSending(false)
+                reconnectAbortRef.current = null
+              })
+          })
+          .catch(() => {})
+      })
+  }, [activeAgent]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-resize textarea
   const resizeTextarea = useCallback(() => {
@@ -540,6 +687,18 @@ export function Chat() {
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
   }, [activeAgent])
+
+  // Click outside to close mention dropdown
+  useEffect(() => {
+    if (!mentionOpen) return
+    const handler = (e: MouseEvent) => {
+      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
+        setMentionOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [mentionOpen])
 
   const handleEvent = useCallback((event: ChatEvent) => {
     setMessages(prev => {
@@ -665,6 +824,10 @@ export function Chat() {
       abortRef.current = null
       setSending(false)
     }
+    if (reconnectAbortRef.current) {
+      reconnectAbortRef.current.abort()
+      reconnectAbortRef.current = null
+    }
     setHandoffFrom(null)
     setActiveAgent(name)
     // History load handled by the activeAgent useEffect
@@ -675,6 +838,10 @@ export function Chat() {
       abortRef.current.abort()
       abortRef.current = null
       setSending(false)
+    }
+    if (reconnectAbortRef.current) {
+      reconnectAbortRef.current.abort()
+      reconnectAbortRef.current = null
     }
     setMessages([])
     try { await api.resetChat(activeAgent) } catch { /* best-effort */ }
@@ -723,7 +890,77 @@ export function Chat() {
     }))
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setInput(val)
+
+    const cursor = e.target.selectionStart ?? val.length
+    // Walk backwards from cursor to find an unescaped '@'
+    let atPos = -1
+    for (let i = cursor - 1; i >= 0; i--) {
+      if (val[i] === ' ' || val[i] === '\n') break
+      if (val[i] === '@') {
+        // '@' must be at start or preceded by whitespace
+        if (i === 0 || val[i - 1] === ' ' || val[i - 1] === '\n') {
+          atPos = i
+        }
+        break
+      }
+    }
+
+    if (atPos >= 0) {
+      const query = val.slice(atPos + 1, cursor)
+      if (!query.includes(' ')) {
+        setMentionOpen(true)
+        setMentionQuery(query)
+        setMentionStartPos(atPos)
+        setMentionIndex(0)
+        return
+      }
+    }
+    setMentionOpen(false)
+  }
+
+  const selectMention = useCallback((name: string) => {
+    const before = input.slice(0, mentionStartPos)
+    const after = input.slice(mentionStartPos + 1 + mentionQuery.length)
+    const newVal = before + '@' + name + ' ' + after
+    setInput(newVal)
+    setMentionOpen(false)
+
+    const cursorPos = mentionStartPos + 1 + name.length + 1
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (ta) {
+        ta.focus()
+        ta.setSelectionRange(cursorPos, cursorPos)
+      }
+    })
+  }, [input, mentionStartPos, mentionQuery])
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionOpen && mentionAgents.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIndex(i => (i + 1) % mentionAgents.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIndex(i => (i - 1 + mentionAgents.length) % mentionAgents.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        selectMention(mentionAgents[mentionIndex])
+        return
+      }
+    }
+    if (mentionOpen && e.key === 'Escape') {
+      e.preventDefault()
+      setMentionOpen(false)
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
@@ -732,6 +969,19 @@ export function Chat() {
 
   const isHermes = activeAgent === HERMES
   const agentNames = new Set([HERMES, 'mother', ...specialists.map(a => a.name)])
+
+  const mentionAgents = mentionOpen
+    ? [...agentNames]
+        .filter(n => n.toLowerCase().includes(mentionQuery.toLowerCase()))
+        .sort((a, b) => a.localeCompare(b))
+    : []
+
+  // Clamp mention index when filtered results shrink
+  useEffect(() => {
+    if (mentionIndex >= mentionAgents.length) {
+      setMentionIndex(Math.max(0, mentionAgents.length - 1))
+    }
+  }, [mentionAgents.length, mentionIndex])
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
@@ -824,7 +1074,26 @@ export function Chat() {
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {messages.map((msg, i) => {
+          // Build a map of file basenames → relative workspace paths from tool calls
+          const fileLinks = new Map<string, string>()
+          for (const tc of msg.toolCalls || []) {
+            if ((tc.name === 'write_file' || tc.name === 'read_file') && tc.arguments?.path) {
+              const p = String(tc.arguments.path)
+              const wsIdx = p.indexOf('.vega/workspace/')
+              if (wsIdx >= 0) {
+                const relPath = p.slice(wsIdx + '.vega/workspace/'.length)
+                const basename = relPath.split('/').pop() || relPath
+                fileLinks.set(basename, relPath)
+              } else {
+                // Relative path or bare filename — use as-is for the API
+                const basename = p.split('/').pop() || p
+                fileLinks.set(basename, basename)
+              }
+            }
+          }
+
+          return (
           <div key={i} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && <AgentAvatar name={activeAgent} />}
             {msg.role === 'user' ? (
@@ -862,6 +1131,25 @@ export function Chat() {
                       }
                       return <strong>{children}</strong>
                     },
+                    code({ children, className }) {
+                      // Fenced code blocks (with language class) render normally
+                      if (className) return <code className={className}>{children}</code>
+                      const text = typeof children === 'string' ? children : ''
+                      if (text && fileLinks.has(text)) {
+                        const relPath = fileLinks.get(text)!
+                        return (
+                          <code
+                            className="cursor-pointer !text-indigo-400 hover:underline decoration-indigo-400/50"
+                            onClick={(e) => { e.stopPropagation(); openFilePreview(relPath) }}
+                            title="Click to preview file"
+                            role="button"
+                          >
+                            {fileExtIcon(text)} {children}
+                          </code>
+                        )
+                      }
+                      return <code>{children}</code>
+                    },
                   }}>{msg.content}</Markdown>
                 )}
                 {msg.streaming && msg.content && !(msg.toolCalls?.some(tc => tc.status === 'running')) && (
@@ -884,8 +1172,8 @@ export function Chat() {
                         </button>
                       ))}
                     </div>
-                    {/* Constellation + narrative — only while tools are running */}
-                    {msg.streaming && msg.toolCalls.some(tc => tc.status === 'running') && (
+                    {/* Constellation + narrative — visible while stream is active */}
+                    {msg.streaming && msg.toolCalls.length > 0 && (
                       <div className="flex items-center gap-1 pt-1.5 constellation-activity">
                         <ActivityConstellation tools={msg.toolCalls} />
                         <ActivityNarrative tools={msg.toolCalls} />
@@ -919,7 +1207,8 @@ export function Chat() {
             )}
             {msg.role === 'user' && <UserAvatar />}
           </div>
-        ))}
+          )
+        })}
 
         {/* Handoff notice — shown at top of specialist conversation */}
         {!isHermes && handoffFrom && messages.length === 0 && loaded && (
@@ -946,17 +1235,32 @@ export function Chat() {
       {/* Input */}
       <div className="pt-3 border-t border-border space-y-1.5">
         <div className="flex gap-2 items-end">
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isHermes ? 'Tell Hermes what you need…' : `Message ${activeAgent}…`}
-            disabled={sending}
-            className={`flex-1 px-4 py-2.5 rounded-xl bg-background border text-sm focus:outline-none disabled:opacity-50 resize-none overflow-y-auto transition-colors ${isHermes ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}`}
-            style={{ maxHeight: '144px' }}
-          />
+          <div className="relative flex-1" ref={mentionRef}>
+            {mentionOpen && (
+              <div className="absolute bottom-full mb-1.5 left-0 w-64 rounded-xl border border-border bg-card shadow-lg z-20 overflow-hidden">
+                <div className="px-3 py-2 border-b border-border">
+                  <p className="text-xs text-muted-foreground font-medium">Mention an agent</p>
+                </div>
+                <MentionDropdown
+                  agents={mentionAgents}
+                  selectedIndex={mentionIndex}
+                  onSelect={selectMention}
+                  onHover={setMentionIndex}
+                />
+              </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder={isHermes ? 'Tell Hermes what you need…' : `Message ${activeAgent}…`}
+              disabled={sending}
+              className={`w-full px-4 py-2.5 rounded-xl bg-background border text-sm focus:outline-none disabled:opacity-50 resize-none overflow-y-auto transition-colors ${isHermes ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}`}
+              style={{ maxHeight: '144px' }}
+            />
+          </div>
           <button
             onClick={() => send()}
             disabled={sending || !input.trim()}
@@ -967,7 +1271,7 @@ export function Chat() {
             </svg>
           </button>
         </div>
-        <p className="text-xs text-muted-foreground px-1">Enter to send · Shift+Enter for new line</p>
+        <p className="text-xs text-muted-foreground px-1">Enter to send · Shift+Enter for new line · @ to mention</p>
       </div>
 
       {/* File preview modal */}
