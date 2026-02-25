@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -129,6 +130,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Auto-connect built-in Go MCP servers whose required env vars are set.
 	s.autoConnectBuiltinServers(ctx)
+
+	// Reconnect persisted MCP servers from previous sessions.
+	s.autoConnectPersistedServers(ctx)
 
 	// Register memory tools before injecting meta-agents so they can use them.
 	RegisterMemoryTools(s.interp)
@@ -420,6 +424,107 @@ func (s *Server) autoConnectBuiltinServers(ctx context.Context) {
 			continue
 		}
 		slog.Info("auto-connected builtin MCP server", "server", entry.Name, "tools", n)
+	}
+}
+
+// autoConnectPersistedServers reconnects MCP servers that were previously
+// connected and persisted in the mcp_servers table.
+func (s *Server) autoConnectPersistedServers(ctx context.Context) {
+	sqlStore, ok := s.store.(*SQLiteStore)
+	if !ok {
+		return
+	}
+	servers, err := sqlStore.ListMCPServers()
+	if err != nil {
+		slog.Warn("failed to load persisted MCP servers", "error", err)
+		return
+	}
+
+	t := s.interp.Tools()
+
+	// Load all settings for env resolution.
+	envMap := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		for _, st := range settings {
+			envMap[st.Key] = st.Value
+		}
+	}
+
+	for _, sc := range servers {
+		// Skip if already connected (e.g. by autoConnectBuiltinServers).
+		if t.MCPServerConnected(sc.Name) || t.BuiltinServerConnected(sc.Name) {
+			continue
+		}
+
+		var req ConnectMCPRequest
+		if err := json.Unmarshal([]byte(sc.ConfigJSON), &req); err != nil {
+			slog.Warn("failed to parse persisted MCP server config", "name", sc.Name, "error", err)
+			continue
+		}
+
+		// Fill in env values from stored settings.
+		for k := range req.Env {
+			if val, ok := envMap[k]; ok {
+				req.Env[k] = val
+			}
+		}
+
+		// Check registry for this server.
+		if entry, ok := mcp.Lookup(req.Name); ok {
+			// Builtin Go server — set env and connect.
+			if entry.BuiltinGo && t.HasBuiltinServer(req.Name) {
+				for k, v := range envMap {
+					os.Setenv(k, v)
+				}
+				n, err := t.ConnectBuiltinServer(ctx, req.Name)
+				if err != nil {
+					slog.Warn("auto-connect persisted builtin server failed", "server", req.Name, "error", err)
+					continue
+				}
+				slog.Info("auto-connected persisted builtin MCP server", "server", req.Name, "tools", n)
+				continue
+			}
+
+			// Registry subprocess server — build config from registry entry.
+			cfg := entry.ToServerConfig(envMap)
+			connectCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			n, err := t.ConnectMCPServer(connectCtx, cfg)
+			cancel()
+			if err != nil {
+				slog.Warn("auto-connect persisted registry server failed", "server", req.Name, "error", err)
+				continue
+			}
+			slog.Info("auto-connected persisted MCP server", "server", req.Name, "tools", n)
+		} else {
+			// Custom server — build config from persisted request.
+			cfg := mcp.ServerConfig{
+				Name:    req.Name,
+				Command: req.Command,
+				Args:    req.Args,
+				URL:     req.URL,
+				Headers: req.Headers,
+				Env:     req.Env,
+			}
+			switch req.Transport {
+			case "http":
+				cfg.Transport = mcp.TransportHTTP
+			case "sse":
+				cfg.Transport = mcp.TransportSSE
+			default:
+				cfg.Transport = mcp.TransportStdio
+			}
+			if req.Timeout > 0 {
+				cfg.Timeout = time.Duration(req.Timeout) * time.Second
+			}
+			connectCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			n, err := t.ConnectMCPServer(connectCtx, cfg)
+			cancel()
+			if err != nil {
+				slog.Warn("auto-connect persisted custom server failed", "server", req.Name, "error", err)
+				continue
+			}
+			slog.Info("auto-connected persisted custom MCP server", "server", req.Name, "tools", n)
+		}
 	}
 }
 

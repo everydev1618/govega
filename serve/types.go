@@ -249,6 +249,12 @@ type ConnectMCPRequest struct {
 	Timeout   int               `json:"timeout,omitempty"`
 }
 
+// MCPServerConfig is a persisted MCP server connection for auto-reconnect.
+type MCPServerConfig struct {
+	Name       string `json:"name"`
+	ConfigJSON string `json:"config"` // JSON-serialized ConnectMCPRequest
+}
+
 // ConnectMCPResponse is returned when an MCP server is connected.
 type ConnectMCPResponse struct {
 	Name      string   `json:"name"`
