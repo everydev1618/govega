@@ -1026,6 +1026,233 @@ func (s *Server) handleRefreshMCPServer(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (s *Server) handleGetMCPServerConfig(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "server name is required"})
+		return
+	}
+
+	sqlStore, ok := s.store.(*SQLiteStore)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
+		return
+	}
+
+	servers, err := sqlStore.ListMCPServers()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
+		return
+	}
+
+	var req ConnectMCPRequest
+	var found bool
+	for _, sc := range servers {
+		if sc.Name == name {
+			if err := json.Unmarshal([]byte(sc.ConfigJSON), &req); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to parse server config"})
+				return
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("server %q not found", name)})
+		return
+	}
+
+	// Collect env keys.
+	var envKeys []string
+	for k := range req.Env {
+		envKeys = append(envKeys, k)
+	}
+
+	// Also include registry env keys if this is a registry server.
+	_, isRegistry := mcp.Lookup(name)
+	if isRegistry {
+		if entry, ok := mcp.Lookup(name); ok {
+			seen := make(map[string]bool)
+			for _, k := range envKeys {
+				seen[k] = true
+			}
+			for _, k := range entry.RequiredEnv {
+				if !seen[k] {
+					envKeys = append(envKeys, k)
+					seen[k] = true
+				}
+			}
+			for _, k := range entry.OptionalEnv {
+				if !seen[k] {
+					envKeys = append(envKeys, k)
+				}
+			}
+		}
+	}
+
+	// Check which env keys have saved settings.
+	existing := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		settingsMap := make(map[string]bool)
+		for _, st := range settings {
+			settingsMap[st.Key] = true
+		}
+		for _, key := range envKeys {
+			if settingsMap[key] {
+				existing[key] = "configured"
+			} else if os.Getenv(key) != "" {
+				existing[key] = "configured"
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, MCPServerConfigResponse{
+		Name:             name,
+		Transport:        req.Transport,
+		Command:          req.Command,
+		Args:             req.Args,
+		URL:              req.URL,
+		Headers:          req.Headers,
+		Timeout:          req.Timeout,
+		EnvKeys:          envKeys,
+		ExistingSettings: existing,
+		IsRegistry:       isRegistry,
+	})
+}
+
+func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "server name is required"})
+		return
+	}
+
+	var req ConnectMCPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+	req.Name = name // ensure name matches path
+
+	tools := s.interp.Tools()
+
+	// Disconnect existing server.
+	if tools.BuiltinServerConnected(name) {
+		if err := tools.DisconnectBuiltinServer(name); err != nil {
+			slog.Error("update: disconnect builtin failed", "server", name, "error", err)
+		}
+	} else if tools.MCPServerConnected(name) {
+		if err := tools.DisconnectMCPServer(name); err != nil {
+			slog.Error("update: disconnect mcp failed", "server", name, "error", err)
+		}
+	}
+
+	// Save env values as sensitive settings (same as connect).
+	for key, val := range req.Env {
+		if val != "" {
+			if err := s.store.UpsertSetting(Setting{Key: key, Value: val, Sensitive: true}); err != nil {
+				slog.Error("failed to save MCP env setting", "key", key, "error", err)
+			}
+		}
+	}
+	s.refreshToolSettings()
+
+	// Build env map from stored settings + request env.
+	envMap := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		for _, st := range settings {
+			envMap[st.Key] = st.Value
+		}
+	}
+	for k, v := range req.Env {
+		if v != "" {
+			envMap[k] = v
+		}
+	}
+
+	// Reconnect.
+	var toolNames []string
+	if entry, ok := mcp.Lookup(req.Name); ok {
+		if entry.BuiltinGo && tools.HasBuiltinServer(req.Name) {
+			for k, v := range envMap {
+				os.Setenv(k, v)
+			}
+			if _, err := tools.ConnectBuiltinServer(r.Context(), req.Name); err != nil {
+				writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+					Name: req.Name, Connected: false, Error: err.Error(),
+				})
+				return
+			}
+			for _, schema := range tools.Schema() {
+				if strings.HasPrefix(schema.Name, req.Name+"__") {
+					toolNames = append(toolNames, schema.Name)
+				}
+			}
+		} else {
+			cfg := entry.ToServerConfig(envMap)
+			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			defer cancel()
+			if _, err := tools.ConnectMCPServer(ctx, cfg); err != nil {
+				writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+					Name: req.Name, Connected: false, Error: err.Error(),
+				})
+				return
+			}
+			for _, st := range tools.MCPServerStatuses() {
+				if st.Name == req.Name {
+					toolNames = st.Tools
+					break
+				}
+			}
+		}
+	} else {
+		// Custom server.
+		cfg := mcp.ServerConfig{
+			Name:    req.Name,
+			Command: req.Command,
+			Args:    req.Args,
+			URL:     req.URL,
+			Headers: req.Headers,
+			Env:     req.Env,
+		}
+		switch req.Transport {
+		case "http":
+			cfg.Transport = mcp.TransportHTTP
+		case "sse":
+			cfg.Transport = mcp.TransportSSE
+		default:
+			cfg.Transport = mcp.TransportStdio
+		}
+		if req.Timeout > 0 {
+			cfg.Timeout = time.Duration(req.Timeout) * time.Second
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		if _, err := tools.ConnectMCPServer(ctx, cfg); err != nil {
+			writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+				Name: req.Name, Connected: false, Error: err.Error(),
+			})
+			return
+		}
+		for _, st := range tools.MCPServerStatuses() {
+			if st.Name == req.Name {
+				toolNames = st.Tools
+				break
+			}
+		}
+	}
+
+	// Persist updated config.
+	s.persistMCPServer(req)
+
+	slog.Info("updated MCP server", "server", name, "tools", len(toolNames))
+	writeJSON(w, http.StatusOK, ConnectMCPResponse{
+		Name:      name,
+		Connected: true,
+		Tools:     toolNames,
+	})
+}
+
 // persistMCPServer saves the MCP server connect request so it auto-reconnects on restart.
 func (s *Server) persistMCPServer(req ConnectMCPRequest) {
 	sqlStore, ok := s.store.(*SQLiteStore)

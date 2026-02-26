@@ -56,6 +56,13 @@ export const api = {
     fetchAPI<import('./types').ConnectMCPResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/refresh`, {
       method: 'POST',
     }),
+  getMCPServerConfig: (name: string) =>
+    fetchAPI<import('./types').MCPServerConfigResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/config`),
+  updateMCPServer: (name: string, req: import('./types').ConnectMCPRequest) =>
+    fetchAPI<import('./types').ConnectMCPResponse>(`/api/mcp/servers/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    }),
   getStats: () => fetchAPI<import('./types').StatsResponse>('/api/stats'),
   getSpawnTree: () => fetchAPI<import('./types').SpawnTreeNode[]>('/api/spawn-tree'),
 

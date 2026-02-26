@@ -324,6 +324,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mcp/servers", s.handleMCPServers)
 	mux.HandleFunc("GET /api/mcp/registry", s.handleMCPRegistry)
 	mux.HandleFunc("POST /api/mcp/servers", s.handleConnectMCPServer)
+	mux.HandleFunc("GET /api/mcp/servers/{name}/config", s.handleGetMCPServerConfig)
+	mux.HandleFunc("PUT /api/mcp/servers/{name}", s.handleUpdateMCPServer)
 	mux.HandleFunc("POST /api/mcp/servers/{name}/refresh", s.handleRefreshMCPServer)
 	mux.HandleFunc("DELETE /api/mcp/servers/{name}", s.handleDisconnectMCPServer)
 	mux.HandleFunc("GET /api/stats", s.handleStats)

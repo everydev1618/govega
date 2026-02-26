@@ -271,6 +271,21 @@ type MCPServerConfig struct {
 	ConfigJSON string `json:"config"` // JSON-serialized ConnectMCPRequest
 }
 
+// MCPServerConfigResponse returns the persisted config for an MCP server,
+// suitable for pre-filling an edit form.
+type MCPServerConfigResponse struct {
+	Name             string            `json:"name"`
+	Transport        string            `json:"transport,omitempty"`
+	Command          string            `json:"command,omitempty"`
+	Args             []string          `json:"args,omitempty"`
+	URL              string            `json:"url,omitempty"`
+	Headers          map[string]string `json:"headers,omitempty"`
+	Timeout          int               `json:"timeout,omitempty"`
+	EnvKeys          []string          `json:"env_keys,omitempty"`
+	ExistingSettings map[string]string `json:"existing_settings,omitempty"`
+	IsRegistry       bool              `json:"is_registry"`
+}
+
 // ConnectMCPResponse is returned when an MCP server is connected.
 type ConnectMCPResponse struct {
 	Name      string   `json:"name"`
