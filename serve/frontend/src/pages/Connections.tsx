@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useAPI } from '../hooks/useAPI'
 import { api } from '../lib/api'
-import type { MCPRegistryEntry, MCPServerResponse, ConnectMCPRequest, Setting } from '../lib/types'
+import type { MCPRegistryEntry, MCPServerResponse, MCPServerConfigResponse, ConnectMCPRequest, Setting } from '../lib/types'
 
 type Section = 'connected' | 'catalog' | 'custom' | 'settings'
 
@@ -19,6 +19,14 @@ export function Connections() {
   const [error, setError] = useState<string | null>(null)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState<string | null>(null)
+  const [editingServer, setEditingServer] = useState<string | null>(null)
+  const [editConfig, setEditConfig] = useState<MCPServerConfigResponse | null>(null)
+  const [editEnvValues, setEditEnvValues] = useState<Record<string, string>>({})
+  const [editTransport, setEditTransport] = useState('stdio')
+  const [editCommand, setEditCommand] = useState('')
+  const [editArgs, setEditArgs] = useState('')
+  const [editURL, setEditURL] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   // Expanded tool lists per server.
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
@@ -103,6 +111,65 @@ export function Connections() {
       setError(err.message || 'Failed to refresh')
     } finally {
       setRefreshing(null)
+    }
+  }
+
+  const handleEdit = async (name: string) => {
+    setEditingServer(name)
+    setError(null)
+    try {
+      const config = await api.getMCPServerConfig(name)
+      setEditConfig(config)
+      setEditEnvValues({})
+      setEditTransport(config.transport || 'stdio')
+      setEditCommand(config.command || '')
+      setEditArgs((config.args || []).join(' '))
+      setEditURL(config.url || '')
+    } catch (err: any) {
+      setError(err.message || 'Failed to load server config')
+      setEditingServer(null)
+    }
+  }
+
+  const handleEditCancel = () => {
+    setEditingServer(null)
+    setEditConfig(null)
+    setEditEnvValues({})
+  }
+
+  const handleEditSave = async () => {
+    if (!editConfig) return
+    setSavingEdit(true)
+    setError(null)
+    try {
+      const env: Record<string, string> = {}
+      for (const [k, v] of Object.entries(editEnvValues)) {
+        if (v.trim()) env[k] = v.trim()
+      }
+      const req: ConnectMCPRequest = {
+        name: editConfig.name,
+        env,
+        transport: editTransport,
+      }
+      if (!editConfig.is_registry) {
+        if (editTransport === 'stdio') {
+          req.command = editCommand
+          req.args = editArgs.split(/\s+/).filter(Boolean)
+        } else {
+          req.url = editURL
+        }
+      }
+      const res = await api.updateMCPServer(editConfig.name, req)
+      if (res.error) {
+        setError(res.error)
+      } else {
+        handleEditCancel()
+        refetchAll()
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update server')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -222,6 +289,22 @@ export function Connections() {
                   disconnecting={disconnecting === server.name}
                   onRefresh={() => handleRefresh(server.name)}
                   refreshing={refreshing === server.name}
+                  onEdit={() => handleEdit(server.name)}
+                  editing={editingServer === server.name}
+                  editConfig={editingServer === server.name ? editConfig : null}
+                  editEnvValues={editEnvValues}
+                  onEditEnvChange={(k, v) => setEditEnvValues(prev => ({ ...prev, [k]: v }))}
+                  editTransport={editTransport}
+                  onEditTransportChange={setEditTransport}
+                  editCommand={editCommand}
+                  onEditCommandChange={setEditCommand}
+                  editArgs={editArgs}
+                  onEditArgsChange={setEditArgs}
+                  editURL={editURL}
+                  onEditURLChange={setEditURL}
+                  onEditSave={handleEditSave}
+                  onEditCancel={handleEditCancel}
+                  savingEdit={savingEdit}
                 />
               ))}
             </div>
@@ -570,6 +653,22 @@ function ServerCard({
   disconnecting,
   onRefresh,
   refreshing,
+  onEdit,
+  editing,
+  editConfig,
+  editEnvValues,
+  onEditEnvChange,
+  editTransport,
+  onEditTransportChange,
+  editCommand,
+  onEditCommandChange,
+  editArgs,
+  onEditArgsChange,
+  editURL,
+  onEditURLChange,
+  onEditSave,
+  onEditCancel,
+  savingEdit,
 }: {
   server: MCPServerResponse
   expanded: boolean
@@ -578,9 +677,25 @@ function ServerCard({
   disconnecting: boolean
   onRefresh: () => void
   refreshing: boolean
+  onEdit: () => void
+  editing: boolean
+  editConfig: MCPServerConfigResponse | null
+  editEnvValues: Record<string, string>
+  onEditEnvChange: (key: string, value: string) => void
+  editTransport: string
+  onEditTransportChange: (t: string) => void
+  editCommand: string
+  onEditCommandChange: (c: string) => void
+  editArgs: string
+  onEditArgsChange: (a: string) => void
+  editURL: string
+  onEditURLChange: (u: string) => void
+  onEditSave: () => void
+  onEditCancel: () => void
+  savingEdit: boolean
 }) {
   return (
-    <div className="p-4 rounded-lg bg-card border border-border space-y-3">
+    <div className={`p-4 rounded-lg bg-card border space-y-3 ${editing ? 'border-indigo-500/30' : 'border-border'}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h4 className="font-semibold">{server.name}</h4>
@@ -588,8 +703,16 @@ function ServerCard({
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={onEdit}
+            disabled={editing || refreshing || disconnecting}
+            className="text-xs px-3 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+            title="Edit server configuration"
+          >
+            Edit
+          </button>
+          <button
             onClick={onRefresh}
-            disabled={refreshing || disconnecting}
+            disabled={refreshing || disconnecting || editing}
             className="text-xs px-3 py-1 rounded bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-400 font-medium disabled:opacity-50 transition-colors"
             title="Reconnect server and re-discover tools"
           >
@@ -597,7 +720,7 @@ function ServerCard({
           </button>
           <button
             onClick={onDisconnect}
-            disabled={disconnecting || refreshing}
+            disabled={disconnecting || refreshing || editing}
             className="text-xs px-3 py-1 rounded bg-red-900/40 hover:bg-red-900/60 text-red-400 font-medium disabled:opacity-50 transition-colors"
           >
             {disconnecting ? 'Disconnecting...' : 'Disconnect'}
@@ -605,30 +728,135 @@ function ServerCard({
         </div>
       </div>
 
-      <div className="text-sm text-muted-foreground space-y-0.5">
-        {server.transport && <div>Transport: {server.transport}</div>}
-        {server.url && <div className="font-mono text-xs truncate">{server.url}</div>}
-        {server.command && <div className="font-mono text-xs">{server.command}</div>}
-      </div>
+      {/* Edit form */}
+      {editing && editConfig && (
+        <div className="space-y-3 pt-1">
+          {/* Custom server fields (non-registry) */}
+          {!editConfig.is_registry && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Transport</label>
+                  <select
+                    value={editTransport}
+                    onChange={e => onEditTransportChange(e.target.value)}
+                    className="w-full px-3 py-2 rounded bg-background border border-border text-sm"
+                  >
+                    <option value="stdio">stdio</option>
+                    <option value="http">http</option>
+                    <option value="sse">sse</option>
+                  </select>
+                </div>
+              </div>
+              {editTransport === 'stdio' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Command</label>
+                    <input
+                      type="text"
+                      value={editCommand}
+                      onChange={e => onEditCommandChange(e.target.value)}
+                      className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Args (space-separated)</label>
+                    <input
+                      type="text"
+                      value={editArgs}
+                      onChange={e => onEditArgsChange(e.target.value)}
+                      className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">URL</label>
+                  <input
+                    type="text"
+                    value={editURL}
+                    onChange={e => onEditURLChange(e.target.value)}
+                    className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+                  />
+                </div>
+              )}
+            </>
+          )}
 
-      {server.tools && server.tools.length > 0 && (
-        <div>
-          <button
-            onClick={onToggleTools}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {expanded ? '▾' : '▸'} Tools ({server.tools.length})
-          </button>
-          {expanded && (
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {server.tools.map(tool => (
-                <span key={tool} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground font-mono">
-                  {tool}
-                </span>
-              ))}
+          {/* Env var fields */}
+          {editConfig.env_keys && editConfig.env_keys.length > 0 && (
+            <div className="space-y-2">
+              {editConfig.env_keys.map(key => {
+                const hasExisting = editConfig.existing_settings?.[key]
+                return (
+                  <div key={key} className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                      {key}
+                      {hasExisting && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/40 text-green-400">saved</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={hasExisting ? '(using saved value — enter to override)' : `Enter ${key}`}
+                      value={editEnvValues[key] || ''}
+                      onChange={e => onEditEnvChange(key, e.target.value)}
+                      className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+                    />
+                  </div>
+                )
+              })}
             </div>
           )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onEditSave}
+              disabled={savingEdit}
+              className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {savingEdit ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={onEditCancel}
+              disabled={savingEdit}
+              className="px-4 py-2 rounded bg-muted hover:bg-muted/80 text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Normal view (when not editing) */}
+      {!editing && (
+        <>
+          <div className="text-sm text-muted-foreground space-y-0.5">
+            {server.transport && <div>Transport: {server.transport}</div>}
+            {server.url && <div className="font-mono text-xs truncate">{server.url}</div>}
+            {server.command && <div className="font-mono text-xs">{server.command}</div>}
+          </div>
+
+          {server.tools && server.tools.length > 0 && (
+            <div>
+              <button
+                onClick={onToggleTools}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {expanded ? '▾' : '▸'} Tools ({server.tools.length})
+              </button>
+              {expanded && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {server.tools.map(tool => (
+                    <span key={tool} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

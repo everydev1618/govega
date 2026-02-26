@@ -229,6 +229,19 @@ export interface ConnectMCPRequest {
   timeout?: number
 }
 
+export interface MCPServerConfigResponse {
+  name: string
+  transport?: string
+  command?: string
+  args?: string[]
+  url?: string
+  headers?: Record<string, string>
+  timeout?: number
+  env_keys?: string[]
+  existing_settings?: Record<string, string>
+  is_registry: boolean
+}
+
 export interface ConnectMCPResponse {
   name: string
   connected: boolean
