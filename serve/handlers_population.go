@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/tools"
 	"github.com/everydev1618/vega-population/population"
@@ -177,7 +178,15 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	if len(req.Team) > 0 {
 		dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 			return s.interp.SendToAgent(ctx, agent, message)
-		}, req.Team)
+		}, func(ctx context.Context) []string {
+			proc := vega.ProcessFromContext(ctx)
+			if proc != nil && proc.Agent != nil {
+				if def, ok := s.interp.Document().Agents[proc.Agent.Name]; ok {
+					return def.Team
+				}
+			}
+			return nil
+		})
 		toolNames = append(toolNames, "delegate")
 		system = dsl.BuildTeamPrompt(system, req.Team, nil, false)
 	}
@@ -303,7 +312,15 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	if len(existing.Team) > 0 {
 		dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 			return s.interp.SendToAgent(ctx, agent, message)
-		}, existing.Team)
+		}, func(ctx context.Context) []string {
+			proc := vega.ProcessFromContext(ctx)
+			if proc != nil && proc.Agent != nil {
+				if def, ok := s.interp.Document().Agents[proc.Agent.Name]; ok {
+					return def.Team
+				}
+			}
+			return nil
+		})
 		toolNames = append(toolNames, "delegate")
 		system = dsl.BuildTeamPrompt(system, existing.Team, nil, false)
 	}
@@ -483,7 +500,15 @@ func (s *Server) restoreComposedAgents() {
 		if len(a.Team) > 0 {
 			dsl.RegisterDelegateTool(s.interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 				return s.interp.SendToAgent(ctx, agent, message)
-			}, a.Team)
+			}, func(ctx context.Context) []string {
+				proc := vega.ProcessFromContext(ctx)
+				if proc != nil && proc.Agent != nil {
+					if def, ok := s.interp.Document().Agents[proc.Agent.Name]; ok {
+						return def.Team
+					}
+				}
+				return nil
+			})
 			hasDel := false
 			for _, t := range toolNames {
 				if t == "delegate" {

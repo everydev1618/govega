@@ -39,24 +39,15 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 	return system + teamSection
 }
 
+// TeamResolver returns the team members for the calling agent from context.
+// It is called at invocation time so that team changes are picked up dynamically.
+type TeamResolver func(ctx context.Context) []string
+
 // NewDelegateTool returns a tools.ToolDef for the delegate tool.
 // sendFn is called when the tool is invoked to relay a message to another agent.
-// team constrains which agents can be delegated to; if empty, any agent name is accepted.
-func NewDelegateTool(sendFn SendFunc, team []string) tools.ToolDef {
-	teamSet := make(map[string]bool, len(team))
-	for _, t := range team {
-		teamSet[t] = true
-	}
-
-	agentParam := tools.ParamDef{
-		Type:        "string",
-		Description: "Name of the team member agent to delegate to",
-		Required:    true,
-	}
-	if len(team) > 0 {
-		agentParam.Enum = team
-	}
-
+// teamResolver is called at invocation time to determine which agents the caller
+// can delegate to; if it returns nil/empty, any agent name is accepted.
+func NewDelegateTool(sendFn SendFunc, teamResolver TeamResolver) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Delegate a task to another agent on your team and get their response. Use this to assign work to team members.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
@@ -65,13 +56,26 @@ func NewDelegateTool(sendFn SendFunc, team []string) tools.ToolDef {
 			if agent == "" || message == "" {
 				return "", fmt.Errorf("both agent and message are required")
 			}
-			if len(teamSet) > 0 && !teamSet[agent] {
-				return "", fmt.Errorf("agent %q is not on your team — you can only delegate to: %s", agent, strings.Join(team, ", "))
+			// Resolve team dynamically from the calling process's agent definition.
+			team := teamResolver(ctx)
+			if len(team) > 0 {
+				teamSet := make(map[string]bool, len(team))
+				for _, t := range team {
+					teamSet[t] = true
+				}
+				if !teamSet[agent] {
+					return "", fmt.Errorf("agent %q is not on your team — you can only delegate to: %s",
+						agent, strings.Join(team, ", "))
+				}
 			}
 			return sendFn(ctx, agent, message)
 		},
 		Params: map[string]tools.ParamDef{
-			"agent":   agentParam,
+			"agent": {
+				Type:        "string",
+				Description: "Name of the team member agent to delegate to",
+				Required:    true,
+			},
 			"message": {
 				Type:        "string",
 				Description: "The task or question to send to the agent",
@@ -82,15 +86,16 @@ func NewDelegateTool(sendFn SendFunc, team []string) tools.ToolDef {
 }
 
 // RegisterDelegateTool registers the delegate tool on the given Tools instance
-// if it is not already registered. team constrains which agents can be delegated to.
+// if it is not already registered. teamResolver is called at invocation time to
+// determine which agents the caller can delegate to.
 // Returns true if registration happened.
-func RegisterDelegateTool(t *tools.Tools, sendFn SendFunc, team []string) bool {
+func RegisterDelegateTool(t *tools.Tools, sendFn SendFunc, teamResolver TeamResolver) bool {
 	for _, ts := range t.Schema() {
 		if ts.Name == "delegate" {
 			return false
 		}
 	}
-	t.Register("delegate", NewDelegateTool(sendFn, team))
+	t.Register("delegate", NewDelegateTool(sendFn, teamResolver))
 	return true
 }
 
