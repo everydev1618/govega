@@ -1099,9 +1099,9 @@ func (s *Server) handleGetMCPServerConfig(w http.ResponseWriter, r *http.Request
 		}
 		for _, key := range envKeys {
 			if st, ok := settingsMap[key]; ok {
-				existing[key] = maskValue(st.Value, st.Sensitive)
+				existing[key] = st.Value
 			} else if val := os.Getenv(key); val != "" {
-				existing[key] = maskValue(val, true)
+				existing[key] = val
 			}
 		}
 	}
@@ -1564,17 +1564,6 @@ func (s *Server) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 
 // --- Helpers ---
 
-// maskValue returns a partially masked string for display.
-// Sensitive values show first 3 chars + "***", non-sensitive show the full value.
-func maskValue(value string, sensitive bool) string {
-	if !sensitive {
-		return value
-	}
-	if len(value) <= 4 {
-		return "****"
-	}
-	return value[:3] + "****"
-}
 
 func processToResponse(p *vega.Process) ProcessResponse {
 	agentName := ""
