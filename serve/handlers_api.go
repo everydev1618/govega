@@ -90,10 +90,12 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			model = defaultModel
 		}
 		ar := AgentResponse{
-			Name:   name,
-			Model:  model,
-			System: def.System,
-			Tools:  def.Tools,
+			Name:        name,
+			DisplayName: def.DisplayName,
+			Title:       def.Title,
+			Model:       model,
+			System:      def.System,
+			Tools:       def.Tools,
 		}
 		if proc, ok := agents[name]; ok {
 			ar.ProcessID = proc.ID

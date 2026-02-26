@@ -20,9 +20,20 @@ When someone tells you what they need, you:
 1. Get it immediately (or ask ONE clarifying question — max)
 2. Check list_agents first — if an existing agent already fits, use it. Don't rebuild what's already there.
 3. Build exactly what's needed — a single agent unless the user asks for a team
-4. Tell the user who to talk to
+4. Tell the user who to talk to — by their display name
 
 **Keep your responses SHORT.** 2-4 sentences when confirming. No bullet-point dumps. No essays. Say what you did and who to talk to. Done.
+
+## Naming your agents
+
+Every agent gets three name fields:
+- **name**: lowercase slug for internal routing (e.g. "sofia", "marcus", "ivy")
+- **display_name**: a real human first name that fits the agent's persona (e.g. "Sofia", "Marcus", "Ivy")
+- **title**: a short professional title (e.g. "Content Strategist", "Senior Developer", "Research Analyst")
+
+Use the agent's first name as the slug. Pick names that feel natural and diverse — vary gender, origin, and style. The display name and title are shown in the UI so the user sees a real teammate, not a bot.
+
+When referring to agents in your responses, use their display name (e.g. "I've set up Sofia for you" not "I've set up sofia").
 
 ## What you configure
 
@@ -141,6 +152,8 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				return "", fmt.Errorf("cannot create an agent named %q", motherAgentName)
 			}
 
+			displayName, _ := params["display_name"].(string)
+			title, _ := params["title"].(string)
 			model, _ := params["model"].(string)
 			system, _ := params["system"].(string)
 			toolNames := toStringSlice(params["tools"])
@@ -149,12 +162,14 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			skillsDirs := toStringSlice(params["skills_dirs"])
 
 			agentDef := &Agent{
-				Name:      name,
-				Model:     model,
-				System:    system,
-				Tools:     toolNames,
-				Team:      team,
-				Knowledge: knowledge,
+				Name:        name,
+				DisplayName: displayName,
+				Title:       title,
+				Model:       model,
+				System:      system,
+				Tools:       toolNames,
+				Team:        team,
+				Knowledge:   knowledge,
 			}
 
 			if len(skillsDirs) > 0 {
@@ -194,7 +209,17 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 		Params: map[string]tools.ParamDef{
 			"name": {
 				Type:        "string",
-				Description: "Unique name for the agent (lowercase, no spaces)",
+				Description: "Unique name for the agent (lowercase, no spaces — used as an internal identifier)",
+				Required:    true,
+			},
+			"display_name": {
+				Type:        "string",
+				Description: "Human-friendly display name shown in the UI (e.g. 'Sofia', 'Marcus'). Pick a real first name that fits the agent's persona.",
+				Required:    true,
+			},
+			"title": {
+				Type:        "string",
+				Description: "Short professional title shown under the display name (e.g. 'Content Strategist', 'Senior Developer')",
 				Required:    true,
 			},
 			"model": {
@@ -249,6 +274,12 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 
 			// Merge: new values override old.
 			merged := *existing
+			if v, ok := params["display_name"].(string); ok && v != "" {
+				merged.DisplayName = v
+			}
+			if v, ok := params["title"].(string); ok && v != "" {
+				merged.Title = v
+			}
 			if v, ok := params["model"].(string); ok && v != "" {
 				merged.Model = v
 			}
@@ -316,6 +347,14 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				Type:        "string",
 				Description: "Name of the agent to update",
 				Required:    true,
+			},
+			"display_name": {
+				Type:        "string",
+				Description: "New display name (leave empty to keep current)",
+			},
+			"title": {
+				Type:        "string",
+				Description: "New title (leave empty to keep current)",
 			},
 			"model": {
 				Type:        "string",
@@ -386,19 +425,23 @@ func newListAgentsTool(interp *Interpreter) tools.ToolDef {
 			defer interp.mu.RUnlock()
 
 			type agentInfo struct {
-				Name  string   `json:"name"`
-				Model string   `json:"model,omitempty"`
-				Tools []string `json:"tools,omitempty"`
-				Team  []string `json:"team,omitempty"`
+				Name        string   `json:"name"`
+				DisplayName string   `json:"display_name,omitempty"`
+				Title       string   `json:"title,omitempty"`
+				Model       string   `json:"model,omitempty"`
+				Tools       []string `json:"tools,omitempty"`
+				Team        []string `json:"team,omitempty"`
 			}
 
 			var agents []agentInfo
 			for name, def := range doc.Agents {
 				agents = append(agents, agentInfo{
-					Name:  name,
-					Model: def.Model,
-					Tools: def.Tools,
-					Team:  def.Team,
+					Name:        name,
+					DisplayName: def.DisplayName,
+					Title:       def.Title,
+					Model:       def.Model,
+					Tools:       def.Tools,
+					Team:        def.Team,
 				})
 			}
 

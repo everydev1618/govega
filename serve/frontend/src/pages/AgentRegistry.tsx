@@ -301,9 +301,12 @@ export function AgentRegistry() {
             {/* Agent name */}
             <div className="flex items-center gap-2">
               <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold uppercase">
-                {agent.name[0]}
+                {(agent.display_name || agent.name)[0]}
               </div>
-              <h3 className="font-semibold text-lg">{agent.name}</h3>
+              <div className="flex flex-col">
+                <h3 className="font-semibold text-lg leading-tight">{agent.display_name || agent.name}</h3>
+                {agent.title && <span className="text-xs text-muted-foreground">{agent.title}</span>}
+              </div>
               {isRunning && (
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
