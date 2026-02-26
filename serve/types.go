@@ -102,6 +102,7 @@ type SpawnTreeNodeResponse struct {
 type MCPServerResponse struct {
 	Name      string   `json:"name"`
 	Connected bool     `json:"connected"`
+	Disabled  bool     `json:"disabled,omitempty"`
 	Transport string   `json:"transport,omitempty"`
 	URL       string   `json:"url,omitempty"`
 	Command   string   `json:"command,omitempty"`
@@ -268,7 +269,8 @@ type ConnectMCPRequest struct {
 // MCPServerConfig is a persisted MCP server connection for auto-reconnect.
 type MCPServerConfig struct {
 	Name       string `json:"name"`
-	ConfigJSON string `json:"config"` // JSON-serialized ConnectMCPRequest
+	ConfigJSON string `json:"config"`   // JSON-serialized ConnectMCPRequest
+	Disabled   bool   `json:"disabled"` // true = persisted but not connected
 }
 
 // MCPServerConfigResponse returns the persisted config for an MCP server,

@@ -83,6 +83,7 @@ export interface SpawnTreeNode {
 export interface MCPServerResponse {
   name: string
   connected: boolean
+  disabled?: boolean
   transport?: string
   url?: string
   command?: string

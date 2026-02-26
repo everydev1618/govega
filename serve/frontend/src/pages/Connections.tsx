@@ -88,15 +88,30 @@ export function Connections() {
     }
   }
 
+  const [toggling, setToggling] = useState<string | null>(null)
+
   const handleDisconnect = async (name: string) => {
     setDisconnecting(name)
     try {
       await api.disconnectMCPServer(name)
       refetchAll()
     } catch (err: any) {
-      setError(err.message || 'Failed to disconnect')
+      setError(err.message || 'Failed to delete')
     } finally {
       setDisconnecting(null)
+    }
+  }
+
+  const handleToggle = async (name: string, disabled: boolean) => {
+    setToggling(name)
+    setError(null)
+    try {
+      await api.toggleMCPServer(name, disabled)
+      refetchAll()
+    } catch (err: any) {
+      setError(err.message || 'Failed to toggle')
+    } finally {
+      setToggling(null)
     }
   }
 
@@ -301,18 +316,18 @@ export function Connections() {
 
       {/* === Connected Servers === */}
       <SectionHeader
-        title="Connected Servers"
-        count={servers?.filter(s => s.connected).length || 0}
+        title="Servers"
+        count={servers?.filter(s => s.connected || s.disabled).length || 0}
         expanded={expandedSections.has('connected')}
         onToggle={() => toggleSection('connected')}
       />
       {expandedSections.has('connected') && (
         <div>
-          {!servers || servers.filter(s => s.connected).length === 0 ? (
+          {!servers || servers.filter(s => s.connected || s.disabled).length === 0 ? (
             <p className="text-muted-foreground text-sm pl-1">No servers connected. Browse the catalog below to get started.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {servers.filter(s => s.connected).map(server => (
+              {servers.filter(s => s.connected || s.disabled).map(server => (
                 <ServerCard
                   key={server.name}
                   server={server}
@@ -345,6 +360,8 @@ export function Connections() {
                   onDuplicateSubmit={handleDuplicateSubmit}
                   onDuplicateCancel={handleDuplicateCancel}
                   duplicateLoading={duplicating}
+                  onToggle={(disabled) => handleToggle(server.name, disabled)}
+                  toggling={toggling === server.name}
                 />
               ))}
             </div>
@@ -716,6 +733,8 @@ function ServerCard({
   onDuplicateSubmit,
   onDuplicateCancel,
   duplicateLoading,
+  onToggle,
+  toggling,
 }: {
   server: MCPServerResponse
   expanded: boolean
@@ -747,43 +766,85 @@ function ServerCard({
   onDuplicateSubmit: () => void
   onDuplicateCancel: () => void
   duplicateLoading: boolean
+  onToggle: (disabled: boolean) => void
+  toggling: boolean
 }) {
-  const anyBusy = editing || refreshing || disconnecting || duplicating
+  const isDisabled = !!server.disabled
+  const anyBusy = editing || refreshing || disconnecting || duplicating || toggling
   return (
-    <div className={`p-4 rounded-lg bg-card border space-y-3 ${editing ? 'border-indigo-500/30' : 'border-border'}`}>
+    <div className={`p-4 rounded-lg bg-card border space-y-3 ${editing ? 'border-indigo-500/30' : isDisabled ? 'border-border opacity-60' : 'border-border'}`}>
       <div className="flex items-center gap-2">
-        <h4 className="font-semibold">{server.name}</h4>
-        <span className="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400">connected</span>
+        <h4 className={`font-semibold ${isDisabled ? 'text-muted-foreground' : ''}`}>{server.name}</h4>
+        {isDisabled ? (
+          <span className="text-xs px-2 py-0.5 rounded bg-yellow-900/50 text-yellow-400">disabled</span>
+        ) : (
+          <span className="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400">connected</span>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          onClick={onEdit}
-          disabled={anyBusy}
-          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
-        >
-          Edit
-        </button>
-        <button
-          onClick={onDuplicate}
-          disabled={anyBusy}
-          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
-        >
-          Duplicate
-        </button>
-        <button
-          onClick={onRefresh}
-          disabled={anyBusy}
-          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-muted-foreground font-medium disabled:opacity-50 transition-colors"
-        >
-          {refreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
-        <button
-          onClick={onDisconnect}
-          disabled={anyBusy}
-          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-red-400 font-medium disabled:opacity-50 transition-colors"
-        >
-          {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-        </button>
+        {isDisabled ? (
+          <>
+            <button
+              onClick={() => onToggle(false)}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-green-400 font-medium disabled:opacity-50 transition-colors"
+            >
+              {toggling ? 'Enabling...' : 'Enable'}
+            </button>
+            <button
+              onClick={onDuplicate}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+            >
+              Duplicate
+            </button>
+            <button
+              onClick={onDisconnect}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-red-400 font-medium disabled:opacity-50 transition-colors"
+            >
+              {disconnecting ? 'Deleting...' : 'Delete'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={onEdit}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onDuplicate}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+            >
+              Duplicate
+            </button>
+            <button
+              onClick={() => onToggle(true)}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-yellow-400 font-medium disabled:opacity-50 transition-colors"
+            >
+              {toggling ? 'Disabling...' : 'Disable'}
+            </button>
+            <button
+              onClick={onRefresh}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-muted-foreground font-medium disabled:opacity-50 transition-colors"
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            <button
+              onClick={onDisconnect}
+              disabled={anyBusy}
+              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-red-400 font-medium disabled:opacity-50 transition-colors"
+            >
+              {disconnecting ? 'Deleting...' : 'Delete'}
+            </button>
+          </>
+        )}
       </div>
 
       {/* Edit form */}

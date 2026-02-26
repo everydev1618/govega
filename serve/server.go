@@ -328,6 +328,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/mcp/servers/{name}", s.handleUpdateMCPServer)
 	mux.HandleFunc("POST /api/mcp/servers/{name}/refresh", s.handleRefreshMCPServer)
 	mux.HandleFunc("POST /api/mcp/servers/{name}/duplicate", s.handleDuplicateMCPServer)
+	mux.HandleFunc("PUT /api/mcp/servers/{name}/disable", s.handleToggleMCPServer)
 	mux.HandleFunc("DELETE /api/mcp/servers/{name}", s.handleDisconnectMCPServer)
 	mux.HandleFunc("GET /api/stats", s.handleStats)
 	mux.HandleFunc("GET /api/spawn-tree", s.handleSpawnTree)
@@ -530,6 +531,11 @@ func (s *Server) autoConnectPersistedServers(ctx context.Context) {
 	}
 
 	for _, sc := range servers {
+		// Skip disabled servers.
+		if sc.Disabled {
+			slog.Info("skipping disabled MCP server", "server", sc.Name)
+			continue
+		}
 		// Skip if already connected (e.g. by autoConnectBuiltinServers).
 		if t.MCPServerConnected(sc.Name) || t.BuiltinServerConnected(sc.Name) {
 			continue
