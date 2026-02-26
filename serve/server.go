@@ -523,10 +523,10 @@ func (s *Server) autoConnectPersistedServers(ctx context.Context) {
 	t := s.interp.Tools()
 
 	// Load all settings for env resolution.
-	envMap := make(map[string]string)
+	allSettings := make(map[string]string)
 	if settings, err := s.store.ListSettings(); err == nil {
 		for _, st := range settings {
-			envMap[st.Key] = st.Value
+			allSettings[st.Key] = st.Value
 		}
 	}
 
@@ -547,11 +547,20 @@ func (s *Server) autoConnectPersistedServers(ctx context.Context) {
 			continue
 		}
 
-		// Fill in env values from stored settings.
+		// Fill in env values from per-server namespaced settings, falling back to bare keys.
 		for k := range req.Env {
-			if val, ok := envMap[k]; ok {
+			nsKey := mcpSettingKey(sc.Name, k)
+			if val, ok := allSettings[nsKey]; ok {
+				req.Env[k] = val
+			} else if val, ok := allSettings[k]; ok {
 				req.Env[k] = val
 			}
+		}
+
+		// Build full env map for registry/builtin servers (they may need all settings).
+		envMap := make(map[string]string)
+		for k, v := range req.Env {
+			envMap[k] = v
 		}
 
 		// Check registry for this server.
@@ -626,6 +635,7 @@ func (s *Server) injectMother() {
 				Name:        agent.Name,
 				DisplayName: agent.DisplayName,
 				Title:       agent.Title,
+				Avatar:      agent.Avatar,
 				Model:       agent.Model,
 				System:      agent.System,
 				Tools:       agent.Tools,

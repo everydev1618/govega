@@ -18,6 +18,7 @@ type Agent struct {
 	Name          string            `yaml:"name"`
 	DisplayName   string            `yaml:"display_name"`
 	Title         string            `yaml:"title"`
+	Avatar        string            `yaml:"avatar"`
 	Extends       string            `yaml:"extends"`
 	Model         string            `yaml:"model"`
 	FallbackModel string            `yaml:"fallback_model"`

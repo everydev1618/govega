@@ -35,6 +35,19 @@ Use the agent's first name as the slug. Pick names that feel natural and diverse
 
 When referring to agents in your responses, use their display name (e.g. "I've set up Sofia for you" not "I've set up sofia").
 
+## Avatar catalog
+
+Every agent MUST get an avatar. Pick one that matches the agent's persona (gender, vibe, style). Use the ID exactly as shown.
+
+**Female (f1-f12):**
+f1: young woman, dark curly hair — f2: woman, red straight hair, glasses — f3: woman, blonde bob — f4: woman, black hair bun, earrings — f5: woman, brown wavy hair — f6: older woman, gray hair, warm smile — f7: woman, hijab — f8: woman, short purple hair, creative — f9: woman, long black hair, east asian — f10: woman, afro, confident — f11: woman, braids, friendly — f12: woman, auburn ponytail, sporty
+
+**Male (m1-m12):**
+m1: young man, short dark hair — m2: man, beard, glasses — m3: man, blonde, clean-cut — m4: man, dark skin, short hair — m5: older man, gray beard, wise — m6: man, curly brown hair — m7: man, turban — m8: man, east asian, modern — m9: man, long hair, creative — m10: man, bald, strong — m11: man, red hair, freckles — m12: man, mustache, professional
+
+**Neutral (n1-n6):**
+n1: robot face, friendly — n2: abstract geometric face — n3: cat-eared avatar — n4: alien, cute — n5: ghost, playful — n6: star/celestial
+
 ## What you configure
 
 System prompts, models, tools (read_file, write_file, list_files, exec, append_file, send_email), skills, teams, knowledge, MCP servers, schedules.
@@ -154,6 +167,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 
 			displayName, _ := params["display_name"].(string)
 			title, _ := params["title"].(string)
+			avatar, _ := params["avatar"].(string)
 			model, _ := params["model"].(string)
 			system, _ := params["system"].(string)
 			toolNames := toStringSlice(params["tools"])
@@ -165,6 +179,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				Name:        name,
 				DisplayName: displayName,
 				Title:       title,
+				Avatar:      avatar,
 				Model:       model,
 				System:      system,
 				Tools:       toolNames,
@@ -220,6 +235,11 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			"title": {
 				Type:        "string",
 				Description: "Short professional title shown under the display name (e.g. 'Content Strategist', 'Senior Developer')",
+				Required:    true,
+			},
+			"avatar": {
+				Type:        "string",
+				Description: "Avatar ID from the catalog (e.g. 'f1', 'm3', 'n2'). Pick one that matches the agent's persona gender/style.",
 				Required:    true,
 			},
 			"model": {
@@ -279,6 +299,9 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			}
 			if v, ok := params["title"].(string); ok && v != "" {
 				merged.Title = v
+			}
+			if v, ok := params["avatar"].(string); ok && v != "" {
+				merged.Avatar = v
 			}
 			if v, ok := params["model"].(string); ok && v != "" {
 				merged.Model = v
@@ -356,6 +379,10 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				Type:        "string",
 				Description: "New title (leave empty to keep current)",
 			},
+			"avatar": {
+				Type:        "string",
+				Description: "New avatar ID from the catalog (leave empty to keep current)",
+			},
 			"model": {
 				Type:        "string",
 				Description: "New LLM model (leave empty to keep current)",
@@ -428,6 +455,7 @@ func newListAgentsTool(interp *Interpreter) tools.ToolDef {
 				Name        string   `json:"name"`
 				DisplayName string   `json:"display_name,omitempty"`
 				Title       string   `json:"title,omitempty"`
+				Avatar      string   `json:"avatar,omitempty"`
 				Model       string   `json:"model,omitempty"`
 				Tools       []string `json:"tools,omitempty"`
 				Team        []string `json:"team,omitempty"`
@@ -439,6 +467,7 @@ func newListAgentsTool(interp *Interpreter) tools.ToolDef {
 					Name:        name,
 					DisplayName: def.DisplayName,
 					Title:       def.Title,
+					Avatar:      def.Avatar,
 					Model:       def.Model,
 					Tools:       def.Tools,
 					Team:        def.Team,

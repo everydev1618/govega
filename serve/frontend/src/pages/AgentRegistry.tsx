@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAPI } from '../hooks/useAPI'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
+import { getAvatar } from '../lib/avatars'
 import type { PopulationInstalledItem, CreateAgentRequest, ProcessResponse, AgentResponse, UpdateAgentRequest } from '../lib/types'
 
 export function AgentRegistry() {
@@ -300,9 +301,15 @@ export function AgentRegistry() {
           <div key={agent.name} className="p-4 rounded-lg bg-card border border-border space-y-2">
             {/* Agent name */}
             <div className="flex items-center gap-2">
-              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold uppercase">
-                {(agent.display_name || agent.name)[0]}
-              </div>
+              {(() => {
+                const AvatarSvg = getAvatar(agent.avatar)
+                if (AvatarSvg) return <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden"><AvatarSvg className="w-full h-full" /></div>
+                return (
+                  <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold uppercase">
+                    {(agent.display_name || agent.name)[0]}
+                  </div>
+                )
+              })()}
               <div className="flex flex-col">
                 <h3 className="font-semibold text-lg leading-tight">{agent.display_name || agent.name}</h3>
                 {agent.title && <span className="text-xs text-muted-foreground">{agent.title}</span>}

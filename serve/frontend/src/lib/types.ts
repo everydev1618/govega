@@ -34,6 +34,7 @@ export interface AgentResponse {
   name: string
   display_name?: string
   title?: string
+  avatar?: string
   model?: string
   system?: string
   tools?: string[]

@@ -536,6 +536,7 @@ func (s *Server) restoreComposedAgents() {
 			Name:        a.Name,
 			DisplayName: a.DisplayName,
 			Title:       a.Title,
+			Avatar:      a.Avatar,
 			Model:       a.Model,
 			System:      system,
 			Tools:       toolNames,

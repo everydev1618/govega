@@ -169,6 +169,9 @@ func (s *SQLiteStore) Init() error {
 	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
 	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
 
+	// Migrate: add avatar column to composed_agents if missing.
+	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }
 
@@ -305,9 +308,9 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 	toolsJSON, _ := json.Marshal(a.Tools)
 	teamJSON, _ := json.Marshal(a.Team)
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO composed_agents (name, display_name, title, model, persona, skills, tools, team, system, temperature, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Name, a.DisplayName, a.Title, a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt,
+		`INSERT OR REPLACE INTO composed_agents (name, display_name, title, avatar, model, persona, skills, tools, team, system, temperature, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Name, a.DisplayName, a.Title, a.Avatar, a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt,
 	)
 	return err
 }
@@ -315,7 +318,7 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 // ListComposedAgents returns all composed agents.
 func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	rows, err := s.db.Query(
-		`SELECT name, display_name, title, model, persona, skills, tools, team, system, temperature, created_at
+		`SELECT name, display_name, title, avatar, model, persona, skills, tools, team, system, temperature, created_at
 		 FROM composed_agents ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -328,7 +331,7 @@ func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 		var a ComposedAgent
 		var skillsJSON, toolsJSON, teamJSON string
 		var temp sql.NullFloat64
-		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Avatar, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(skillsJSON), &a.Skills)

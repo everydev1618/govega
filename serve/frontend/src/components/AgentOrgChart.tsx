@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { getAvatar } from '../lib/avatars'
 import type { AgentResponse } from '../lib/types'
 
 // --- Graph builder ---
@@ -258,6 +259,7 @@ export function AgentOrgChart({ agents }: Props) {
             const isRunning = n.agent.process_status === 'running'
             const initial = n.agent.name.charAt(0).toUpperCase()
             const toolCount = n.agent.tools?.length ?? 0
+            const AvatarSvg = getAvatar(n.agent.avatar)
 
             return (
               <g key={n.agent.name}
@@ -290,25 +292,41 @@ export function AgentOrgChart({ agents }: Props) {
                     opacity={0.5} className="constellation-core" />
                 )}
 
-                {/* Main circle */}
-                <circle cx={n.x} cy={n.y} r={n.r}
-                  fill={color} opacity={0.85}
-                  className="constellation-node-done"
-                  style={{ animationDelay: `${n.colorIdx * 80}ms` }}
-                />
-
-                {/* Initial letter */}
-                <text x={n.x} y={n.y} textAnchor="middle" dominantBaseline="central"
-                  fill="#0f172a" fontSize={n.r > 16 ? 13 : 10} fontWeight="bold"
-                  style={{ pointerEvents: 'none' }}>
-                  {initial}
-                </text>
+                {/* Avatar or colored circle with initial */}
+                {AvatarSvg ? (
+                  <>
+                    <clipPath id={`clip-${n.agent.name}`}>
+                      <circle cx={n.x} cy={n.y} r={n.r} />
+                    </clipPath>
+                    <foreignObject
+                      x={n.x - n.r} y={n.y - n.r}
+                      width={n.r * 2} height={n.r * 2}
+                      clipPath={`url(#clip-${n.agent.name})`}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      <AvatarSvg className="w-full h-full" />
+                    </foreignObject>
+                  </>
+                ) : (
+                  <>
+                    <circle cx={n.x} cy={n.y} r={n.r}
+                      fill={color} opacity={0.85}
+                      className="constellation-node-done"
+                      style={{ animationDelay: `${n.colorIdx * 80}ms` }}
+                    />
+                    <text x={n.x} y={n.y} textAnchor="middle" dominantBaseline="central"
+                      fill="#0f172a" fontSize={n.r > 16 ? 13 : 10} fontWeight="bold"
+                      style={{ pointerEvents: 'none' }}>
+                      {initial}
+                    </text>
+                  </>
+                )}
 
                 {/* Name label */}
                 <text x={n.x} y={n.y + n.r + 12} textAnchor="middle"
                   fill="#94a3b8" fontSize={9}
                   style={{ pointerEvents: 'none' }}>
-                  {n.agent.name}
+                  {n.agent.display_name || n.agent.name}
                 </text>
 
                 {/* Tool count badge for leaders */}
@@ -344,7 +362,7 @@ export function AgentOrgChart({ agents }: Props) {
               transform: 'translateX(-50%)',
             }}
           >
-            <p className="font-semibold text-foreground">{tooltip.agent.name}</p>
+            <p className="font-semibold text-foreground">{tooltip.agent.display_name || tooltip.agent.name}</p>
             {tooltip.agent.model && (
               <p className="text-muted-foreground font-mono">{tooltip.agent.model}</p>
             )}
