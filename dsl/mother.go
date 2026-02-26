@@ -343,20 +343,20 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				}
 			}
 
-			// Remove old, add new.
+			// Remove old from interpreter, add new version.
 			if err := interp.RemoveAgent(name); err != nil {
 				return "", fmt.Errorf("remove old agent: %w", err)
 			}
 
-			// Notify deletion for the old version.
-			if cb != nil && cb.OnAgentDeleted != nil {
-				cb.OnAgentDeleted(name)
-			}
-
 			if err := interp.AddAgent(name, &merged); err != nil {
+				// Re-add the old definition so we don't lose the agent entirely.
+				_ = interp.AddAgent(name, existing)
 				return "", fmt.Errorf("re-create agent: %w", err)
 			}
 
+			// Persist the updated version. InsertComposedAgent uses INSERT OR REPLACE,
+			// so we don't need to delete first — avoiding a window where the agent
+			// exists in neither the interpreter nor the database.
 			if cb != nil && cb.OnAgentCreated != nil {
 				if err := cb.OnAgentCreated(&merged); err != nil {
 					return "", fmt.Errorf("persist updated agent %q: %w", name, err)
