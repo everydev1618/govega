@@ -147,6 +147,8 @@ type ProcessSnapshot struct {
 // ComposedAgent is a persisted agent created via the compose API.
 type ComposedAgent struct {
 	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name,omitempty"`
+	Title       string   `json:"title,omitempty"`
 	Model       string   `json:"model"`
 	Persona     string   `json:"persona,omitempty"`
 	Skills      []string `json:"skills,omitempty"`

@@ -44,6 +44,8 @@ type MetricsResponse struct {
 // AgentResponse is the API representation of an agent definition.
 type AgentResponse struct {
 	Name          string   `json:"name"`
+	DisplayName   string   `json:"display_name,omitempty"`
+	Title         string   `json:"title,omitempty"`
 	Model         string   `json:"model,omitempty"`
 	System        string   `json:"system,omitempty"`
 	Tools         []string `json:"tools,omitempty"`

@@ -15,8 +15,10 @@ type Document struct {
 
 // Agent represents an agent definition in the DSL.
 type Agent struct {
-	Name        string            `yaml:"name"`
-	Extends     string            `yaml:"extends"`
+	Name          string            `yaml:"name"`
+	DisplayName   string            `yaml:"display_name"`
+	Title         string            `yaml:"title"`
+	Extends       string            `yaml:"extends"`
 	Model         string            `yaml:"model"`
 	FallbackModel string            `yaml:"fallback_model"`
 	System        string            `yaml:"system"`

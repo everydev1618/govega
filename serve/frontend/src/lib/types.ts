@@ -32,6 +32,8 @@ export interface MetricsResponse {
 
 export interface AgentResponse {
   name: string
+  display_name?: string
+  title?: string
   model?: string
   system?: string
   tools?: string[]

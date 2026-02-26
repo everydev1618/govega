@@ -624,6 +624,8 @@ func (s *Server) injectMother() {
 			}
 			if err := s.store.InsertComposedAgent(ComposedAgent{
 				Name:        agent.Name,
+				DisplayName: agent.DisplayName,
+				Title:       agent.Title,
 				Model:       agent.Model,
 				System:      agent.System,
 				Tools:       agent.Tools,

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
@@ -336,10 +336,11 @@ function UserAvatar() {
   )
 }
 
-function AgentAvatar({ name }: { name: string }) {
+function AgentAvatar({ name, displayName }: { name: string; displayName?: string }) {
+  const label = displayName || name
   return (
     <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-semibold">
-      {name[0]?.toUpperCase()}
+      {label[0]?.toUpperCase()}
     </div>
   )
 }
@@ -390,25 +391,31 @@ function AgentPicker({
             <p className="text-xs text-muted-foreground font-medium">Your agents</p>
           </div>
           <div className="max-h-64 overflow-y-auto py-1">
-            {agents.map(a => (
-              <button
-                key={a.name}
-                onClick={() => { onSelect(a.name); setOpen(false) }}
-                className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left ${
-                  activeAgent === a.name ? 'bg-accent/30 text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
-                  {a.name[0]?.toUpperCase()}
-                </div>
-                <span className="truncate font-medium">{a.name}</span>
-                {activeAgent === a.name && (
-                  <svg className="w-3 h-3 ml-auto text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </button>
-            ))}
+            {agents.map(a => {
+              const label = a.display_name || a.name
+              return (
+                <button
+                  key={a.name}
+                  onClick={() => { onSelect(a.name); setOpen(false) }}
+                  className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left ${
+                    activeAgent === a.name ? 'bg-accent/30 text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
+                    {label[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate font-medium">{label}</span>
+                    {a.title && <span className="truncate text-xs text-muted-foreground/70">{a.title}</span>}
+                  </div>
+                  {activeAgent === a.name && (
+                    <svg className="w-3 h-3 ml-auto text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -421,11 +428,13 @@ function MentionDropdown({
   selectedIndex,
   onSelect,
   onHover,
+  displayInfo,
 }: {
   agents: string[]
   selectedIndex: number
   onSelect: (name: string) => void
   onHover: (index: number) => void
+  displayInfo: Map<string, { displayName: string; title: string }>
 }) {
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -442,21 +451,28 @@ function MentionDropdown({
 
   return (
     <div ref={listRef} className="max-h-48 overflow-y-auto py-1">
-      {agents.map((name, i) => (
-        <button
-          key={name}
-          onMouseDown={e => { e.preventDefault(); onSelect(name) }}
-          onMouseEnter={() => onHover(i)}
-          className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm transition-colors text-left ${
-            i === selectedIndex ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/30'
-          }`}
-        >
-          <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
-            {name[0]?.toUpperCase()}
-          </div>
-          <span className="truncate font-medium">{name}</span>
-        </button>
-      ))}
+      {agents.map((name, i) => {
+        const info = displayInfo.get(name)
+        const label = info?.displayName || name
+        return (
+          <button
+            key={name}
+            onMouseDown={e => { e.preventDefault(); onSelect(name) }}
+            onMouseEnter={() => onHover(i)}
+            className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm transition-colors text-left ${
+              i === selectedIndex ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/30'
+            }`}
+          >
+            <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
+              {label[0]?.toUpperCase()}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="truncate font-medium">{label}</span>
+              {info?.title && <span className="truncate text-xs text-muted-foreground/70">{info.title}</span>}
+            </div>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -466,17 +482,21 @@ function TabBar({
   activeAgent,
   onSelect,
   onClose,
+  displayInfo,
 }: {
   tabs: string[]
   activeAgent: string
   onSelect: (name: string) => void
   onClose: (name: string) => void
+  displayInfo: Map<string, { displayName: string; title: string }>
 }) {
   return (
     <div className="flex">
       {tabs.map(name => {
         const active = name === activeAgent
         const isHermes = name === HERMES
+        const info = displayInfo.get(name)
+        const label = info?.displayName || name
         const borderColor = active
           ? isHermes ? 'border-primary' : 'border-emerald-500'
           : 'border-transparent'
@@ -489,13 +509,14 @@ function TabBar({
                 ? 'bg-background text-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
             }`}
+            title={info?.title || undefined}
           >
             <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-semibold ${
               isHermes ? 'bg-primary/20 text-primary' : 'bg-emerald-500/20 text-emerald-400'
             }`}>
-              {name[0]?.toUpperCase()}
+              {label[0]?.toUpperCase()}
             </div>
-            <span className="truncate max-w-[8rem]">{name}</span>
+            <span className="truncate max-w-[8rem]">{label}</span>
             {!isHermes && (
               <span
                 onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClose(name) }}
@@ -1020,6 +1041,21 @@ export function Chat() {
   const isHermes = activeAgent === HERMES
   const agentNames = new Set([HERMES, 'mother', ...specialists.map(a => a.name)])
 
+  // Lookup map: agent name → display info for personable UI labels
+  const agentDisplayInfo = useMemo(() => {
+    const m = new Map<string, { displayName: string; title: string }>()
+    for (const a of specialists) {
+      m.set(a.name, {
+        displayName: a.display_name || a.name,
+        title: a.title || '',
+      })
+    }
+    // Built-in agents get friendly defaults
+    m.set(HERMES, { displayName: 'Hermes', title: 'Orchestrator' })
+    m.set('mother', { displayName: 'Mother', title: 'Agent Builder' })
+    return m
+  }, [specialists])
+
   const mentionAgents = mentionOpen
     ? [...agentNames]
         .filter(n => n.toLowerCase().includes(mentionQuery.toLowerCase()))
@@ -1043,6 +1079,7 @@ export function Chat() {
             activeAgent={activeAgent}
             onSelect={switchToAgent}
             onClose={closeTab}
+            displayInfo={agentDisplayInfo}
           />
         </div>
         <div className="flex items-center gap-1 pl-2 pb-1.5 flex-shrink-0">
@@ -1143,7 +1180,7 @@ export function Chat() {
 
           return (
           <div key={i} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && <AgentAvatar name={activeAgent} />}
+            {msg.role === 'assistant' && <AgentAvatar name={activeAgent} displayName={agentDisplayInfo.get(activeAgent)?.displayName} />}
             {msg.role === 'user' ? (
               <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
                 {msg.content}
@@ -1275,7 +1312,7 @@ export function Chat() {
         {!isHermes && handoffFrom && messages.length === 0 && loaded && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground px-1 py-2">
             <span className="text-emerald-400">✦</span>
-            <span>Hermes connected you. Your messages go directly to <span className="font-medium text-foreground">{activeAgent}</span>.</span>
+            <span>Hermes connected you. Your messages go directly to <span className="font-medium text-foreground">{agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}</span>.</span>
           </div>
         )}
 
@@ -1307,6 +1344,7 @@ export function Chat() {
                   selectedIndex={mentionIndex}
                   onSelect={selectMention}
                   onHover={setMentionIndex}
+                  displayInfo={agentDisplayInfo}
                 />
               </div>
             )}
@@ -1316,7 +1354,7 @@ export function Chat() {
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={isHermes ? 'Tell Hermes what you need…' : `Message ${activeAgent}…`}
+              placeholder={isHermes ? 'Tell Hermes what you need…' : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}…`}
               disabled={sending}
               className={`w-full px-4 py-2.5 rounded-xl bg-background border text-sm focus:outline-none disabled:opacity-50 resize-none overflow-y-auto transition-colors ${isHermes ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}`}
               style={{ maxHeight: '144px' }}

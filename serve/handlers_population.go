@@ -534,6 +534,8 @@ func (s *Server) restoreComposedAgents() {
 
 		agentDef := &dsl.Agent{
 			Name:        a.Name,
+			DisplayName: a.DisplayName,
+			Title:       a.Title,
 			Model:       a.Model,
 			System:      system,
 			Tools:       toolNames,
