@@ -1090,18 +1090,18 @@ func (s *Server) handleGetMCPServerConfig(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Check which env keys have saved settings.
+	// Check which env keys have saved settings and return masked values.
 	existing := make(map[string]string)
 	if settings, err := s.store.ListSettings(); err == nil {
-		settingsMap := make(map[string]bool)
+		settingsMap := make(map[string]Setting)
 		for _, st := range settings {
-			settingsMap[st.Key] = true
+			settingsMap[st.Key] = st
 		}
 		for _, key := range envKeys {
-			if settingsMap[key] {
-				existing[key] = "configured"
-			} else if os.Getenv(key) != "" {
-				existing[key] = "configured"
+			if st, ok := settingsMap[key]; ok {
+				existing[key] = maskValue(st.Value, st.Sensitive)
+			} else if val := os.Getenv(key); val != "" {
+				existing[key] = maskValue(val, true)
 			}
 		}
 	}
@@ -1563,6 +1563,18 @@ func (s *Server) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Helpers ---
+
+// maskValue returns a partially masked string for display.
+// Sensitive values show first 3 chars + "***", non-sensitive show the full value.
+func maskValue(value string, sensitive bool) string {
+	if !sensitive {
+		return value
+	}
+	if len(value) <= 4 {
+		return "****"
+	}
+	return value[:3] + "****"
+}
 
 func processToResponse(p *vega.Process) ProcessResponse {
 	agentName := ""

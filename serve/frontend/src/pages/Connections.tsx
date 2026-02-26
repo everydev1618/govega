@@ -748,119 +748,60 @@ function ServerCard({
   onDuplicateCancel: () => void
   duplicateLoading: boolean
 }) {
+  const anyBusy = editing || refreshing || disconnecting || duplicating
   return (
     <div className={`p-4 rounded-lg bg-card border space-y-3 ${editing ? 'border-indigo-500/30' : 'border-border'}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h4 className="font-semibold">{server.name}</h4>
-          <span className="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400">connected</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onEdit}
-            disabled={editing || refreshing || disconnecting || duplicating}
-            className="text-xs px-3 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
-            title="Edit server configuration"
-          >
-            Edit
-          </button>
-          <button
-            onClick={onDuplicate}
-            disabled={editing || refreshing || disconnecting || duplicating}
-            className="text-xs px-3 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
-            title="Duplicate this server with a new name"
-          >
-            Duplicate
-          </button>
-          <button
-            onClick={onRefresh}
-            disabled={refreshing || disconnecting || editing}
-            className="text-xs px-3 py-1 rounded bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-400 font-medium disabled:opacity-50 transition-colors"
-            title="Reconnect server and re-discover tools"
-          >
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
-          <button
-            onClick={onDisconnect}
-            disabled={disconnecting || refreshing || editing}
-            className="text-xs px-3 py-1 rounded bg-red-900/40 hover:bg-red-900/60 text-red-400 font-medium disabled:opacity-50 transition-colors"
-          >
-            {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-          </button>
-        </div>
+      <div className="flex items-center gap-2">
+        <h4 className="font-semibold">{server.name}</h4>
+        <span className="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400">connected</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          onClick={onEdit}
+          disabled={anyBusy}
+          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+        >
+          Edit
+        </button>
+        <button
+          onClick={onDuplicate}
+          disabled={anyBusy}
+          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+        >
+          Duplicate
+        </button>
+        <button
+          onClick={onRefresh}
+          disabled={anyBusy}
+          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-muted-foreground font-medium disabled:opacity-50 transition-colors"
+        >
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
+        <button
+          onClick={onDisconnect}
+          disabled={anyBusy}
+          className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-red-400 font-medium disabled:opacity-50 transition-colors"
+        >
+          {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+        </button>
       </div>
 
       {/* Edit form */}
       {editing && editConfig && (
         <div className="space-y-3 pt-1">
-          {/* Custom server fields (non-registry) */}
-          {!editConfig.is_registry && (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Transport</label>
-                  <select
-                    value={editTransport}
-                    onChange={e => onEditTransportChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded bg-background border border-border text-sm"
-                  >
-                    <option value="stdio">stdio</option>
-                    <option value="http">http</option>
-                    <option value="sse">sse</option>
-                  </select>
-                </div>
-              </div>
-              {editTransport === 'stdio' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Command</label>
-                    <input
-                      type="text"
-                      value={editCommand}
-                      onChange={e => onEditCommandChange(e.target.value)}
-                      className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Args (space-separated)</label>
-                    <input
-                      type="text"
-                      value={editArgs}
-                      onChange={e => onEditArgsChange(e.target.value)}
-                      className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">URL</label>
-                  <input
-                    type="text"
-                    value={editURL}
-                    onChange={e => onEditURLChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
-                  />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Env var fields */}
+          {/* Env var fields — the main thing users care about */}
           {editConfig.env_keys && editConfig.env_keys.length > 0 && (
             <div className="space-y-2">
               {editConfig.env_keys.map(key => {
-                const hasExisting = editConfig.existing_settings?.[key]
+                const savedValue = editConfig.existing_settings?.[key]
                 return (
                   <div key={key} className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                       {key}
-                      {hasExisting && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/40 text-green-400">saved</span>
-                      )}
                     </label>
                     <input
                       type="text"
-                      placeholder={hasExisting ? '(using saved value — enter to override)' : `Enter ${key}`}
+                      placeholder={savedValue ? `Current: ${savedValue}` : `Enter ${key}`}
                       value={editEnvValues[key] || ''}
                       onChange={e => onEditEnvChange(key, e.target.value)}
                       className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
@@ -869,6 +810,20 @@ function ServerCard({
                 )
               })}
             </div>
+          )}
+
+          {/* Advanced: transport/command/url — collapsed by default */}
+          {!editConfig.is_registry && (
+            <EditAdvancedSection
+              editTransport={editTransport}
+              onEditTransportChange={onEditTransportChange}
+              editCommand={editCommand}
+              onEditCommandChange={onEditCommandChange}
+              editArgs={editArgs}
+              onEditArgsChange={onEditArgsChange}
+              editURL={editURL}
+              onEditURLChange={onEditURLChange}
+            />
           )}
 
           <div className="flex gap-2 pt-1">
@@ -930,12 +885,6 @@ function ServerCard({
       {/* Normal view (when not editing) */}
       {!editing && !duplicating && (
         <>
-          <div className="text-sm text-muted-foreground space-y-0.5">
-            {server.transport && <div>Transport: {server.transport}</div>}
-            {server.url && <div className="font-mono text-xs truncate">{server.url}</div>}
-            {server.command && <div className="font-mono text-xs">{server.command}</div>}
-          </div>
-
           {server.tools && server.tools.length > 0 && (
             <div>
               <button
@@ -956,6 +905,89 @@ function ServerCard({
             </div>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+function EditAdvancedSection({
+  editTransport,
+  onEditTransportChange,
+  editCommand,
+  onEditCommandChange,
+  editArgs,
+  onEditArgsChange,
+  editURL,
+  onEditURLChange,
+}: {
+  editTransport: string
+  onEditTransportChange: (t: string) => void
+  editCommand: string
+  onEditCommandChange: (c: string) => void
+  editArgs: string
+  onEditArgsChange: (a: string) => void
+  editURL: string
+  onEditURLChange: (u: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {open ? '▾' : '▸'} Advanced
+      </button>
+      {open && (
+        <div className="mt-2 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Transport</label>
+              <select
+                value={editTransport}
+                onChange={e => onEditTransportChange(e.target.value)}
+                className="w-full px-3 py-2 rounded bg-background border border-border text-sm"
+              >
+                <option value="stdio">stdio</option>
+                <option value="http">http</option>
+                <option value="sse">sse</option>
+              </select>
+            </div>
+          </div>
+          {editTransport === 'stdio' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Command</label>
+                <input
+                  type="text"
+                  value={editCommand}
+                  onChange={e => onEditCommandChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Args (space-separated)</label>
+                <input
+                  type="text"
+                  value={editArgs}
+                  onChange={e => onEditArgsChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">URL</label>
+              <input
+                type="text"
+                value={editURL}
+                onChange={e => onEditURLChange(e.target.value)}
+                className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+              />
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
