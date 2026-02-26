@@ -1046,6 +1046,23 @@ export function Chat() {
           />
         </div>
         <div className="flex items-center gap-1 pl-2 pb-1.5 flex-shrink-0">
+          {(() => {
+            const totals = messages.reduce((acc, m) => {
+              if (m.metrics) {
+                acc.cost += m.metrics.cost_usd
+                acc.tokens += m.metrics.input_tokens + m.metrics.output_tokens
+              }
+              return acc
+            }, { cost: 0, tokens: 0 })
+            if (totals.tokens === 0) return null
+            return (
+              <span className="text-[11px] text-muted-foreground/60 font-mono pr-2">
+                {totals.cost >= 0.01 ? `$${totals.cost.toFixed(2)}` : `$${totals.cost.toFixed(4)}`}
+                {' · '}
+                {totals.tokens >= 1000 ? `${(totals.tokens / 1000).toFixed(1)}k` : totals.tokens} tokens
+              </span>
+            )
+          })()}
           <AgentPicker
             agents={specialists}
             activeAgent={activeAgent}
