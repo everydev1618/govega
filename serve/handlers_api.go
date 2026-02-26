@@ -1253,6 +1253,127 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleDuplicateMCPServer(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "server name is required"})
+		return
+	}
+
+	var body struct {
+		NewName string `json:"new_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.NewName == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "new_name is required"})
+		return
+	}
+
+	tools := s.interp.Tools()
+
+	// Check the new name isn't already in use.
+	if tools.MCPServerConnected(body.NewName) || tools.BuiltinServerConnected(body.NewName) {
+		writeJSON(w, http.StatusConflict, ErrorResponse{Error: fmt.Sprintf("server %q already exists", body.NewName)})
+		return
+	}
+
+	// Load persisted config of the source server.
+	sqlStore, ok := s.store.(*SQLiteStore)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
+		return
+	}
+
+	servers, err := sqlStore.ListMCPServers()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
+		return
+	}
+
+	var srcReq ConnectMCPRequest
+	var found bool
+	for _, sc := range servers {
+		if sc.Name == name {
+			if err := json.Unmarshal([]byte(sc.ConfigJSON), &srcReq); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to parse source config"})
+				return
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("server %q not found", name)})
+		return
+	}
+
+	// For registry servers, resolve the actual command/args so the duplicate
+	// works as a standalone custom server (registry lookup uses the name).
+	if entry, ok := mcp.Lookup(name); ok {
+		srcReq.Transport = "stdio"
+		srcReq.Command = entry.Command
+		srcReq.Args = append([]string{}, entry.Args...)
+	}
+
+	// Create the duplicate with the new name.
+	dupReq := srcReq
+	dupReq.Name = body.NewName
+
+	// Build env map from stored settings (env values aren't stored in the config).
+	envMap := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		for _, st := range settings {
+			envMap[st.Key] = st.Value
+		}
+	}
+
+	cfg := mcp.ServerConfig{
+		Name:    dupReq.Name,
+		Command: dupReq.Command,
+		Args:    dupReq.Args,
+		URL:     dupReq.URL,
+		Headers: dupReq.Headers,
+		Env:     envMap,
+	}
+	switch dupReq.Transport {
+	case "http":
+		cfg.Transport = mcp.TransportHTTP
+	case "sse":
+		cfg.Transport = mcp.TransportSSE
+	default:
+		cfg.Transport = mcp.TransportStdio
+	}
+	if dupReq.Timeout > 0 {
+		cfg.Timeout = time.Duration(dupReq.Timeout) * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	if _, err := tools.ConnectMCPServer(ctx, cfg); err != nil {
+		writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
+			Name: dupReq.Name, Connected: false, Error: err.Error(),
+		})
+		return
+	}
+
+	var toolNames []string
+	for _, st := range tools.MCPServerStatuses() {
+		if st.Name == dupReq.Name {
+			toolNames = st.Tools
+			break
+		}
+	}
+
+	s.persistMCPServer(dupReq)
+
+	slog.Info("duplicated MCP server", "source", name, "new", dupReq.Name, "tools", len(toolNames))
+	writeJSON(w, http.StatusOK, ConnectMCPResponse{
+		Name:      dupReq.Name,
+		Connected: true,
+		Tools:     toolNames,
+	})
+}
+
 // persistMCPServer saves the MCP server connect request so it auto-reconnects on restart.
 func (s *Server) persistMCPServer(req ConnectMCPRequest) {
 	sqlStore, ok := s.store.(*SQLiteStore)
@@ -1378,6 +1499,67 @@ func (s *Server) handleDeleteSetting(w http.ResponseWriter, r *http.Request) {
 	s.refreshToolSettings()
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// --- Schedule Handlers ---
+
+func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
+	jobs := s.scheduler.ListJobs()
+	writeJSON(w, http.StatusOK, jobs)
+}
+
+func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "schedule name is required"})
+		return
+	}
+	if err := s.scheduler.RemoveJob(name); err != nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "schedule name is required"})
+		return
+	}
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	// Find the existing job, update enabled state, and re-add it.
+	jobs := s.scheduler.ListJobs()
+	var found bool
+	for _, job := range jobs {
+		if job.Name == name {
+			found = true
+			job.Enabled = req.Enabled
+			if err := s.scheduler.RemoveJob(name); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+				return
+			}
+			if err := s.scheduler.AddJob(job); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+				return
+			}
+			break
+		}
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("schedule %q not found", name)})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // --- Helpers ---

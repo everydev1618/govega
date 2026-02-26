@@ -327,6 +327,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mcp/servers/{name}/config", s.handleGetMCPServerConfig)
 	mux.HandleFunc("PUT /api/mcp/servers/{name}", s.handleUpdateMCPServer)
 	mux.HandleFunc("POST /api/mcp/servers/{name}/refresh", s.handleRefreshMCPServer)
+	mux.HandleFunc("POST /api/mcp/servers/{name}/duplicate", s.handleDuplicateMCPServer)
 	mux.HandleFunc("DELETE /api/mcp/servers/{name}", s.handleDisconnectMCPServer)
 	mux.HandleFunc("GET /api/stats", s.handleStats)
 	mux.HandleFunc("GET /api/spawn-tree", s.handleSpawnTree)
@@ -359,6 +360,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/files/read", s.handleReadFile)
 	mux.HandleFunc("DELETE /api/files", s.handleDeleteFile)
 	mux.HandleFunc("GET /api/files/metadata", s.handleListFileMetadata)
+
+	// Schedules
+	mux.HandleFunc("GET /api/schedules", s.handleListSchedules)
+	mux.HandleFunc("DELETE /api/schedules/{name}", s.handleDeleteSchedule)
+	mux.HandleFunc("PUT /api/schedules/{name}", s.handleToggleSchedule)
 
 	// Settings
 	mux.HandleFunc("GET /api/settings", s.handleListSettings)

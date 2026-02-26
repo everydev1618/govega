@@ -27,6 +27,9 @@ export function Connections() {
   const [editArgs, setEditArgs] = useState('')
   const [editURL, setEditURL] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
+  const [duplicatingServer, setDuplicatingServer] = useState<string | null>(null)
+  const [duplicateName, setDuplicateName] = useState('')
+  const [duplicating, setDuplicating] = useState(false)
 
   // Expanded tool lists per server.
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
@@ -173,6 +176,36 @@ export function Connections() {
     }
   }
 
+  const handleDuplicateStart = (name: string) => {
+    setDuplicatingServer(name)
+    setDuplicateName(name + '-copy')
+    setError(null)
+  }
+
+  const handleDuplicateCancel = () => {
+    setDuplicatingServer(null)
+    setDuplicateName('')
+  }
+
+  const handleDuplicateSubmit = async () => {
+    if (!duplicatingServer || !duplicateName.trim()) return
+    setDuplicating(true)
+    setError(null)
+    try {
+      const res = await api.duplicateMCPServer(duplicatingServer, duplicateName.trim())
+      if (res.error) {
+        setError(res.error)
+      } else {
+        handleDuplicateCancel()
+        refetchAll()
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to duplicate')
+    } finally {
+      setDuplicating(false)
+    }
+  }
+
   const handleSetupSubmit = () => {
     if (!setupEntry) return
     const env: Record<string, string> = {}
@@ -305,6 +338,13 @@ export function Connections() {
                   onEditSave={handleEditSave}
                   onEditCancel={handleEditCancel}
                   savingEdit={savingEdit}
+                  onDuplicate={() => handleDuplicateStart(server.name)}
+                  duplicating={duplicatingServer === server.name}
+                  duplicateName={duplicatingServer === server.name ? duplicateName : ''}
+                  onDuplicateNameChange={setDuplicateName}
+                  onDuplicateSubmit={handleDuplicateSubmit}
+                  onDuplicateCancel={handleDuplicateCancel}
+                  duplicateLoading={duplicating}
                 />
               ))}
             </div>
@@ -669,6 +709,13 @@ function ServerCard({
   onEditSave,
   onEditCancel,
   savingEdit,
+  onDuplicate,
+  duplicating,
+  duplicateName,
+  onDuplicateNameChange,
+  onDuplicateSubmit,
+  onDuplicateCancel,
+  duplicateLoading,
 }: {
   server: MCPServerResponse
   expanded: boolean
@@ -693,6 +740,13 @@ function ServerCard({
   onEditSave: () => void
   onEditCancel: () => void
   savingEdit: boolean
+  onDuplicate: () => void
+  duplicating: boolean
+  duplicateName: string
+  onDuplicateNameChange: (n: string) => void
+  onDuplicateSubmit: () => void
+  onDuplicateCancel: () => void
+  duplicateLoading: boolean
 }) {
   return (
     <div className={`p-4 rounded-lg bg-card border space-y-3 ${editing ? 'border-indigo-500/30' : 'border-border'}`}>
@@ -704,11 +758,19 @@ function ServerCard({
         <div className="flex items-center gap-2">
           <button
             onClick={onEdit}
-            disabled={editing || refreshing || disconnecting}
+            disabled={editing || refreshing || disconnecting || duplicating}
             className="text-xs px-3 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
             title="Edit server configuration"
           >
             Edit
+          </button>
+          <button
+            onClick={onDuplicate}
+            disabled={editing || refreshing || disconnecting || duplicating}
+            className="text-xs px-3 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+            title="Duplicate this server with a new name"
+          >
+            Duplicate
           </button>
           <button
             onClick={onRefresh}
@@ -828,8 +890,45 @@ function ServerCard({
         </div>
       )}
 
+      {/* Duplicate form */}
+      {duplicating && (
+        <div className="space-y-3 pt-1">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">New server name</label>
+            <input
+              type="text"
+              value={duplicateName}
+              onChange={e => onDuplicateNameChange(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') onDuplicateSubmit(); if (e.key === 'Escape') onDuplicateCancel() }}
+              autoFocus
+              className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+              placeholder="my-server-copy"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Creates a new connection with the same configuration. You can then edit it to use different credentials.
+          </p>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onDuplicateSubmit}
+              disabled={duplicateLoading || !duplicateName.trim()}
+              className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {duplicateLoading ? 'Duplicating...' : 'Duplicate'}
+            </button>
+            <button
+              onClick={onDuplicateCancel}
+              disabled={duplicateLoading}
+              className="px-4 py-2 rounded bg-muted hover:bg-muted/80 text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Normal view (when not editing) */}
-      {!editing && (
+      {!editing && !duplicating && (
         <>
           <div className="text-sm text-muted-foreground space-y-0.5">
             {server.transport && <div>Transport: {server.transport}</div>}
