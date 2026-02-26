@@ -21,6 +21,7 @@ export function Connections() {
   const [refreshing, setRefreshing] = useState<string | null>(null)
   const [editingServer, setEditingServer] = useState<string | null>(null)
   const [editConfig, setEditConfig] = useState<MCPServerConfigResponse | null>(null)
+  const [editName, setEditName] = useState('')
   const [editEnvValues, setEditEnvValues] = useState<Record<string, string>>({})
   const [editTransport, setEditTransport] = useState('stdio')
   const [editCommand, setEditCommand] = useState('')
@@ -91,6 +92,7 @@ export function Connections() {
   const [toggling, setToggling] = useState<string | null>(null)
 
   const handleDisconnect = async (name: string) => {
+    if (!window.confirm(`Delete "${name}"? This will disconnect the server and remove its configuration.`)) return
     setDisconnecting(name)
     try {
       await api.disconnectMCPServer(name)
@@ -138,6 +140,7 @@ export function Connections() {
     try {
       const config = await api.getMCPServerConfig(name)
       setEditConfig(config)
+      setEditName(config.name)
       setEditEnvValues({})
       setEditTransport(config.transport || 'stdio')
       setEditCommand(config.command || '')
@@ -165,7 +168,7 @@ export function Connections() {
         if (v.trim()) env[k] = v.trim()
       }
       const req: ConnectMCPRequest = {
-        name: editConfig.name,
+        name: editName.trim() || editConfig.name,
         env,
         transport: editTransport,
       }
@@ -340,6 +343,8 @@ export function Connections() {
                   onEdit={() => handleEdit(server.name)}
                   editing={editingServer === server.name}
                   editConfig={editingServer === server.name ? editConfig : null}
+                  editName={editName}
+                  onEditNameChange={setEditName}
                   editEnvValues={editEnvValues}
                   onEditEnvChange={(k, v) => setEditEnvValues(prev => ({ ...prev, [k]: v }))}
                   editTransport={editTransport}
@@ -713,6 +718,8 @@ function ServerCard({
   onEdit,
   editing,
   editConfig,
+  editName,
+  onEditNameChange,
   editEnvValues,
   onEditEnvChange,
   editTransport,
@@ -746,6 +753,8 @@ function ServerCard({
   onEdit: () => void
   editing: boolean
   editConfig: MCPServerConfigResponse | null
+  editName: string
+  onEditNameChange: (n: string) => void
   editEnvValues: Record<string, string>
   onEditEnvChange: (key: string, value: string) => void
   editTransport: string
@@ -850,6 +859,18 @@ function ServerCard({
       {/* Edit form */}
       {editing && editConfig && (
         <div className="space-y-3 pt-1">
+          {/* Server name */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Name</label>
+            <input
+              type="text"
+              value={editName}
+              onChange={e => onEditNameChange(e.target.value)}
+              className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
+              placeholder="server-name"
+            />
+          </div>
+
           {/* Env var fields — the main thing users care about */}
           {editConfig.env_keys && editConfig.env_keys.length > 0 && (
             <div className="space-y-2">

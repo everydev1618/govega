@@ -149,6 +149,7 @@ type ComposedAgent struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name,omitempty"`
 	Title       string   `json:"title,omitempty"`
+	Avatar      string   `json:"avatar,omitempty"`
 	Model       string   `json:"model"`
 	Persona     string   `json:"persona,omitempty"`
 	Skills      []string `json:"skills,omitempty"`

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
 import { api, APIError } from '../lib/api'
+import { getAvatar } from '../lib/avatars'
 import type { AgentResponse, ChatEvent, ChatEventMetrics, ToolCallState, FileContentResponse } from '../lib/types'
 
 const HERMES = 'hermes'
@@ -336,10 +337,18 @@ function UserAvatar() {
   )
 }
 
-function AgentAvatar({ name, displayName }: { name: string; displayName?: string }) {
+function AgentAvatar({ name, displayName, avatar, size = 7 }: { name: string; displayName?: string; avatar?: string; size?: number }) {
+  const AvatarSvg = getAvatar(avatar)
+  if (AvatarSvg) {
+    return (
+      <div className={`w-${size} h-${size} rounded-full overflow-hidden flex-shrink-0`}>
+        <AvatarSvg className="w-full h-full" />
+      </div>
+    )
+  }
   const label = displayName || name
   return (
-    <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-semibold">
+    <div className={`w-${size} h-${size} rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-semibold`}>
       {label[0]?.toUpperCase()}
     </div>
   )
@@ -401,9 +410,7 @@ function AgentPicker({
                     activeAgent === a.name ? 'bg-accent/30 text-foreground' : 'text-muted-foreground'
                   }`}
                 >
-                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
-                    {label[0]?.toUpperCase()}
-                  </div>
+                  <AgentAvatar name={a.name} displayName={label} avatar={a.avatar} size={6} />
                   <div className="flex flex-col min-w-0">
                     <span className="truncate font-medium">{label}</span>
                     {a.title && <span className="truncate text-xs text-muted-foreground/70">{a.title}</span>}
@@ -434,7 +441,7 @@ function MentionDropdown({
   selectedIndex: number
   onSelect: (name: string) => void
   onHover: (index: number) => void
-  displayInfo: Map<string, { displayName: string; title: string }>
+  displayInfo: Map<string, { displayName: string; title: string; avatar: string }>
 }) {
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -463,9 +470,7 @@ function MentionDropdown({
               i === selectedIndex ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/30'
             }`}
           >
-            <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-semibold">
-              {label[0]?.toUpperCase()}
-            </div>
+            <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={6} />
             <div className="flex flex-col min-w-0">
               <span className="truncate font-medium">{label}</span>
               {info?.title && <span className="truncate text-xs text-muted-foreground/70">{info.title}</span>}
@@ -488,7 +493,7 @@ function TabBar({
   activeAgent: string
   onSelect: (name: string) => void
   onClose: (name: string) => void
-  displayInfo: Map<string, { displayName: string; title: string }>
+  displayInfo: Map<string, { displayName: string; title: string; avatar: string }>
 }) {
   return (
     <div className="flex">
@@ -511,11 +516,7 @@ function TabBar({
             }`}
             title={info?.title || undefined}
           >
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-semibold ${
-              isHermes ? 'bg-primary/20 text-primary' : 'bg-emerald-500/20 text-emerald-400'
-            }`}>
-              {label[0]?.toUpperCase()}
-            </div>
+            <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={5} />
             <span className="truncate max-w-[8rem]">{label}</span>
             {!isHermes && (
               <span
@@ -1043,16 +1044,17 @@ export function Chat() {
 
   // Lookup map: agent name → display info for personable UI labels
   const agentDisplayInfo = useMemo(() => {
-    const m = new Map<string, { displayName: string; title: string }>()
+    const m = new Map<string, { displayName: string; title: string; avatar: string }>()
     for (const a of specialists) {
       m.set(a.name, {
         displayName: a.display_name || a.name,
         title: a.title || '',
+        avatar: a.avatar || '',
       })
     }
     // Built-in agents get friendly defaults
-    m.set(HERMES, { displayName: 'Hermes', title: 'Orchestrator' })
-    m.set('mother', { displayName: 'Mother', title: 'Agent Builder' })
+    m.set(HERMES, { displayName: 'Hermes', title: 'Orchestrator', avatar: 'n2' })
+    m.set('mother', { displayName: 'Mother', title: 'Agent Builder', avatar: 'n6' })
     return m
   }, [specialists])
 
@@ -1180,7 +1182,7 @@ export function Chat() {
 
           return (
           <div key={i} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && <AgentAvatar name={activeAgent} displayName={agentDisplayInfo.get(activeAgent)?.displayName} />}
+            {msg.role === 'assistant' && <AgentAvatar name={activeAgent} displayName={agentDisplayInfo.get(activeAgent)?.displayName} avatar={agentDisplayInfo.get(activeAgent)?.avatar} />}
             {msg.role === 'user' ? (
               <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
                 {msg.content}

@@ -93,6 +93,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			Name:        name,
 			DisplayName: def.DisplayName,
 			Title:       def.Title,
+			Avatar:      def.Avatar,
 			Model:       model,
 			System:      def.System,
 			Tools:       def.Tools,
@@ -745,28 +746,19 @@ func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) 
 
 	// Check registry first.
 	if entry, ok := mcp.Lookup(req.Name); ok {
-		// Save env values as sensitive settings.
+		// Save env values as sensitive settings (namespaced per server).
 		for key, val := range req.Env {
 			if val != "" {
-				if err := s.store.UpsertSetting(Setting{Key: key, Value: val, Sensitive: true}); err != nil {
+				if err := s.store.UpsertSetting(Setting{Key: mcpSettingKey(req.Name, key), Value: val, Sensitive: true}); err != nil {
 					slog.Error("failed to save MCP env setting", "key", key, "error", err)
 				}
 			}
 		}
 		s.refreshToolSettings()
 
-		// Build env map: merge stored settings + request env.
-		envMap := make(map[string]string)
-		if settings, err := s.store.ListSettings(); err == nil {
-			for _, st := range settings {
-				envMap[st.Key] = st.Value
-			}
-		}
-		for k, v := range req.Env {
-			if v != "" {
-				envMap[k] = v
-			}
-		}
+		// Build env map from per-server settings + request env.
+		envMap := s.buildMCPEnvMap(req.Name, req.Env)
+
 
 		// If this registry entry has a native Go implementation, use it
 		// instead of spawning an external process.
@@ -825,10 +817,10 @@ func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) 
 			cfg.Timeout = time.Duration(req.Timeout) * time.Second
 		}
 
-		// Save any env values as sensitive settings.
+		// Save any env values as sensitive settings (namespaced per server).
 		for key, val := range req.Env {
 			if val != "" {
-				if err := s.store.UpsertSetting(Setting{Key: key, Value: val, Sensitive: true}); err != nil {
+				if err := s.store.UpsertSetting(Setting{Key: mcpSettingKey(req.Name, key), Value: val, Sensitive: true}); err != nil {
 					slog.Error("failed to save MCP env setting", "key", key, "error", err)
 				}
 			}
@@ -1107,7 +1099,8 @@ func (s *Server) handleGetMCPServerConfig(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Check which env keys have saved settings and return masked values.
+	// Check which env keys have saved settings and return values.
+	// Look up per-server namespaced keys first, fall back to bare keys for backward compat.
 	existing := make(map[string]string)
 	if settings, err := s.store.ListSettings(); err == nil {
 		settingsMap := make(map[string]Setting)
@@ -1115,7 +1108,10 @@ func (s *Server) handleGetMCPServerConfig(w http.ResponseWriter, r *http.Request
 			settingsMap[st.Key] = st
 		}
 		for _, key := range envKeys {
-			if st, ok := settingsMap[key]; ok {
+			nsKey := mcpSettingKey(name, key)
+			if st, ok := settingsMap[nsKey]; ok {
+				existing[key] = st.Value
+			} else if st, ok := settingsMap[key]; ok {
 				existing[key] = st.Value
 			} else if val := os.Getenv(key); val != "" {
 				existing[key] = val
@@ -1149,9 +1145,24 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
 		return
 	}
-	req.Name = name // ensure name matches path
+
+	// Detect rename: the body name may differ from the URL path name.
+	newName := req.Name
+	if newName == "" {
+		newName = name
+	}
+	req.Name = newName
+	renamed := newName != name
 
 	tools := s.interp.Tools()
+
+	// If renaming, check the new name isn't already in use.
+	if renamed {
+		if tools.MCPServerConnected(newName) || tools.BuiltinServerConnected(newName) {
+			writeJSON(w, http.StatusConflict, ErrorResponse{Error: fmt.Sprintf("server %q already exists", newName)})
+			return
+		}
+	}
 
 	// Disconnect existing server.
 	if tools.BuiltinServerConnected(name) {
@@ -1164,59 +1175,79 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Save env values as sensitive settings (same as connect).
+	// If renaming, migrate settings to new namespace and delete old persisted config.
+	if renamed {
+		if settings, err := s.store.ListSettings(); err == nil {
+			for _, st := range settings {
+				for k := range req.Env {
+					oldKey := mcpSettingKey(name, k)
+					if st.Key == oldKey {
+						if err := s.store.UpsertSetting(Setting{Key: mcpSettingKey(newName, k), Value: st.Value, Sensitive: st.Sensitive}); err != nil {
+							slog.Error("failed to migrate MCP env setting", "key", k, "error", err)
+						}
+					}
+				}
+			}
+		}
+		if sqlStore, ok := s.store.(*SQLiteStore); ok {
+			if err := sqlStore.DeleteMCPServer(name); err != nil {
+				slog.Error("update: delete old server config failed", "server", name, "error", err)
+			}
+		}
+	}
+
+	// Save env values as sensitive settings (namespaced per new server name).
 	for key, val := range req.Env {
 		if val != "" {
-			if err := s.store.UpsertSetting(Setting{Key: key, Value: val, Sensitive: true}); err != nil {
+			if err := s.store.UpsertSetting(Setting{Key: mcpSettingKey(newName, key), Value: val, Sensitive: true}); err != nil {
 				slog.Error("failed to save MCP env setting", "key", key, "error", err)
 			}
 		}
 	}
 	s.refreshToolSettings()
 
-	// Build env map from stored settings + request env.
-	envMap := make(map[string]string)
-	if settings, err := s.store.ListSettings(); err == nil {
-		for _, st := range settings {
-			envMap[st.Key] = st.Value
-		}
-	}
-	for k, v := range req.Env {
-		if v != "" {
-			envMap[k] = v
+	// Build env map from per-server settings + request env.
+	envMap := s.buildMCPEnvMap(newName, req.Env)
+
+	// Reconnect.
+	// For registry servers that were renamed, look up the original name.
+	registryLookupName := newName
+	if renamed {
+		if _, ok := mcp.Lookup(name); ok {
+			registryLookupName = name
 		}
 	}
 
-	// Reconnect.
 	var toolNames []string
-	if entry, ok := mcp.Lookup(req.Name); ok {
-		if entry.BuiltinGo && tools.HasBuiltinServer(req.Name) {
+	if entry, ok := mcp.Lookup(registryLookupName); ok {
+		if !renamed && entry.BuiltinGo && tools.HasBuiltinServer(newName) {
 			for k, v := range envMap {
 				os.Setenv(k, v)
 			}
-			if _, err := tools.ConnectBuiltinServer(r.Context(), req.Name); err != nil {
+			if _, err := tools.ConnectBuiltinServer(r.Context(), newName); err != nil {
 				writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
-					Name: req.Name, Connected: false, Error: err.Error(),
+					Name: newName, Connected: false, Error: err.Error(),
 				})
 				return
 			}
 			for _, schema := range tools.Schema() {
-				if strings.HasPrefix(schema.Name, req.Name+"__") {
+				if strings.HasPrefix(schema.Name, newName+"__") {
 					toolNames = append(toolNames, schema.Name)
 				}
 			}
 		} else {
 			cfg := entry.ToServerConfig(envMap)
+			cfg.Name = newName // use the (possibly renamed) name
 			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 			defer cancel()
 			if _, err := tools.ConnectMCPServer(ctx, cfg); err != nil {
 				writeJSON(w, http.StatusBadGateway, ConnectMCPResponse{
-					Name: req.Name, Connected: false, Error: err.Error(),
+					Name: newName, Connected: false, Error: err.Error(),
 				})
 				return
 			}
 			for _, st := range tools.MCPServerStatuses() {
-				if st.Name == req.Name {
+				if st.Name == newName {
 					toolNames = st.Tools
 					break
 				}
@@ -1259,12 +1290,22 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// For renamed registry servers, resolve command/args so the persisted config
+	// is self-contained (registry lookup uses the original name which won't match).
+	if renamed {
+		if entry, ok := mcp.Lookup(name); ok {
+			req.Transport = "stdio"
+			req.Command = entry.Command
+			req.Args = append([]string{}, entry.Args...)
+		}
+	}
+
 	// Persist updated config.
 	s.persistMCPServer(req)
 
-	slog.Info("updated MCP server", "server", name, "tools", len(toolNames))
+	slog.Info("updated MCP server", "server", newName, "tools", len(toolNames))
 	writeJSON(w, http.StatusOK, ConnectMCPResponse{
-		Name:      name,
+		Name:      newName,
 		Connected: true,
 		Tools:     toolNames,
 	})
@@ -1335,11 +1376,28 @@ func (s *Server) handleDuplicateMCPServer(w http.ResponseWriter, r *http.Request
 	dupReq := srcReq
 	dupReq.Name = body.NewName
 
-	// Build env map from stored settings (env values aren't stored in the config).
+	// Copy env settings from source server to duplicate (with new namespace).
 	envMap := make(map[string]string)
 	if settings, err := s.store.ListSettings(); err == nil {
+		settingsMap := make(map[string]Setting)
 		for _, st := range settings {
-			envMap[st.Key] = st.Value
+			settingsMap[st.Key] = st
+		}
+		for k := range dupReq.Env {
+			nsKey := mcpSettingKey(name, k)
+			var val string
+			if st, ok := settingsMap[nsKey]; ok {
+				val = st.Value
+			} else if st, ok := settingsMap[k]; ok {
+				val = st.Value
+			}
+			if val != "" {
+				envMap[k] = val
+				// Save under the new server's namespace.
+				if err := s.store.UpsertSetting(Setting{Key: mcpSettingKey(body.NewName, k), Value: val, Sensitive: true}); err != nil {
+					slog.Error("failed to copy MCP env setting for duplicate", "key", k, "error", err)
+				}
+			}
 		}
 	}
 
@@ -1534,6 +1592,38 @@ func (s *Server) handleToggleMCPServer(w http.ResponseWriter, r *http.Request) {
 		Connected: true,
 		Tools:     toolNames,
 	})
+}
+
+// mcpSettingKey returns a per-server namespaced key for storing MCP env settings.
+// This prevents duplicate servers (which share the same env key names) from clobbering each other.
+func mcpSettingKey(serverName, envKey string) string {
+	return "mcp:" + serverName + ":" + envKey
+}
+
+// buildMCPEnvMap builds an env map for an MCP server by looking up per-server
+// namespaced settings, falling back to bare keys, and merging request overrides.
+func (s *Server) buildMCPEnvMap(serverName string, reqEnv map[string]string) map[string]string {
+	envMap := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		settingsMap := make(map[string]string)
+		for _, st := range settings {
+			settingsMap[st.Key] = st.Value
+		}
+		for k := range reqEnv {
+			nsKey := mcpSettingKey(serverName, k)
+			if val, ok := settingsMap[nsKey]; ok {
+				envMap[k] = val
+			} else if val, ok := settingsMap[k]; ok {
+				envMap[k] = val
+			}
+		}
+	}
+	for k, v := range reqEnv {
+		if v != "" {
+			envMap[k] = v
+		}
+	}
+	return envMap
 }
 
 // persistMCPServer saves the MCP server connect request so it auto-reconnects on restart.
