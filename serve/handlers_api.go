@@ -664,6 +664,21 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 				Transport: "builtin",
 				Tools:     toolNames,
 			})
+			listed[entry.Name] = true
+		}
+	}
+
+	// Include disabled servers from persistence (not connected, but should be visible).
+	if sqlStore, ok := s.store.(*SQLiteStore); ok {
+		if servers, err := sqlStore.ListMCPServers(); err == nil {
+			for _, sc := range servers {
+				if sc.Disabled && !listed[sc.Name] {
+					resp = append(resp, MCPServerResponse{
+						Name:     sc.Name,
+						Disabled: true,
+					})
+				}
+			}
 		}
 	}
 
@@ -1369,6 +1384,151 @@ func (s *Server) handleDuplicateMCPServer(w http.ResponseWriter, r *http.Request
 	slog.Info("duplicated MCP server", "source", name, "new", dupReq.Name, "tools", len(toolNames))
 	writeJSON(w, http.StatusOK, ConnectMCPResponse{
 		Name:      dupReq.Name,
+		Connected: true,
+		Tools:     toolNames,
+	})
+}
+
+func (s *Server) handleToggleMCPServer(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "server name is required"})
+		return
+	}
+
+	var body struct {
+		Disabled bool `json:"disabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	sqlStore, ok := s.store.(*SQLiteStore)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
+		return
+	}
+
+	if err := sqlStore.SetMCPServerDisabled(name, body.Disabled); err != nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	t := s.interp.Tools()
+
+	if body.Disabled {
+		// Disconnect the running server but keep it in persistence.
+		if t.BuiltinServerConnected(name) {
+			t.DisconnectBuiltinServer(name)
+		} else if t.MCPServerConnected(name) {
+			t.DisconnectMCPServer(name)
+		}
+		slog.Info("disabled MCP server", "server", name)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "disabled"})
+		return
+	}
+
+	// Re-enable: reconnect the server.
+	servers, err := sqlStore.ListMCPServers()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
+		return
+	}
+
+	var req ConnectMCPRequest
+	for _, sc := range servers {
+		if sc.Name == name {
+			if err := json.Unmarshal([]byte(sc.ConfigJSON), &req); err != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to parse server config"})
+				return
+			}
+			break
+		}
+	}
+
+	// Build env map from stored settings.
+	envMap := make(map[string]string)
+	if settings, err := s.store.ListSettings(); err == nil {
+		for _, st := range settings {
+			envMap[st.Key] = st.Value
+		}
+	}
+	for k := range req.Env {
+		if val, ok := envMap[k]; ok {
+			req.Env[k] = val
+		}
+	}
+
+	// Reconnect.
+	var toolNames []string
+	if entry, ok := mcp.Lookup(req.Name); ok {
+		if entry.BuiltinGo && t.HasBuiltinServer(req.Name) {
+			for k, v := range envMap {
+				os.Setenv(k, v)
+			}
+			if _, err := t.ConnectBuiltinServer(r.Context(), req.Name); err != nil {
+				writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: err.Error()})
+				return
+			}
+			for _, schema := range t.Schema() {
+				if strings.HasPrefix(schema.Name, req.Name+"__") {
+					toolNames = append(toolNames, schema.Name)
+				}
+			}
+		} else {
+			cfg := entry.ToServerConfig(envMap)
+			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			defer cancel()
+			if _, err := t.ConnectMCPServer(ctx, cfg); err != nil {
+				writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: err.Error()})
+				return
+			}
+			for _, st := range t.MCPServerStatuses() {
+				if st.Name == req.Name {
+					toolNames = st.Tools
+					break
+				}
+			}
+		}
+	} else {
+		// Custom server.
+		cfg := mcp.ServerConfig{
+			Name:    req.Name,
+			Command: req.Command,
+			Args:    req.Args,
+			URL:     req.URL,
+			Headers: req.Headers,
+			Env:     req.Env,
+		}
+		switch req.Transport {
+		case "http":
+			cfg.Transport = mcp.TransportHTTP
+		case "sse":
+			cfg.Transport = mcp.TransportSSE
+		default:
+			cfg.Transport = mcp.TransportStdio
+		}
+		if req.Timeout > 0 {
+			cfg.Timeout = time.Duration(req.Timeout) * time.Second
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		if _, err := t.ConnectMCPServer(ctx, cfg); err != nil {
+			writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: err.Error()})
+			return
+		}
+		for _, st := range t.MCPServerStatuses() {
+			if st.Name == req.Name {
+				toolNames = st.Tools
+				break
+			}
+		}
+	}
+
+	slog.Info("enabled MCP server", "server", name, "tools", len(toolNames))
+	writeJSON(w, http.StatusOK, ConnectMCPResponse{
+		Name:      name,
 		Connected: true,
 		Tools:     toolNames,
 	})

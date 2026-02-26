@@ -68,6 +68,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ new_name: newName }),
     }),
+  toggleMCPServer: (name: string, disabled: boolean) =>
+    fetchAPI<import('./types').ConnectMCPResponse | { status: string }>(`/api/mcp/servers/${encodeURIComponent(name)}/disable`, {
+      method: 'PUT',
+      body: JSON.stringify({ disabled }),
+    }),
   getStats: () => fetchAPI<import('./types').StatsResponse>('/api/stats'),
   getSpawnTree: () => fetchAPI<import('./types').SpawnTreeNode[]>('/api/spawn-tree'),
 

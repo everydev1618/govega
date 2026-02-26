@@ -3,6 +3,7 @@ package serve
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -142,6 +143,7 @@ func (s *SQLiteStore) Init() error {
 	CREATE TABLE IF NOT EXISTS mcp_servers (
 		name       TEXT PRIMARY KEY,
 		config     TEXT NOT NULL DEFAULT '{}',
+		disabled   INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -157,6 +159,9 @@ func (s *SQLiteStore) Init() error {
 
 	// Migrate: add tools column to composed_agents if missing (added after initial release).
 	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN tools TEXT NOT NULL DEFAULT '[]'`)
+
+	// Migrate: add disabled column to mcp_servers if missing.
+	s.db.Exec(`ALTER TABLE mcp_servers ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`)
 
 	return nil
 }
@@ -705,7 +710,7 @@ func (s *SQLiteStore) DeleteMCPServer(name string) error {
 // ListMCPServers returns all persisted MCP server configs.
 func (s *SQLiteStore) ListMCPServers() ([]MCPServerConfig, error) {
 	rows, err := s.db.Query(
-		`SELECT name, config FROM mcp_servers ORDER BY created_at ASC`,
+		`SELECT name, config, disabled FROM mcp_servers ORDER BY created_at ASC`,
 	)
 	if err != nil {
 		return nil, err
@@ -715,12 +720,29 @@ func (s *SQLiteStore) ListMCPServers() ([]MCPServerConfig, error) {
 	var servers []MCPServerConfig
 	for rows.Next() {
 		var sc MCPServerConfig
-		if err := rows.Scan(&sc.Name, &sc.ConfigJSON); err != nil {
+		if err := rows.Scan(&sc.Name, &sc.ConfigJSON, &sc.Disabled); err != nil {
 			return nil, err
 		}
 		servers = append(servers, sc)
 	}
 	return servers, rows.Err()
+}
+
+// SetMCPServerDisabled enables or disables a persisted MCP server.
+func (s *SQLiteStore) SetMCPServerDisabled(name string, disabled bool) error {
+	val := 0
+	if disabled {
+		val = 1
+	}
+	res, err := s.db.Exec(`UPDATE mcp_servers SET disabled = ? WHERE name = ?`, val, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("server %q not found", name)
+	}
+	return nil
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.
