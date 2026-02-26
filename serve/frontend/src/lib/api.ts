@@ -63,6 +63,11 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(req),
     }),
+  duplicateMCPServer: (name: string, newName: string) =>
+    fetchAPI<import('./types').ConnectMCPResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify({ new_name: newName }),
+    }),
   getStats: () => fetchAPI<import('./types').StatsResponse>('/api/stats'),
   getSpawnTree: () => fetchAPI<import('./types').SpawnTreeNode[]>('/api/spawn-tree'),
 
@@ -107,6 +112,16 @@ export const api = {
     }),
   deleteSetting: (key: string) =>
     fetchAPI<{ status: string }>(`/api/settings/${key}`, { method: 'DELETE' }),
+
+  // Schedules
+  getSchedules: () => fetchAPI<import('./types').ScheduledJob[]>('/api/schedules'),
+  deleteSchedule: (name: string) =>
+    fetchAPI<{ status: string }>(`/api/schedules/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  toggleSchedule: (name: string, enabled: boolean) =>
+    fetchAPI<{ status: string }>(`/api/schedules/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
 
   // Agent composition
   createAgent: (req: import('./types').CreateAgentRequest) =>
