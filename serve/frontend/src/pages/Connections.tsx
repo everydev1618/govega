@@ -801,7 +801,7 @@ function ServerCard({
                     </label>
                     <input
                       type="text"
-                      placeholder={savedValue ? `Current: ${savedValue}` : `Enter ${key}`}
+                      placeholder={savedValue || `Enter ${key}`}
                       value={editEnvValues[key] || ''}
                       onChange={e => onEditEnvChange(key, e.target.value)}
                       className="w-full px-3 py-2 rounded bg-background border border-border text-sm font-mono"
