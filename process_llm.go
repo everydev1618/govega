@@ -217,6 +217,22 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 	}
 
 	var fullResponse string
+	var totalInputTokens, totalOutputTokens int
+	var totalCacheCreationTokens, totalCacheReadTokens int
+
+	// Update process metrics when the function returns.
+	defer func() {
+		costUSD := llm.CalculateCost(p.Agent.Model, totalInputTokens, totalOutputTokens,
+			totalCacheCreationTokens, totalCacheReadTokens)
+		p.mu.Lock()
+		p.metrics.InputTokens += totalInputTokens
+		p.metrics.OutputTokens += totalOutputTokens
+		p.metrics.CacheCreationInputTokens += totalCacheCreationTokens
+		p.metrics.CacheReadInputTokens += totalCacheReadTokens
+		p.metrics.CostUSD += costUSD
+		p.mu.Unlock()
+	}()
+
 	maxIterations := DefaultMaxIterations
 	if p.Agent.MaxIterations > 0 {
 		maxIterations = p.Agent.MaxIterations
@@ -245,6 +261,12 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 			}
 
 			switch ev.Type {
+			case llm.StreamEventMessageStart:
+				totalInputTokens += ev.InputTokens
+				totalCacheCreationTokens += ev.CacheCreationInputTokens
+				totalCacheReadTokens += ev.CacheReadInputTokens
+			case llm.StreamEventMessageEnd:
+				totalOutputTokens += ev.OutputTokens
 			case llm.StreamEventContentDelta:
 				if ev.Delta != "" {
 					events <- ChatEvent{Type: ChatEventTextDelta, Delta: ev.Delta}
