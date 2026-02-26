@@ -527,7 +527,7 @@ function TabBar({
             <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={5} />
             <div className="flex flex-col items-start min-w-0">
               <span className="truncate max-w-[8rem]">{label}</span>
-              {active && info?.title && (
+              {info?.title && (
                 <span className="truncate max-w-[8rem] text-[10px] font-normal text-muted-foreground leading-tight">{info.title}</span>
               )}
             </div>
