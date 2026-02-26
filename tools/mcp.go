@@ -214,6 +214,9 @@ func (t *Tools) registerMCPTool(client *mcp.Client, mcpTool mcp.MCPTool) {
 
 	// Create executor that calls the MCP tool
 	fn := func(ctx context.Context, args map[string]any) (string, error) {
+		if client.Name() == "slack" {
+			convertSlackArgs(args)
+		}
 		return client.CallTool(ctx, mcpTool.Name, args)
 	}
 
