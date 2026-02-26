@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -548,7 +549,17 @@ func (s *Server) autoConnectPersistedServers(ctx context.Context) {
 		}
 
 		// Fill in env values from per-server namespaced settings, falling back to bare keys.
+		nsPrefix := "mcp:" + sc.Name + ":"
+		for fullKey, val := range allSettings {
+			if strings.HasPrefix(fullKey, nsPrefix) {
+				bareKey := fullKey[len(nsPrefix):]
+				req.Env[bareKey] = val
+			}
+		}
 		for k := range req.Env {
+			if req.Env[k] != "" {
+				continue
+			}
 			nsKey := mcpSettingKey(sc.Name, k)
 			if val, ok := allSettings[nsKey]; ok {
 				req.Env[k] = val

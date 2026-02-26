@@ -1653,7 +1653,22 @@ func (s *Server) buildMCPEnvMap(serverName string, reqEnv map[string]string) map
 		for _, st := range settings {
 			settingsMap[st.Key] = st.Value
 		}
+
+		// First, pick up any namespaced settings for this server (mcp:<name>:<key>).
+		// This handles cases where reqEnv is empty but settings exist.
+		nsPrefix := "mcp:" + serverName + ":"
+		for fullKey, val := range settingsMap {
+			if strings.HasPrefix(fullKey, nsPrefix) {
+				bareKey := fullKey[len(nsPrefix):]
+				envMap[bareKey] = val
+			}
+		}
+
+		// Then look up explicitly requested keys (from persisted config / registry / request).
 		for k := range reqEnv {
+			if _, already := envMap[k]; already {
+				continue
+			}
 			nsKey := mcpSettingKey(serverName, k)
 			if val, ok := settingsMap[nsKey]; ok {
 				envMap[k] = val
@@ -1662,6 +1677,7 @@ func (s *Server) buildMCPEnvMap(serverName string, reqEnv map[string]string) map
 			}
 		}
 	}
+	// Request values override stored settings.
 	for k, v := range reqEnv {
 		if v != "" {
 			envMap[k] = v
