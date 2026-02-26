@@ -249,6 +249,16 @@ export interface ConnectMCPResponse {
   error?: string
 }
 
+// --- Schedule Types ---
+
+export interface ScheduledJob {
+  name: string
+  cron: string
+  agent: string
+  message: string
+  enabled: boolean
+}
+
 // --- Streaming Chat Types ---
 
 export interface ChatEventMetrics {

@@ -15,6 +15,7 @@ import { Population } from './pages/Population'
 import { Chat } from './pages/Chat'
 import { Tasks } from './pages/Tasks'
 import { Files } from './pages/Files'
+import { Schedules } from './pages/Schedules'
 import { Settings } from './pages/Settings'
 import './index.css'
 
@@ -36,6 +37,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="connections" element={<Connections />} />
           <Route path="mcp" element={<MCPServers />} />
           <Route path="workflows" element={<WorkflowLauncher />} />
+          <Route path="schedules" element={<Schedules />} />
           <Route path="files" element={<Files />} />
           <Route path="costs" element={<CostDashboard />} />
           <Route path="settings" element={<Settings />} />

@@ -9,6 +9,7 @@ const secondaryNav = [
   { to: '/overview', label: 'Overview' },
   { to: '/population', label: 'Population' },
   { to: '/workflows', label: 'Workflows' },
+  { to: '/schedules', label: 'Schedules' },
   { to: '/tasks', label: 'Tasks' },
   { to: '/files', label: 'Files' },
   { to: '/events', label: 'Events' },
