@@ -1196,6 +1196,33 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Load persisted config to get all known env keys (the request only has changed values).
+	envKeySet := make(map[string]bool)
+	if sqlStore, ok := s.store.(*SQLiteStore); ok {
+		if servers, err := sqlStore.ListMCPServers(); err == nil {
+			for _, sc := range servers {
+				if sc.Name == name {
+					var persisted ConnectMCPRequest
+					if err := json.Unmarshal([]byte(sc.ConfigJSON), &persisted); err == nil {
+						for k := range persisted.Env {
+							envKeySet[k] = true
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+	// Also include registry env keys if applicable.
+	if entry, ok := mcp.Lookup(name); ok {
+		for _, k := range entry.RequiredEnv {
+			envKeySet[k] = true
+		}
+		for _, k := range entry.OptionalEnv {
+			envKeySet[k] = true
+		}
+	}
+
 	// Save env values as sensitive settings (namespaced per new server name).
 	for key, val := range req.Env {
 		if val != "" {
@@ -1206,8 +1233,15 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshToolSettings()
 
-	// Build env map from per-server settings + request env.
-	envMap := s.buildMCPEnvMap(newName, req.Env)
+	// Build env map: start with all known env keys from persisted config + registry, then overlay request values.
+	allEnvKeys := make(map[string]string)
+	for k := range envKeySet {
+		allEnvKeys[k] = ""
+	}
+	for k, v := range req.Env {
+		allEnvKeys[k] = v
+	}
+	envMap := s.buildMCPEnvMap(newName, allEnvKeys)
 
 	// Reconnect.
 	// For registry servers that were renamed, look up the original name.
@@ -1297,6 +1331,16 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 			req.Transport = "stdio"
 			req.Command = entry.Command
 			req.Args = append([]string{}, entry.Args...)
+		}
+	}
+
+	// Ensure all known env keys are in req.Env before persisting (persistMCPServer strips values but keeps keys).
+	if req.Env == nil {
+		req.Env = make(map[string]string)
+	}
+	for k := range envKeySet {
+		if _, ok := req.Env[k]; !ok {
+			req.Env[k] = ""
 		}
 	}
 
