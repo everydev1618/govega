@@ -337,18 +337,26 @@ function UserAvatar() {
   )
 }
 
+const avatarSizeClasses: Record<number, string> = {
+  5: 'w-5 h-5',
+  6: 'w-6 h-6',
+  7: 'w-7 h-7',
+  12: 'w-12 h-12',
+}
+
 function AgentAvatar({ name, displayName, avatar, size = 7 }: { name: string; displayName?: string; avatar?: string; size?: number }) {
+  const sizeClass = avatarSizeClasses[size!] || 'w-7 h-7'
   const AvatarSvg = getAvatar(avatar)
   if (AvatarSvg) {
     return (
-      <div className={`w-${size} h-${size} rounded-full overflow-hidden flex-shrink-0`}>
+      <div className={`${sizeClass} rounded-full overflow-hidden flex-shrink-0`}>
         <AvatarSvg className="w-full h-full" />
       </div>
     )
   }
   const label = displayName || name
   return (
-    <div className={`w-${size} h-${size} rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 text-xs font-semibold`}>
+    <div className={`${sizeClass} rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 ${size === 12 ? 'text-lg' : 'text-xs'} font-semibold`}>
       {label[0]?.toUpperCase()}
     </div>
   )
@@ -517,7 +525,12 @@ function TabBar({
             title={info?.title || undefined}
           >
             <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={5} />
-            <span className="truncate max-w-[8rem]">{label}</span>
+            <div className="flex flex-col items-start min-w-0">
+              <span className="truncate max-w-[8rem]">{label}</span>
+              {active && info?.title && (
+                <span className="truncate max-w-[8rem] text-[10px] font-normal text-muted-foreground leading-tight">{info.title}</span>
+              )}
+            </div>
             {!isHermes && (
               <span
                 onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClose(name) }}
@@ -1040,6 +1053,7 @@ export function Chat() {
   }
 
   const isHermes = activeAgent === HERMES
+  const activeAgentData = specialists.find(a => a.name === activeAgent)
   const agentNames = new Set([HERMES, 'mother', ...specialists.map(a => a.name)])
 
   // Lookup map: agent name → display info for personable UI labels
@@ -1310,11 +1324,62 @@ export function Chat() {
           )
         })}
 
-        {/* Handoff notice — shown at top of specialist conversation */}
-        {!isHermes && handoffFrom && messages.length === 0 && loaded && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground px-1 py-2">
-            <span className="text-emerald-400">✦</span>
-            <span>Hermes connected you. Your messages go directly to <span className="font-medium text-foreground">{agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}</span>.</span>
+        {/* Specialist empty state — show what this agent can do */}
+        {!isHermes && messages.length === 0 && loaded && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center space-y-5 max-w-sm">
+              <div className="flex justify-center">
+                <AgentAvatar name={activeAgent} displayName={agentDisplayInfo.get(activeAgent)?.displayName} avatar={agentDisplayInfo.get(activeAgent)?.avatar} size={12} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}
+                </h3>
+                {agentDisplayInfo.get(activeAgent)?.title && (
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {agentDisplayInfo.get(activeAgent)?.title}
+                  </p>
+                )}
+              </div>
+
+              {/* Tools this agent has */}
+              {activeAgentData?.tools && activeAgentData.tools.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Tools</p>
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {activeAgentData.tools.map(tool => (
+                      <span key={tool} className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-mono">
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Team members if this is a composed agent */}
+              {activeAgentData?.team && activeAgentData.team.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Team</p>
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {activeAgentData.team.map(member => (
+                      <button
+                        key={member}
+                        onClick={() => switchToAgent(member)}
+                        className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
+                      >
+                        {agentDisplayInfo.get(member)?.displayName || member}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {handoffFrom && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="text-emerald-400">✦</span> Hermes connected you here
+                </p>
+              )}
+            </div>
           </div>
         )}
 
