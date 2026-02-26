@@ -189,7 +189,17 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 				}
 			}
 			return i.SendToAgent(ctx, agentName, message)
-		}, def.Team)
+		}, func(ctx context.Context) []string {
+			proc := vega.ProcessFromContext(ctx)
+			if proc != nil && proc.Agent != nil {
+				i.mu.RLock()
+				defer i.mu.RUnlock()
+				if def, ok := i.doc.Agents[proc.Agent.Name]; ok {
+					return def.Team
+				}
+			}
+			return nil
+		})
 
 		bbEnabled := def.Delegation != nil && def.Delegation.Blackboard
 		descs := make(map[string]string, len(def.Team))

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/govega/tools"
 )
@@ -164,7 +165,15 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			if len(team) > 0 {
 				RegisterDelegateTool(interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 					return interp.SendToAgent(ctx, agent, message)
-				}, team)
+				}, func(ctx context.Context) []string {
+					proc := vega.ProcessFromContext(ctx)
+					if proc != nil && proc.Agent != nil {
+						if def, ok := interp.Document().Agents[proc.Agent.Name]; ok {
+							return def.Team
+						}
+					}
+					return nil
+				})
 				if !containsStr(agentDef.Tools, "delegate") {
 					agentDef.Tools = append(agentDef.Tools, "delegate")
 				}
@@ -266,7 +275,15 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			if len(merged.Team) > 0 {
 				RegisterDelegateTool(interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
 					return interp.SendToAgent(ctx, agent, message)
-				}, merged.Team)
+				}, func(ctx context.Context) []string {
+					proc := vega.ProcessFromContext(ctx)
+					if proc != nil && proc.Agent != nil {
+						if def, ok := interp.Document().Agents[proc.Agent.Name]; ok {
+							return def.Team
+						}
+					}
+					return nil
+				})
 				if !containsStr(merged.Tools, "delegate") {
 					merged.Tools = append(merged.Tools, "delegate")
 				}
