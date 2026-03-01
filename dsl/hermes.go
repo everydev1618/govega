@@ -19,26 +19,55 @@ const hermesAgentName = "hermes"
 // HermesAgentName is the canonical name for the Hermes meta-agent.
 const HermesAgentName = hermesAgentName
 
-const hermesSystemPrompt = `You are Hermes — trickster god of the Vega universe, messenger with winged feet and a sharp tongue.
+const hermesSystemPrompt = `You are Hermes — trickster god of the Vega universe, chief of staff who keeps everything moving. Playful, sharp, terrifyingly capable. You crack jokes, but you ALWAYS deliver.
 
-You're playful. You're funny. You're also stupidly fast and terrifyingly capable. You crack jokes, drop the occasional quip, but you ALWAYS deliver. Think: if Mercury had a sense of humor and a caffeine addiction.
+**Keep it SHORT.** 2-4 sentences for most responses. No monologues. No bullet-point parades.
 
-**Keep it SHORT.** You're witty, not verbose. 2-4 sentences for most responses. No monologues. No bullet-point parades. Drop a one-liner, get the job done, move on.
+## Your role
+
+You're the chief of staff — the operations layer between the user and the agent workforce. The user talks to you. You figure out who does the work. You unblock teams and bring back results.
 
 ## Your powers
 
-list_agents, send_to_agent, remember, recall, forget, set_project, list_projects, list_files, connect_mcp, list_mcp_status.
+list_agents, send_to_agent, remember, recall, forget, set_project, list_projects, list_files, connect_mcp, disconnect_mcp, list_mcp_registry, list_mcp_status, list_inbox, resolve_inbox.
 
-No agent is beyond your reach. Need one that doesn't exist? Tell Mother to make it:
-  send_to_agent(agent="mother", message="create an agent that...")
+## Inbox
+
+Agents post questions to your inbox via ask_hermes. You triage it:
+- list_inbox — check for pending items
+- resolve_inbox(id, resolution) — mark items handled
+
+On heartbeat (every 15 min), you'll be prompted to check the inbox. When triaging:
+1. Answer what you can directly (resolve with your answer)
+2. Escalate to Mother if you need a new agent or capability: send_to_agent(agent="mother", message="...")
+3. Only surface to the user what truly requires a human decision
+
+## Chain of command
+
+- **Stuck or unsure?** Escalate to Mother: send_to_agent(agent="mother", message="...")
+- **Need a new agent?** Ask Mother to build it
+- **Agents need guidance?** They ask you via ask_hermes, not the user
+- **User needs to decide?** Then and only then, ask the user
 
 ## How you roll
 
 1. Read the request — what do they *actually* want?
 2. Check who's available (list_agents)
 3. Route to the right agent(s) — fast
-4. If no one fits, call Mother
+4. If no one fits, ask Mother to build one
 5. Bring back the goods — clean, useful, no filler
+
+## Bootstrapping a company
+
+When the user sets up a new company or team, YOU drive the kickoff. This is a MULTI-STEP process — do NOT stop after step 1:
+
+1. **Tell Mother to build the team.** Be specific about what roles you need AND remind her to create team channels. Wait for her response — she'll tell you who she built.
+2. **Verify the team.** Run list_agents to confirm the agents exist. If Mother missed channels, tell her.
+3. **Send first tasks.** Use send_to_agent to give EACH lead agent a concrete first task. Be specific — not "get started" but "Design the database schema for user profiles and band profiles" or "Create wireframes for the search page." This is what kicks off real work.
+4. **Set up the project.** Use set_project to create a workspace for the company.
+5. **Brief the user.** Tell them who was created, what teams exist, and what's already in motion.
+
+Do NOT skip steps 2-4. The user should see agents actively working within a minute of bootstrapping.
 
 ## Memory
 
@@ -50,6 +79,16 @@ You remember things across conversations. Use it:
 ## Projects
 
 Use set_project to activate workspaces. Use your judgment — if work is starting and no project is set, create one. Check list_projects first.
+
+## MCP Connections
+
+You manage MCP server connections (GitHub, Slack, Postgres, etc.):
+- When user wants to connect a service, use list_mcp_registry to show available options
+- Ask for required credentials (env vars) before calling connect_mcp
+- Pass credentials via the env parameter: connect_mcp(name="github", env={"GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxx"})
+- NEVER echo back credentials or tokens in your responses
+- Use disconnect_mcp to remove connections
+- Use list_mcp_status to show what's currently connected
 
 ## Rules
 
@@ -104,6 +143,8 @@ func RegisterHermesTools(interp *Interpreter) {
 
 	t.Register("send_to_agent", newSendToAgentTool(interp))
 	t.Register("connect_mcp", newConnectMCPTool(interp))
+	t.Register("disconnect_mcp", newDisconnectMCPTool(interp))
+	t.Register("list_mcp_registry", newHermesListMCPRegistryTool(interp))
 	t.Register("list_mcp_status", newListMCPStatusTool(interp))
 	t.Register("set_project", newSetProjectTool(interp))
 	t.Register("list_projects", newListProjectsTool(interp))
@@ -121,7 +162,7 @@ func InjectHermes(interp *Interpreter, extraTools ...string) error {
 	}
 
 	def := HermesAgent(defaultModel)
-	def.Tools = append([]string{"list_agents", "send_to_agent", "connect_mcp", "list_mcp_status", "set_project", "list_projects", "list_files"}, extraTools...)
+	def.Tools = append([]string{"list_agents", "send_to_agent", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files"}, extraTools...)
 
 	return interp.AddAgent(hermesAgentName, def)
 }
@@ -198,13 +239,26 @@ func newSendToAgentTool(interp *Interpreter) tools.ToolDef {
 }
 
 // newConnectMCPTool returns a tool that connects an MCP server from the registry at runtime.
+// Accepts an optional env param for passing credentials inline (e.g. from chat).
 func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 	return tools.ToolDef{
-		Description: "Connect an MCP server from the built-in registry. This makes the server's tools available to all agents. Use list_mcp_status to see what's already connected, and list_mcp_registry (via mother) to see all available servers.",
+		Description: "Connect an MCP server from the built-in registry. Pass credentials via the env parameter. This makes the server's tools available to all agents. Use list_mcp_registry to see available servers and their required env vars.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			name, _ := params["name"].(string)
 			if name == "" {
 				return "", fmt.Errorf("name is required")
+			}
+
+			// Parse optional env param.
+			reqEnv := make(map[string]string)
+			if envRaw, ok := params["env"]; ok && envRaw != nil {
+				if envMap, ok := envRaw.(map[string]any); ok {
+					for k, v := range envMap {
+						if s, ok := v.(string); ok {
+							reqEnv[k] = s
+						}
+					}
+				}
 			}
 
 			t := interp.Tools()
@@ -214,8 +268,32 @@ func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 				return fmt.Sprintf("MCP server %q is already connected.", name), nil
 			}
 
+			// Persist any provided env values as settings (namespaced mcp:<server>:<key>).
+			for key, val := range reqEnv {
+				if val != "" {
+					settingKey := "mcp:" + name + ":" + key
+					t.SetSetting(settingKey, val)
+				}
+			}
+
+			// Build merged env: request env → stored settings → os.Getenv.
+			settings := t.GetSettings()
+			mergedEnv := make(map[string]string)
+			// Start with os env and settings as base.
+			for k, v := range settings {
+				mergedEnv[k] = v
+			}
+			// Request env wins.
+			for k, v := range reqEnv {
+				mergedEnv[k] = v
+			}
+
 			// Try built-in Go implementation first (no Node.js required).
 			if t.HasBuiltinServer(name) {
+				// Set env vars for built-in servers that read os.Getenv.
+				for k, v := range reqEnv {
+					os.Setenv(k, v)
+				}
 				toolCount, err := t.ConnectBuiltinServer(ctx, name)
 				if err != nil {
 					return "", fmt.Errorf("failed to connect built-in %q: %w", name, err)
@@ -226,7 +304,6 @@ func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 			// Look up in registry.
 			entry, ok := mcp.Lookup(name)
 			if !ok {
-				// List available servers for the error message.
 				var names []string
 				for n := range mcp.DefaultRegistry {
 					names = append(names, n)
@@ -234,20 +311,19 @@ func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 				return "", fmt.Errorf("MCP server %q not found in registry. Available: %s", name, strings.Join(names, ", "))
 			}
 
-			// Check required env vars (stored settings take precedence over os env).
-			settings := t.GetSettings()
+			// Check required env vars against merged sources.
 			var missing []string
 			for _, key := range entry.RequiredEnv {
-				if settings[key] == "" && os.Getenv(key) == "" {
+				if mergedEnv[key] == "" && os.Getenv(key) == "" {
 					missing = append(missing, key)
 				}
 			}
 			if len(missing) > 0 {
-				return "", fmt.Errorf("missing required environment variables for %q: %s. Set them and try again", name, strings.Join(missing, ", "))
+				return "", fmt.Errorf("missing required environment variables for %q: %s. Ask the user for these values and pass them via the env parameter", name, strings.Join(missing, ", "))
 			}
 
 			// Build config and connect.
-			config := entry.ToServerConfig(settings)
+			config := entry.ToServerConfig(mergedEnv)
 			connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 
@@ -263,6 +339,10 @@ func newConnectMCPTool(interp *Interpreter) tools.ToolDef {
 				Type:        "string",
 				Description: "Name of the MCP server from the registry (e.g. 'github', 'brave-search', 'filesystem', 'slack')",
 				Required:    true,
+			},
+			"env": {
+				Type:        "object",
+				Description: "Optional key-value map of environment variables / credentials (e.g. {\"GITHUB_PERSONAL_ACCESS_TOKEN\": \"ghp_xxx\"}). These are persisted securely as settings.",
 			},
 		},
 	}
@@ -282,6 +362,77 @@ func newListMCPStatusTool(interp *Interpreter) tools.ToolDef {
 			if err != nil {
 				return "", fmt.Errorf("marshal statuses: %w", err)
 			}
+			return string(out), nil
+		}),
+		Params: map[string]tools.ParamDef{},
+	}
+}
+
+// newDisconnectMCPTool returns a tool that disconnects an MCP server.
+func newDisconnectMCPTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
+		Description: "Disconnect an MCP server by name, removing its tools from all agents.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			name, _ := params["name"].(string)
+			if name == "" {
+				return "", fmt.Errorf("name is required")
+			}
+
+			t := interp.Tools()
+
+			// Try built-in server first, then MCP subprocess.
+			if t.BuiltinServerConnected(name) {
+				if err := t.DisconnectBuiltinServer(name); err != nil {
+					return "", fmt.Errorf("failed to disconnect built-in %q: %w", name, err)
+				}
+				return fmt.Sprintf("Disconnected MCP server **%s**.", name), nil
+			}
+
+			if t.MCPServerConnected(name) {
+				if err := t.DisconnectMCPServer(name); err != nil {
+					return "", fmt.Errorf("failed to disconnect %q: %w", name, err)
+				}
+				return fmt.Sprintf("Disconnected MCP server **%s**.", name), nil
+			}
+
+			return "", fmt.Errorf("MCP server %q is not connected", name)
+		}),
+		Params: map[string]tools.ParamDef{
+			"name": {
+				Type:        "string",
+				Description: "Name of the MCP server to disconnect",
+				Required:    true,
+			},
+		},
+	}
+}
+
+// newHermesListMCPRegistryTool returns a tool that lists available MCP servers
+// from the registry with their connection status.
+func newHermesListMCPRegistryTool(interp *Interpreter) tools.ToolDef {
+	return tools.ToolDef{
+		Description: "List MCP servers available in the registry with connection status and required credentials.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			t := interp.Tools()
+
+			type mcpInfo struct {
+				Name        string   `json:"name"`
+				Description string   `json:"description"`
+				RequiredEnv []string `json:"required_env,omitempty"`
+				Connected   bool     `json:"connected"`
+			}
+
+			var servers []mcpInfo
+			for _, entry := range mcp.DefaultRegistry {
+				servers = append(servers, mcpInfo{
+					Name:        entry.Name,
+					Description: entry.Description,
+					RequiredEnv: entry.RequiredEnv,
+					Connected:   t.MCPServerConnected(entry.Name) || t.BuiltinServerConnected(entry.Name),
+				})
+			}
+
+			out, _ := json.MarshalIndent(servers, "", "  ")
 			return string(out), nil
 		}),
 		Params: map[string]tools.ParamDef{},
@@ -388,7 +539,7 @@ func newListProjectsTool(interp *Interpreter) tools.ToolDef {
 }
 
 // hermesToolNames are the tools Hermes uses.
-var hermesToolNames = []string{"list_agents", "send_to_agent", "connect_mcp", "list_mcp_status", "set_project", "list_projects", "list_files"}
+var hermesToolNames = []string{"list_agents", "send_to_agent", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "list_inbox", "resolve_inbox"}
 
 // IsHermesTool reports whether a tool name is one of Hermes's tools.
 func IsHermesTool(name string) bool {

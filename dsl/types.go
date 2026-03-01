@@ -3,6 +3,36 @@ package dsl
 
 import "time"
 
+// CompanySibling represents a sibling Vega instance for company switching.
+type CompanySibling struct {
+	Name string `yaml:"name" json:"name"`
+	URL  string `yaml:"url" json:"url"`
+	Icon string `yaml:"icon,omitempty" json:"icon,omitempty"`
+}
+
+// Company represents the company identity for a Vega instance.
+type Company struct {
+	ID          string           `yaml:"id" json:"id"`
+	Name        string           `yaml:"name" json:"name"`
+	LogoURL     string           `yaml:"logo_url,omitempty" json:"logo_url,omitempty"`
+	AccentColor string           `yaml:"accent_color,omitempty" json:"accent_color,omitempty"`
+	Siblings    []CompanySibling `yaml:"siblings,omitempty" json:"siblings,omitempty"`
+}
+
+// AgentTemplate is a portable agent definition for export/import across instances.
+type AgentTemplate struct {
+	Version     string   `json:"version" yaml:"version"`
+	Name        string   `json:"name" yaml:"name"`
+	DisplayName string   `json:"display_name,omitempty" yaml:"display_name,omitempty"`
+	Title       string   `json:"title,omitempty" yaml:"title,omitempty"`
+	Model       string   `json:"model" yaml:"model"`
+	System      string   `json:"system" yaml:"system"`
+	Tools       []string `json:"tools,omitempty" yaml:"tools,omitempty"`
+	Team        []string `json:"team,omitempty" yaml:"team,omitempty"`
+	ExportedBy  string   `json:"exported_by,omitempty" yaml:"exported_by,omitempty"`
+	ExportedAt  string   `json:"exported_at,omitempty" yaml:"exported_at,omitempty"`
+}
+
 // Document represents a parsed .vega.yaml file.
 type Document struct {
 	Name        string              `yaml:"name"`
@@ -11,6 +41,7 @@ type Document struct {
 	Workflows   map[string]*Workflow `yaml:"workflows"`
 	Tools       map[string]*ToolDef `yaml:"tools"`
 	Settings    *Settings           `yaml:"settings"`
+	Company     *Company            `yaml:"company,omitempty"`
 }
 
 // Agent represents an agent definition in the DSL.

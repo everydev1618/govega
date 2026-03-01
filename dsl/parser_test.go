@@ -563,6 +563,86 @@ agents:
 	}
 }
 
+func TestParseCompanyBlock(t *testing.T) {
+	yaml := `
+name: Acme AI Platform
+
+company:
+  id: acme
+  name: Acme Corp
+  logo_url: https://acme.com/logo.png
+  accent_color: "#4F46E5"
+  siblings:
+    - name: Widgets Inc
+      url: https://widgets.vega.app
+      icon: "🔧"
+    - name: Globex
+      url: https://globex.vega.app
+
+agents:
+  assistant:
+    model: claude-sonnet-4-20250514
+    system: You are a helpful assistant.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	if doc.Company == nil {
+		t.Fatal("Document.Company should not be nil")
+	}
+
+	if doc.Company.ID != "acme" {
+		t.Errorf("Company.ID = %q, want %q", doc.Company.ID, "acme")
+	}
+	if doc.Company.Name != "Acme Corp" {
+		t.Errorf("Company.Name = %q, want %q", doc.Company.Name, "Acme Corp")
+	}
+	if doc.Company.LogoURL != "https://acme.com/logo.png" {
+		t.Errorf("Company.LogoURL = %q, want %q", doc.Company.LogoURL, "https://acme.com/logo.png")
+	}
+	if doc.Company.AccentColor != "#4F46E5" {
+		t.Errorf("Company.AccentColor = %q, want %q", doc.Company.AccentColor, "#4F46E5")
+	}
+	if len(doc.Company.Siblings) != 2 {
+		t.Fatalf("len(Company.Siblings) = %d, want 2", len(doc.Company.Siblings))
+	}
+	if doc.Company.Siblings[0].Name != "Widgets Inc" {
+		t.Errorf("Siblings[0].Name = %q, want %q", doc.Company.Siblings[0].Name, "Widgets Inc")
+	}
+	if doc.Company.Siblings[0].URL != "https://widgets.vega.app" {
+		t.Errorf("Siblings[0].URL = %q, want %q", doc.Company.Siblings[0].URL, "https://widgets.vega.app")
+	}
+	if doc.Company.Siblings[0].Icon != "🔧" {
+		t.Errorf("Siblings[0].Icon = %q, want %q", doc.Company.Siblings[0].Icon, "🔧")
+	}
+	if doc.Company.Siblings[1].Name != "Globex" {
+		t.Errorf("Siblings[1].Name = %q, want %q", doc.Company.Siblings[1].Name, "Globex")
+	}
+}
+
+func TestParseWithoutCompany(t *testing.T) {
+	yaml := `
+name: Simple Team
+
+agents:
+  helper:
+    model: claude-sonnet-4-20250514
+    system: You are helpful.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	if doc.Company != nil {
+		t.Error("Document.Company should be nil when no company block is present")
+	}
+}
+
 func TestParseAgentWithBudget(t *testing.T) {
 	yaml := `
 name: Test

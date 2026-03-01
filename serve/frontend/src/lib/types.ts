@@ -253,6 +253,37 @@ export interface ConnectMCPResponse {
   error?: string
 }
 
+// --- Company Types ---
+
+export interface CompanySiblingResponse {
+  name: string
+  url: string
+  icon?: string
+}
+
+export interface CompanyResponse {
+  id?: string
+  name: string
+  logo_url?: string
+  accent_color?: string
+  siblings?: CompanySiblingResponse[]
+}
+
+// --- Agent Template Types ---
+
+export interface AgentTemplateResponse {
+  version: string
+  name: string
+  display_name?: string
+  title?: string
+  model: string
+  system: string
+  tools?: string[]
+  team?: string[]
+  exported_by?: string
+  exported_at?: string
+}
+
 // --- Schedule Types ---
 
 export interface ScheduledJob {

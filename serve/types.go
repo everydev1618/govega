@@ -144,6 +144,101 @@ type ChatStatusResponse struct {
 	Streaming bool `json:"streaming"`
 }
 
+// CompanyResponse is the API representation of company identity.
+type CompanyResponse struct {
+	ID          string                    `json:"id"`
+	Name        string                    `json:"name"`
+	LogoURL     string                    `json:"logo_url,omitempty"`
+	AccentColor string                    `json:"accent_color,omitempty"`
+	Siblings    []CompanySiblingResponse  `json:"siblings,omitempty"`
+}
+
+// CompanySiblingResponse is the API representation of a sibling instance.
+type CompanySiblingResponse struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	Icon string `json:"icon,omitempty"`
+}
+
+// AgentTemplateResponse is the API representation of a portable agent template.
+type AgentTemplateResponse struct {
+	Version     string   `json:"version"`
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name,omitempty"`
+	Title       string   `json:"title,omitempty"`
+	Model       string   `json:"model"`
+	System      string   `json:"system"`
+	Tools       []string `json:"tools,omitempty"`
+	Team        []string `json:"team,omitempty"`
+	ExportedBy  string   `json:"exported_by,omitempty"`
+	ExportedAt  string   `json:"exported_at,omitempty"`
+}
+
+// --- Channel Types ---
+
+// Channel is a Slack-style group conversation space for a team of agents.
+type Channel struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Team        []string  `json:"team"`
+	CreatedBy   string    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// ChannelMessage is a message in a channel, optionally part of a thread.
+type ChannelMessage struct {
+	ID         int64     `json:"id"`
+	ChannelID  string    `json:"channel_id"`
+	ThreadID   *int64    `json:"thread_id,omitempty"`
+	Agent      string    `json:"agent,omitempty"`
+	Role       string    `json:"role"`
+	Content    string    `json:"content"`
+	Metadata   string    `json:"metadata,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	ReplyCount int       `json:"reply_count,omitempty"`
+}
+
+// CreateChannelRequest is the request to create a channel.
+type CreateChannelRequest struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Team        []string `json:"team"`
+}
+
+// ChannelPostRequest is the request to post a message to a channel.
+type ChannelPostRequest struct {
+	Message  string `json:"message"`
+	ThreadID *int64 `json:"thread_id,omitempty"`
+	Agent    string `json:"agent,omitempty"`
+}
+
+// ChannelEvent is an SSE event for channel activity.
+type ChannelEvent struct {
+	Type      string `json:"type"`
+	Channel   string `json:"channel"`
+	MessageID int64  `json:"message_id,omitempty"`
+	ThreadID  *int64 `json:"thread_id,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Content   string `json:"content,omitempty"`
+	Delta     string `json:"delta,omitempty"`
+	Metrics   any    `json:"metrics,omitempty"`
+}
+
+// InboxItem is a message posted to Hermes's inbox by an agent.
+type InboxItem struct {
+	ID         int64      `json:"id"`
+	FromAgent  string     `json:"from_agent"`
+	Subject    string     `json:"subject"`
+	Body       string     `json:"body,omitempty"`
+	Priority   string     `json:"priority"`
+	Status     string     `json:"status"`
+	Resolution string     `json:"resolution,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+}
+
 // ErrorResponse is returned on API errors.
 type ErrorResponse struct {
 	Error   string `json:"error"`

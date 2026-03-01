@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -85,12 +86,36 @@ Examples:
 	fmt.Printf("Loaded: %s (%d agents, %d workflows)\n",
 		doc.Name, len(doc.Agents), len(doc.Workflows))
 
+	// Build company from env vars if set.
+	var company *dsl.Company
+	if id := os.Getenv("VEGA_COMPANY_ID"); id != "" {
+		company = &dsl.Company{ID: id}
+		if v := os.Getenv("VEGA_COMPANY_NAME"); v != "" {
+			company.Name = v
+		}
+		if v := os.Getenv("VEGA_COMPANY_LOGO"); v != "" {
+			company.LogoURL = v
+		}
+		if v := os.Getenv("VEGA_COMPANY_ACCENT"); v != "" {
+			company.AccentColor = v
+		}
+		if v := os.Getenv("VEGA_COMPANY_SIBLINGS"); v != "" {
+			var siblings []dsl.CompanySibling
+			if err := json.Unmarshal([]byte(v), &siblings); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: invalid VEGA_COMPANY_SIBLINGS JSON: %v\n", err)
+			} else {
+				company.Siblings = siblings
+			}
+		}
+	}
+
 	// Create and start server
 	cfg := serve.Config{
 		Addr:          *addr,
 		DBPath:        *dbPath,
 		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		TelegramAgent: os.Getenv("TELEGRAM_AGENT"),
+		Company:       company,
 	}
 
 	srv := serve.New(interp, cfg)

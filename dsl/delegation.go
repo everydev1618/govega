@@ -29,6 +29,7 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 		}
 	}
 	teamSection += "\nDelegate strategically — break complex tasks into pieces and assign them to the right team member. You can delegate multiple times, iterate on their work, and synthesize their outputs into a final result."
+	teamSection += "\n\nPost updates, progress, and decisions to your team channel using `post_to_channel`. The user watches the channel — keep them in the loop."
 	if blackboardEnabled {
 		teamSection += "\n\n## Shared Blackboard\n\nYou and your team share a blackboard for passing structured data between agents. Use these tools:\n"
 		teamSection += "- `bb_write` — Write a key/value pair to the shared blackboard\n"

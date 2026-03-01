@@ -33,6 +33,18 @@ export async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 export const api = {
+  // Company
+  getCompany: () => fetchAPI<import('./types').CompanyResponse>('/api/company'),
+
+  // Agent templates
+  exportAgentTemplate: (name: string) =>
+    fetchAPI<import('./types').AgentTemplateResponse>(`/api/agents/${encodeURIComponent(name)}/template`),
+  importAgentTemplate: (template: import('./types').AgentTemplateResponse) =>
+    fetchAPI<import('./types').CreateAgentResponse>('/api/agents/import', {
+      method: 'POST',
+      body: JSON.stringify(template),
+    }),
+
   getProcesses: () => fetchAPI<import('./types').ProcessResponse[]>('/api/processes'),
   getProcess: (id: string) => fetchAPI<import('./types').ProcessDetailResponse>(`/api/processes/${id}`),
   killProcess: (id: string) => fetchAPI<{ status: string }>(`/api/processes/${id}`, { method: 'DELETE' }),

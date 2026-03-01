@@ -95,8 +95,9 @@ func (as *activeStream) finish() {
 type Config struct {
 	Addr          string
 	DBPath        string
-	TelegramToken string // TELEGRAM_BOT_TOKEN; leave empty to disable
-	TelegramAgent string // TELEGRAM_AGENT; defaults to first agent if empty
+	TelegramToken string       // TELEGRAM_BOT_TOKEN; leave empty to disable
+	TelegramAgent string       // TELEGRAM_AGENT; defaults to first agent if empty
+	Company       *dsl.Company // optional company identity (env var overrides)
 }
 
 // Server is the HTTP server for the Vega dashboard and REST API.
@@ -118,6 +119,9 @@ type Server struct {
 	// requests are dropped rather than queued.
 	extractSem chan struct{}
 
+	// company is the resolved company identity for this instance.
+	company *dsl.Company
+
 	// streams tracks active chat streams keyed by agent name, decoupled
 	// from any particular SSE client connection.
 	streamsMu sync.Mutex
@@ -133,6 +137,17 @@ func New(interp *dsl.Interpreter, cfg Config) *Server {
 		streams:    make(map[string]*activeStream),
 		extractSem: make(chan struct{}, 1),
 	}
+}
+
+// resolveCompany determines the company identity: Config.Company > Document.Company > nil.
+func (s *Server) resolveCompany() *dsl.Company {
+	if s.cfg.Company != nil {
+		return s.cfg.Company
+	}
+	if doc := s.interp.Document(); doc != nil && doc.Company != nil {
+		return doc.Company
+	}
+	return nil
 }
 
 // getExtractLLM returns the lazily-initialized LLM client for memory extraction.
@@ -157,6 +172,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if err := store.Init(); err != nil {
 		return fmt.Errorf("init database: %w", err)
 	}
+
+	// Resolve company identity.
+	s.company = s.resolveCompany()
 
 	// Load settings into tools collection.
 	s.refreshToolSettings()
@@ -244,6 +262,76 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}
 	dsl.RegisterSchedulerTools(s.interp, s.scheduler)
+
+	// Register inbox tools — ask_hermes is available to all agents,
+	// list_inbox and resolve_inbox are already in Hermes's tool list.
+	dsl.RegisterInboxTools(s.interp, &inboxAdapter{store: s.store})
+
+	// Register channel tools — create_channel and post_to_channel.
+	dsl.RegisterChannelTools(s.interp, s.store, func(channelName, agent, content string, msgID int64) {
+		cs := s.getOrCreateChannelStream(channelName)
+		cs.publish(ChannelEvent{
+			Type:      "channel.message",
+			Channel:   channelName,
+			MessageID: msgID,
+			Agent:     agent,
+			Role:      "assistant",
+			Content:   content,
+		})
+	})
+
+	// Wire delegation observer so agent-to-agent messages appear in channels.
+	s.interp.SetDelegationObserver(func(ctx context.Context, from, to, message, response string) {
+		chID, chName, err := s.store.FindChannelForAgents(from, to)
+		if err != nil || chID == "" {
+			return // no shared channel, skip
+		}
+
+		// Insert delegation message as a top-level message from the delegator.
+		msgID, err := s.store.InsertChannelMessage(chID, from, "assistant", message, nil, `{"type":"delegation"}`)
+		if err != nil {
+			slog.Error("delegation observer: insert message", "error", err)
+			return
+		}
+
+		// Insert response as a thread reply from the delegatee.
+		var replyID int64
+		if response != "" && msgID > 0 {
+			replyID, _ = s.store.InsertChannelMessage(chID, to, "assistant", response, &msgID, `{"type":"delegation_response"}`)
+		}
+
+		// Publish SSE events so connected clients see it in real time.
+		cs := s.getOrCreateChannelStream(chName)
+		cs.publish(ChannelEvent{
+			Type:      "channel.message",
+			Channel:   chName,
+			MessageID: msgID,
+			Agent:     from,
+			Role:      "assistant",
+			Content:   message,
+		})
+		if response != "" && msgID > 0 {
+			cs.publish(ChannelEvent{
+				Type:      "channel.thread_reply",
+				Channel:   chName,
+				MessageID: replyID,
+				ThreadID:  &msgID,
+				Agent:     to,
+				Role:      "assistant",
+				Content:   response,
+			})
+		}
+	})
+
+	// Add the hermes-heartbeat schedule if not already persisted.
+	s.scheduler.AddJob(dsl.ScheduledJob{
+		Name:      "hermes-heartbeat",
+		Cron:      "*/15 * * * *",
+		AgentName: "hermes",
+		Message:   "Heartbeat: Check your inbox (list_inbox) for pending questions from agents. Triage and resolve what you can. Only escalate to the user if it truly requires their input.",
+		Enabled:   true,
+	})
+
 	go s.scheduler.Start(ctx)
 
 	// Start Telegram bot if configured (after meta-agents are injected).
@@ -316,6 +404,7 @@ func (s *Server) Start(ctx context.Context) error {
 // registerRoutes adds all API and frontend routes to the mux.
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// REST API
+	mux.HandleFunc("GET /api/company", s.handleGetCompany)
 	mux.HandleFunc("GET /api/processes", s.handleListProcesses)
 	mux.HandleFunc("GET /api/processes/{id}", s.handleGetProcess)
 	mux.HandleFunc("DELETE /api/processes/{id}", s.handleKillProcess)
@@ -344,6 +433,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents", s.handleCreateAgent)
 	mux.HandleFunc("PUT /api/agents/{name}", s.handleUpdateAgent)
 	mux.HandleFunc("DELETE /api/agents/{name}", s.handleDeleteAgent)
+	mux.HandleFunc("GET /api/agents/{name}/template", s.handleExportTemplate)
+	mux.HandleFunc("POST /api/agents/import", s.handleImportTemplate)
 
 	// Chat
 	mux.HandleFunc("GET /api/agents/{name}/chat", s.handleChatHistory)
@@ -368,10 +459,25 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/schedules/{name}", s.handleDeleteSchedule)
 	mux.HandleFunc("PUT /api/schedules/{name}", s.handleToggleSchedule)
 
+	// Inbox
+	mux.HandleFunc("GET /api/inbox", s.handleListInbox)
+
 	// Settings
 	mux.HandleFunc("GET /api/settings", s.handleListSettings)
 	mux.HandleFunc("PUT /api/settings", s.handleUpsertSetting)
 	mux.HandleFunc("DELETE /api/settings/{key}", s.handleDeleteSetting)
+
+	// Channels
+	mux.HandleFunc("GET /api/channels", s.handleListChannels)
+	mux.HandleFunc("POST /api/channels", s.handleCreateChannel)
+	mux.HandleFunc("GET /api/channels/{name}", s.handleGetChannel)
+	mux.HandleFunc("DELETE /api/channels/{name}", s.handleDeleteChannel)
+	mux.HandleFunc("PUT /api/channels/{name}/team", s.handleUpdateChannelTeam)
+	mux.HandleFunc("GET /api/channels/{name}/messages", s.handleListChannelMessages)
+	mux.HandleFunc("GET /api/channels/{name}/messages/{id}/thread", s.handleListThreadMessages)
+	mux.HandleFunc("POST /api/channels/{name}/messages", s.handleChannelPost)
+	mux.HandleFunc("POST /api/channels/{name}/stream", s.handleChannelStream)
+	mux.HandleFunc("GET /api/channels/{name}/stream", s.handleChannelStreamReconnect)
 
 	// SSE
 	mux.HandleFunc("GET /api/events", s.handleSSE)
@@ -677,14 +783,14 @@ func (s *Server) injectMother() {
 		},
 	}
 
-	if err := dsl.InjectMother(s.interp, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules"); err != nil {
+	if err := dsl.InjectMother(s.interp, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules", "create_channel"); err != nil {
 		slog.Warn("failed to inject Mother agent", "error", err)
 	}
 }
 
 // injectHermes adds Hermes, the cosmic orchestrator, to the interpreter.
 func (s *Server) injectHermes() {
-	if err := dsl.InjectHermes(s.interp, "remember", "recall", "forget"); err != nil {
+	if err := dsl.InjectHermes(s.interp, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
 		slog.Warn("failed to inject Hermes agent", "error", err)
 	}
 }
@@ -702,6 +808,42 @@ func (s *Server) refreshToolSettings() {
 		m[st.Key] = st.Value
 	}
 	s.interp.Tools().SetSettings(m)
+}
+
+// inboxAdapter bridges serve.Store to dsl.InboxBackend by converting
+// between serve.InboxItem and dsl.InboxItem types.
+type inboxAdapter struct {
+	store Store
+}
+
+func (a *inboxAdapter) InsertInboxItem(fromAgent, subject, body, priority string) (int64, error) {
+	return a.store.InsertInboxItem(fromAgent, subject, body, priority)
+}
+
+func (a *inboxAdapter) ListInboxItems(status string, limit int) ([]dsl.InboxItem, error) {
+	items, err := a.store.ListInboxItems(status, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]dsl.InboxItem, len(items))
+	for i, item := range items {
+		result[i] = dsl.InboxItem{
+			ID:         item.ID,
+			FromAgent:  item.FromAgent,
+			Subject:    item.Subject,
+			Body:       item.Body,
+			Priority:   item.Priority,
+			Status:     item.Status,
+			Resolution: item.Resolution,
+			CreatedAt:  item.CreatedAt,
+			ResolvedAt: item.ResolvedAt,
+		}
+	}
+	return result, nil
+}
+
+func (a *inboxAdapter) ResolveInboxItem(id int64, resolution string) error {
+	return a.store.ResolveInboxItem(id, resolution)
 }
 
 func truncate(s string, max int) string {
