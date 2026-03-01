@@ -29,6 +29,8 @@ This will delete:
   - All process events and snapshots
   - All workflow runs
   - All scheduled jobs
+  - All channels and channel messages
+  - All inbox items
   - All file metadata
   - All workspace files on disk (~/.vega/workspace/)
 
@@ -80,6 +82,9 @@ Examples:
 		{"Process snapshots", "process_snapshots"},
 		{"Workflow runs", "workflow_runs"},
 		{"Scheduled jobs", "scheduled_jobs"},
+		{"Channel messages", "channel_messages"},
+		{"Channels", "channels"},
+		{"Inbox items", "agent_inbox"},
 		{"File metadata", "workspace_files"},
 	}
 

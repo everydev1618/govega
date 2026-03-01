@@ -1,6 +1,10 @@
 package serve
 
-import "time"
+import (
+	"time"
+
+	"github.com/everydev1618/govega/dsl"
+)
 
 // Store persists events and process snapshots for historical queries.
 type Store interface {
@@ -99,6 +103,48 @@ type Store interface {
 
 	// DeleteSetting removes a setting by key.
 	DeleteSetting(key string) error
+
+	// CreateChannel creates a new channel.
+	CreateChannel(id, name, description, createdBy string, team []string) error
+
+	// GetChannel returns a channel by name.
+	GetChannel(name string) (*Channel, error)
+
+	// GetChannelByName returns minimal channel info for the dsl.ChannelBackend interface.
+	GetChannelByName(name string) (*dsl.ChannelInfo, error)
+
+	// ListChannelsForAgent returns channels where the agent is a team member.
+	ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, error)
+
+	// ListChannels returns all channels.
+	ListChannels() ([]Channel, error)
+
+	// DeleteChannel removes a channel by name.
+	DeleteChannel(name string) error
+
+	// UpdateChannelTeam updates the team members of a channel.
+	UpdateChannelTeam(name string, team []string) error
+
+	// FindChannelForAgents returns the channel where both agents are team members.
+	FindChannelForAgents(agent1, agent2 string) (channelID string, channelName string, err error)
+
+	// InsertInboxItem creates a new inbox item.
+	InsertInboxItem(fromAgent, subject, body, priority string) (int64, error)
+
+	// ListInboxItems returns inbox items filtered by status.
+	ListInboxItems(status string, limit int) ([]InboxItem, error)
+
+	// ResolveInboxItem marks an inbox item as resolved.
+	ResolveInboxItem(id int64, resolution string) error
+
+	// InsertChannelMessage inserts a message into a channel.
+	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error)
+
+	// ListChannelMessages returns top-level messages for a channel with reply counts.
+	ListChannelMessages(channelID string, limit int) ([]ChannelMessage, error)
+
+	// ListThreadMessages returns all replies in a thread.
+	ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error)
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.

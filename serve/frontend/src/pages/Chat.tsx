@@ -505,7 +505,7 @@ function TabBar({
 }) {
   return (
     <div className="flex">
-      {tabs.map(name => {
+      {tabs.map((name, idx) => {
         const active = name === activeAgent
         const isHermes = name === HERMES
         const info = displayInfo.get(name)
@@ -513,37 +513,44 @@ function TabBar({
         const borderColor = active
           ? isHermes ? 'border-primary' : 'border-emerald-500'
           : 'border-transparent'
+        const showDivider = isHermes && tabs.length > 1
         return (
-          <button
-            key={name}
-            onClick={() => onSelect(name)}
-            className={`group flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors flex-shrink-0 ${borderColor} ${
-              active
-                ? 'bg-background text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
-            }`}
-            title={info?.title || undefined}
-          >
-            <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={5} />
-            <div className="flex flex-col items-start min-w-0">
-              <span className="truncate max-w-[8rem]">{label}</span>
-              {info?.title && (
-                <span className="truncate max-w-[8rem] text-[10px] font-normal text-muted-foreground leading-tight">{info.title}</span>
+          <div key={name} className="flex items-stretch">
+            <button
+              onClick={() => onSelect(name)}
+              className={`group flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors flex-shrink-0 ${borderColor} ${
+                active
+                  ? 'bg-background text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+              }`}
+              title={info?.title || undefined}
+            >
+              <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={5} />
+              <div className="flex flex-col items-start min-w-0">
+                <span className="truncate max-w-[8rem]">{label}</span>
+                {info?.title && (
+                  <span className="truncate max-w-[8rem] text-[10px] font-normal text-muted-foreground leading-tight">{info.title}</span>
+                )}
+              </div>
+              {!isHermes && (
+                <span
+                  onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClose(name) }}
+                  className={`ml-0.5 p-0.5 rounded hover:bg-accent transition-colors ${
+                    active ? 'text-muted-foreground hover:text-foreground' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </span>
               )}
-            </div>
-            {!isHermes && (
-              <span
-                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClose(name) }}
-                className={`ml-0.5 p-0.5 rounded hover:bg-accent transition-colors ${
-                  active ? 'text-muted-foreground hover:text-foreground' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </span>
+            </button>
+            {showDivider && (
+              <div className="flex items-center px-1">
+                <div className="w-px h-4 bg-border" />
+              </div>
             )}
-          </button>
+          </div>
         )
       })}
     </div>
@@ -575,6 +582,7 @@ export function Chat() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [showWelcomeTools, setShowWelcomeTools] = useState(false)
   const [loaded, setLoaded] = useState(false)
   // Set when Hermes hands off — shows a "connected via Hermes" notice in the new chat
   const [handoffFrom, setHandoffFrom] = useState<string | null>(null)
@@ -916,6 +924,7 @@ export function Chat() {
       reconnectAbortRef.current = null
     }
     setHandoffFrom(null)
+    setShowWelcomeTools(false)
     setActiveAgent(name)
     // History load handled by the activeAgent useEffect
   }
@@ -1324,53 +1333,118 @@ export function Chat() {
           )
         })}
 
-        {/* Specialist empty state — show what this agent can do */}
-        {!isHermes && messages.length === 0 && loaded && (
+        {/* Specialist empty state — welcome card */}
+        {!isHermes && messages.length === 0 && loaded && (() => {
+          const info = agentDisplayInfo.get(activeAgent)
+          const displayName = info?.displayName || activeAgent
+          const title = info?.title || ''
+          // Derive description from first sentence(s) of system prompt
+          const systemText = activeAgentData?.system || ''
+          const descriptionRaw = systemText.replace(/^you are /i, '').split(/\n/)[0]?.trim() || ''
+          const description = descriptionRaw.length > 200 ? descriptionRaw.slice(0, 200).replace(/\s+\S*$/, '') + '...' : descriptionRaw
+          // Generate example prompts from tool names
+          const examplePrompts: string[] = []
+          const tools = activeAgentData?.tools || []
+          // Try to generate natural prompts from tool patterns
+          for (const tool of tools) {
+            if (examplePrompts.length >= 3) break
+            const name = tool.includes('__') ? tool.split('__').pop()! : tool
+            const parts = name.split('_')
+            const verb = parts[0]
+            const noun = parts.slice(1).join(' ')
+            if (verb === 'list' && noun) {
+              examplePrompts.push(`Show me all ${noun}`)
+            } else if (verb === 'get' && noun) {
+              examplePrompts.push(`Look up a specific ${noun.replace(/s$/, '')}`)
+            } else if (verb === 'create' && noun) {
+              examplePrompts.push(`Help me create a new ${noun.replace(/s$/, '')}`)
+            } else if (verb === 'search' && noun) {
+              examplePrompts.push(`Search for ${noun}`)
+            } else if (verb === 'send' && noun) {
+              examplePrompts.push(`Send a ${noun.replace(/s$/, '')}`)
+            }
+          }
+          // Fallback prompts
+          if (examplePrompts.length === 0) {
+            examplePrompts.push(`What can you help me with?`)
+            if (title) examplePrompts.push(`Tell me about your role as ${title}`)
+          }
+          return (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-5 max-w-sm">
+            <div className="text-center space-y-6 max-w-md px-4">
+              {/* Avatar */}
               <div className="flex justify-center">
-                <AgentAvatar name={activeAgent} displayName={agentDisplayInfo.get(activeAgent)?.displayName} avatar={agentDisplayInfo.get(activeAgent)?.avatar} size={12} />
+                <AgentAvatar name={activeAgent} displayName={info?.displayName} avatar={info?.avatar} size={16} />
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">
-                  {agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}
-                </h3>
-                {agentDisplayInfo.get(activeAgent)?.title && (
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {agentDisplayInfo.get(activeAgent)?.title}
-                  </p>
+
+              {/* Name & title */}
+              <div className="space-y-1">
+                <h2 className="text-xl font-bold text-foreground">{displayName}</h2>
+                {title && (
+                  <p className="text-sm font-medium text-muted-foreground">{title}</p>
                 )}
               </div>
 
-              {/* Tools this agent has */}
-              {activeAgentData?.tools && activeAgentData.tools.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Tools</p>
-                  <div className="flex flex-wrap gap-1.5 justify-center">
-                    {activeAgentData.tools.map(tool => (
-                      <span key={tool} className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-mono">
-                        {tool}
-                      </span>
-                    ))}
-                  </div>
+              {/* Description */}
+              {description && (
+                <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
+                  {description}
+                </p>
+              )}
+
+              {/* Team members */}
+              {activeAgentData?.team && activeAgentData.team.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  <span className="text-xs text-muted-foreground mr-1">Team:</span>
+                  {activeAgentData.team.map(member => (
+                    <button
+                      key={member}
+                      onClick={() => switchToAgent(member)}
+                      className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
+                    >
+                      {agentDisplayInfo.get(member)?.displayName || member}
+                    </button>
+                  ))}
                 </div>
               )}
 
-              {/* Team members if this is a composed agent */}
-              {activeAgentData?.team && activeAgentData.team.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Team</p>
-                  <div className="flex flex-wrap gap-1.5 justify-center">
-                    {activeAgentData.team.map(member => (
-                      <button
-                        key={member}
-                        onClick={() => switchToAgent(member)}
-                        className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
-                      >
-                        {agentDisplayInfo.get(member)?.displayName || member}
-                      </button>
-                    ))}
-                  </div>
+              {/* Example prompts */}
+              <div className="space-y-2 pt-2">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Try asking</p>
+                <div className="flex flex-col gap-2 items-center">
+                  {examplePrompts.map((prompt, i) => (
+                    <button
+                      key={i}
+                      onClick={() => send(prompt)}
+                      className="text-sm px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors max-w-xs"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Collapsible tools */}
+              {tools.length > 0 && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowWelcomeTools(!showWelcomeTools)}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
+                  >
+                    <svg className={`w-3 h-3 transition-transform ${showWelcomeTools ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                    {tools.length} tool{tools.length !== 1 ? 's' : ''} available
+                  </button>
+                  {showWelcomeTools && (
+                    <div className="flex flex-wrap gap-1.5 justify-center mt-2">
+                      {tools.map(tool => (
+                        <span key={tool} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">
+                          {tool}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1381,7 +1455,8 @@ export function Chat() {
               )}
             </div>
           </div>
-        )}
+          )
+        })()}
 
         <div ref={bottomRef} />
 

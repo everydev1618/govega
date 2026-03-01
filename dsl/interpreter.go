@@ -28,6 +28,11 @@ func WithLazySpawn() InterpreterOption {
 	}
 }
 
+// DelegationObserver is called after each agent-to-agent delegation completes.
+// It receives the caller agent name, target agent name, the delegation message,
+// and the response. Implementations should not block.
+type DelegationObserver func(ctx context.Context, fromAgent, toAgent, message, response string)
+
 // Interpreter executes DSL workflows.
 type Interpreter struct {
 	doc               *Document
@@ -37,7 +42,13 @@ type Interpreter struct {
 	skillsLoader      *skills.Loader
 	delegationConfigs map[string]*DelegationDef
 	lazySpawn         bool
+	delegationObserver DelegationObserver
 	mu                sync.RWMutex
+}
+
+// SetDelegationObserver registers a callback that fires after each delegation.
+func (i *Interpreter) SetDelegationObserver(fn DelegationObserver) {
+	i.delegationObserver = fn
 }
 
 // NewInterpreter creates a new interpreter for a document.
@@ -1216,12 +1227,34 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 		if err := stream.Err(); err != nil {
 			return "", err
 		}
-		return stream.Response(), nil
+		resp := stream.Response()
+
+		if i.delegationObserver != nil {
+			callerName := ""
+			if callerProc := vega.ProcessFromContext(ctx); callerProc != nil && callerProc.Agent != nil {
+				callerName = callerProc.Agent.Name
+			}
+			if callerName != "" {
+				go i.delegationObserver(context.Background(), callerName, agentName, message, resp)
+			}
+		}
+
+		return resp, nil
 	}
 
 	response, err := proc.Send(ctx, message)
 	if err != nil {
 		return "", err
+	}
+
+	if i.delegationObserver != nil {
+		callerName := ""
+		if callerProc := vega.ProcessFromContext(ctx); callerProc != nil && callerProc.Agent != nil {
+			callerName = callerProc.Agent.Name
+		}
+		if callerName != "" {
+			go i.delegationObserver(context.Background(), callerName, agentName, message, response)
+		}
 	}
 
 	return response, nil

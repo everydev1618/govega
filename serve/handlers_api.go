@@ -11,10 +11,41 @@ import (
 	"time"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/google/uuid"
 )
+
+// --- Company Handler ---
+
+func (s *Server) handleGetCompany(w http.ResponseWriter, r *http.Request) {
+	if s.company != nil {
+		resp := CompanyResponse{
+			ID:          s.company.ID,
+			Name:        s.company.Name,
+			LogoURL:     s.company.LogoURL,
+			AccentColor: s.company.AccentColor,
+		}
+		for _, sib := range s.company.Siblings {
+			resp.Siblings = append(resp.Siblings, CompanySiblingResponse{
+				Name: sib.Name,
+				URL:  sib.URL,
+				Icon: sib.Icon,
+			})
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	// Fallback: use document name.
+	doc := s.interp.Document()
+	name := "Vega"
+	if doc != nil && doc.Name != "" {
+		name = doc.Name
+	}
+	writeJSON(w, http.StatusOK, CompanyResponse{Name: name})
+}
 
 // --- Process Handlers ---
 
@@ -85,6 +116,10 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]AgentResponse, 0, len(doc.Agents))
 	for name, def := range doc.Agents {
+		// Hide Mother from the API — she's internal, accessed only via Hermes.
+		if name == "mother" {
+			continue
+		}
 		model := def.Model
 		if model == "" {
 			model = defaultModel
@@ -1872,6 +1907,128 @@ func (s *Server) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// --- Agent Template Handlers ---
+
+func (s *Server) handleExportTemplate(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	doc := s.interp.Document()
+
+	agentDef, ok := doc.Agents[name]
+	if !ok {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("agent %q not found", name)})
+		return
+	}
+
+	// Filter out MCP-specific tools (contain "__" separator).
+	var portableTools []string
+	for _, t := range agentDef.Tools {
+		if !strings.Contains(t, "__") {
+			portableTools = append(portableTools, t)
+		}
+	}
+
+	companyName := ""
+	if s.company != nil {
+		companyName = s.company.Name
+	}
+
+	tmpl := AgentTemplateResponse{
+		Version:     "1",
+		Name:        name,
+		DisplayName: agentDef.DisplayName,
+		Title:       agentDef.Title,
+		Model:       agentDef.Model,
+		System:      agentDef.System,
+		Tools:       portableTools,
+		Team:        agentDef.Team,
+		ExportedBy:  companyName,
+		ExportedAt:  time.Now().UTC().Format(time.RFC3339),
+	}
+
+	writeJSON(w, http.StatusOK, tmpl)
+}
+
+func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
+	var tmpl AgentTemplateResponse
+	if err := json.NewDecoder(r.Body).Decode(&tmpl); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+
+	if tmpl.Name == "" || tmpl.Model == "" || tmpl.System == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "name, model, and system are required"})
+		return
+	}
+
+	// Check if agent already exists.
+	doc := s.interp.Document()
+	if _, exists := doc.Agents[tmpl.Name]; exists {
+		writeJSON(w, http.StatusConflict, ErrorResponse{Error: fmt.Sprintf("agent %q already exists", tmpl.Name)})
+		return
+	}
+
+	// Create the agent definition.
+	agentDef := &dsl.Agent{
+		Name:        tmpl.Name,
+		DisplayName: tmpl.DisplayName,
+		Title:       tmpl.Title,
+		Model:       tmpl.Model,
+		System:      tmpl.System,
+		Tools:       tmpl.Tools,
+		Team:        tmpl.Team,
+	}
+
+	s.interp.AddAgent(tmpl.Name, agentDef)
+
+	// Persist as composed agent.
+	if err := s.store.InsertComposedAgent(ComposedAgent{
+		Name:        agentDef.Name,
+		DisplayName: agentDef.DisplayName,
+		Title:       agentDef.Title,
+		Model:       agentDef.Model,
+		System:      agentDef.System,
+		Tools:       agentDef.Tools,
+		Team:        agentDef.Team,
+		CreatedAt:   time.Now(),
+	}); err != nil {
+		slog.Error("failed to persist imported agent", "agent", agentDef.Name, "error", err)
+	}
+
+	s.broker.Publish(BrokerEvent{
+		Type:      "agent.created",
+		Agent:     agentDef.Name,
+		Timestamp: time.Now(),
+	})
+
+	writeJSON(w, http.StatusCreated, CreateAgentResponse{
+		Name:  tmpl.Name,
+		Model: tmpl.Model,
+		Tools: tmpl.Tools,
+	})
+}
+
+// --- Inbox Handler ---
+
+func (s *Server) handleListInbox(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := fmt.Sscanf(l, "%d", &limit); n != 1 || err != nil {
+			limit = 50
+		}
+	}
+
+	items, err := s.store.ListInboxItems(status, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if items == nil {
+		items = []InboxItem{}
+	}
+	writeJSON(w, http.StatusOK, items)
 }
 
 // --- Helpers ---

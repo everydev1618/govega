@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/everydev1618/govega/dsl"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,8 +21,13 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Enable WAL mode for concurrent reads.
+	// Enable WAL mode for concurrent reads and set busy timeout
+	// so concurrent writers wait instead of returning SQLITE_BUSY.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -148,6 +154,43 @@ func (s *SQLiteStore) Init() error {
 		disabled   INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS channels (
+		id          TEXT PRIMARY KEY,
+		name        TEXT NOT NULL UNIQUE,
+		description TEXT DEFAULT '',
+		team        TEXT DEFAULT '[]',
+		created_by  TEXT NOT NULL,
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS channel_messages (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		channel_id  TEXT NOT NULL,
+		thread_id   INTEGER,
+		agent       TEXT DEFAULT '',
+		role        TEXT NOT NULL,
+		content     TEXT NOT NULL,
+		metadata    TEXT DEFAULT '{}',
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_channel_messages_channel ON channel_messages(channel_id, created_at);
+	CREATE INDEX IF NOT EXISTS idx_channel_messages_thread ON channel_messages(thread_id);
+
+	CREATE TABLE IF NOT EXISTS agent_inbox (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_agent  TEXT NOT NULL,
+		subject     TEXT NOT NULL,
+		body        TEXT NOT NULL DEFAULT '',
+		priority    TEXT NOT NULL DEFAULT 'normal',
+		status      TEXT NOT NULL DEFAULT 'pending',
+		resolution  TEXT DEFAULT '',
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		resolved_at DATETIME
+	);
+	CREATE INDEX IF NOT EXISTS idx_agent_inbox_status ON agent_inbox(status, created_at);
 
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
@@ -750,6 +793,305 @@ func (s *SQLiteStore) SetMCPServerDisabled(name string, disabled bool) error {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("server %q not found", name)
+	}
+	return nil
+}
+
+// --- Channel Methods ---
+
+// CreateChannel creates a new channel.
+func (s *SQLiteStore) CreateChannel(id, name, description, createdBy string, team []string) error {
+	teamJSON, _ := json.Marshal(team)
+	_, err := s.db.Exec(
+		`INSERT INTO channels (id, name, description, team, created_by) VALUES (?, ?, ?, ?, ?)`,
+		id, name, description, string(teamJSON), createdBy,
+	)
+	return err
+}
+
+// GetChannel returns a channel by name.
+func (s *SQLiteStore) GetChannel(name string) (*Channel, error) {
+	var ch Channel
+	var teamJSON string
+	err := s.db.QueryRow(
+		`SELECT id, name, description, team, created_by, created_at FROM channels WHERE name = ?`, name,
+	).Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.CreatedBy, &ch.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal([]byte(teamJSON), &ch.Team)
+	return &ch, nil
+}
+
+// GetChannelByName returns minimal channel info for the dsl.ChannelBackend interface.
+func (s *SQLiteStore) GetChannelByName(name string) (*dsl.ChannelInfo, error) {
+	ch, err := s.GetChannel(name)
+	if err != nil || ch == nil {
+		return nil, err
+	}
+	return &dsl.ChannelInfo{ID: ch.ID, Name: ch.Name, Team: ch.Team}, nil
+}
+
+// ListChannelsForAgent returns channels where the agent is a team member.
+func (s *SQLiteStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, error) {
+	channels, err := s.ListChannels()
+	if err != nil {
+		return nil, err
+	}
+	var result []dsl.ChannelInfo
+	for _, ch := range channels {
+		for _, member := range ch.Team {
+			if member == agent {
+				result = append(result, dsl.ChannelInfo{ID: ch.ID, Name: ch.Name, Team: ch.Team})
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+// ListChannels returns all channels.
+func (s *SQLiteStore) ListChannels() ([]Channel, error) {
+	rows, err := s.db.Query(
+		`SELECT id, name, description, team, created_by, created_at FROM channels ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var channels []Channel
+	for rows.Next() {
+		var ch Channel
+		var teamJSON string
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.CreatedBy, &ch.CreatedAt); err != nil {
+			return nil, err
+		}
+		json.Unmarshal([]byte(teamJSON), &ch.Team)
+		channels = append(channels, ch)
+	}
+	return channels, rows.Err()
+}
+
+// DeleteChannel removes a channel by name.
+func (s *SQLiteStore) DeleteChannel(name string) error {
+	// Get channel ID first for cascading message cleanup.
+	var id string
+	err := s.db.QueryRow(`SELECT id FROM channels WHERE name = ?`, name).Scan(&id)
+	if err == sql.ErrNoRows {
+		return sql.ErrNoRows
+	}
+	if err != nil {
+		return err
+	}
+	// Delete messages first (SQLite foreign key cascade may not be enabled).
+	s.db.Exec(`DELETE FROM channel_messages WHERE channel_id = ?`, id)
+	result, err := s.db.Exec(`DELETE FROM channels WHERE name = ?`, name)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// UpdateChannelTeam updates the team members of a channel.
+func (s *SQLiteStore) UpdateChannelTeam(name string, team []string) error {
+	teamJSON, _ := json.Marshal(team)
+	result, err := s.db.Exec(`UPDATE channels SET team = ? WHERE name = ?`, string(teamJSON), name)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// FindChannelForAgents returns the first channel where both agents are team members.
+func (s *SQLiteStore) FindChannelForAgents(agent1, agent2 string) (string, string, error) {
+	rows, err := s.db.Query(`SELECT id, name, team FROM channels`)
+	if err != nil {
+		return "", "", err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id, name, teamJSON string
+		if err := rows.Scan(&id, &name, &teamJSON); err != nil {
+			return "", "", err
+		}
+		var team []string
+		json.Unmarshal([]byte(teamJSON), &team)
+		has1, has2 := false, false
+		for _, m := range team {
+			if m == agent1 {
+				has1 = true
+			}
+			if m == agent2 {
+				has2 = true
+			}
+		}
+		if has1 && has2 {
+			return id, name, nil
+		}
+	}
+	return "", "", rows.Err()
+}
+
+// InsertChannelMessage inserts a message into a channel and returns its ID.
+func (s *SQLiteStore) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error) {
+	if metadata == "" {
+		metadata = "{}"
+	}
+	result, err := s.db.Exec(
+		`INSERT INTO channel_messages (channel_id, thread_id, agent, role, content, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
+		channelID, threadID, agent, role, content, metadata,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// ListChannelMessages returns top-level messages for a channel with reply counts.
+func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]ChannelMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(
+		`SELECT m.id, m.channel_id, m.thread_id, m.agent, m.role, m.content, m.metadata, m.created_at,
+		        COALESCE((SELECT COUNT(*) FROM channel_messages r WHERE r.thread_id = m.id), 0) as reply_count
+		 FROM channel_messages m
+		 WHERE m.channel_id = ? AND m.thread_id IS NULL
+		 ORDER BY m.created_at ASC LIMIT ?`,
+		channelID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []ChannelMessage
+	for rows.Next() {
+		var m ChannelMessage
+		var threadID sql.NullInt64
+		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt, &m.ReplyCount); err != nil {
+			return nil, err
+		}
+		if threadID.Valid {
+			m.ThreadID = &threadID.Int64
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
+}
+
+// ListThreadMessages returns all replies in a thread.
+func (s *SQLiteStore) ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error) {
+	rows, err := s.db.Query(
+		`SELECT id, channel_id, thread_id, agent, role, content, metadata, created_at
+		 FROM channel_messages
+		 WHERE channel_id = ? AND thread_id = ?
+		 ORDER BY created_at ASC`,
+		channelID, threadID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []ChannelMessage
+	for rows.Next() {
+		var m ChannelMessage
+		var tid sql.NullInt64
+		if err := rows.Scan(&m.ID, &m.ChannelID, &tid, &m.Agent, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		if tid.Valid {
+			m.ThreadID = &tid.Int64
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
+}
+
+// --- Inbox Methods ---
+
+// InsertInboxItem creates a new inbox item and returns its ID.
+func (s *SQLiteStore) InsertInboxItem(fromAgent, subject, body, priority string) (int64, error) {
+	result, err := s.db.Exec(
+		`INSERT INTO agent_inbox (from_agent, subject, body, priority) VALUES (?, ?, ?, ?)`,
+		fromAgent, subject, body, priority,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// ListInboxItems returns inbox items filtered by status.
+func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var query string
+	var args []any
+	if status == "all" || status == "" {
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+			FROM agent_inbox ORDER BY created_at DESC LIMIT ?`
+		args = []any{limit}
+	} else {
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+			FROM agent_inbox WHERE status = ? ORDER BY created_at DESC LIMIT ?`
+		args = []any{status, limit}
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []InboxItem
+	for rows.Next() {
+		var item InboxItem
+		var resolution sql.NullString
+		var resolvedAt sql.NullTime
+		if err := rows.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
+			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+			return nil, err
+		}
+		if resolution.Valid {
+			item.Resolution = resolution.String
+		}
+		if resolvedAt.Valid {
+			item.ResolvedAt = &resolvedAt.Time
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ResolveInboxItem marks an inbox item as resolved.
+func (s *SQLiteStore) ResolveInboxItem(id int64, resolution string) error {
+	result, err := s.db.Exec(
+		`UPDATE agent_inbox SET status = 'resolved', resolution = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		resolution, id,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

@@ -175,6 +175,16 @@ func (t *Tools) SetSettings(m map[string]string) {
 	t.settings = m
 }
 
+// SetSetting sets a single setting key-value pair, merging into existing settings.
+func (t *Tools) SetSetting(key, value string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.settings == nil {
+		t.settings = make(map[string]string)
+	}
+	t.settings[key] = value
+}
+
 // GetSettings returns a copy of the current settings map.
 func (t *Tools) GetSettings() map[string]string {
 	t.mu.RLock()

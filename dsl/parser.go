@@ -75,6 +75,11 @@ func (p *Parser) Parse(data []byte) (*Document, error) {
 		}
 	}
 
+	// Parse company
+	if company, ok := raw["company"].(map[string]any); ok {
+		doc.Company = p.parseCompany(company)
+	}
+
 	// Parse settings
 	if settings, ok := raw["settings"].(map[string]any); ok {
 		doc.Settings = p.parseSettings(settings)
@@ -472,6 +477,44 @@ func (p *Parser) parseStep(raw any) (*Step, error) {
 	}
 
 	return step, nil
+}
+
+// parseCompany parses the company identity block.
+func (p *Parser) parseCompany(m map[string]any) *Company {
+	c := &Company{}
+
+	if v, ok := m["id"].(string); ok {
+		c.ID = v
+	}
+	if v, ok := m["name"].(string); ok {
+		c.Name = v
+	}
+	if v, ok := m["logo_url"].(string); ok {
+		c.LogoURL = v
+	}
+	if v, ok := m["accent_color"].(string); ok {
+		c.AccentColor = v
+	}
+
+	if siblings, ok := m["siblings"].([]any); ok {
+		for _, sibRaw := range siblings {
+			if sib, ok := sibRaw.(map[string]any); ok {
+				s := CompanySibling{}
+				if v, ok := sib["name"].(string); ok {
+					s.Name = v
+				}
+				if v, ok := sib["url"].(string); ok {
+					s.URL = v
+				}
+				if v, ok := sib["icon"].(string); ok {
+					s.Icon = v
+				}
+				c.Siblings = append(c.Siblings, s)
+			}
+		}
+	}
+
+	return c
 }
 
 // parseSettings parses global settings.

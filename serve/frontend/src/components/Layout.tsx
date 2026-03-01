@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { CompanySwitcher } from './CompanySwitcher'
 
 const primaryNav = [
   { to: '/', label: 'Chat' },
@@ -41,11 +42,8 @@ export function Layout() {
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="w-56 border-r border-border bg-card flex flex-col">
-        <div className="p-4 border-b border-border">
-          <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            Vega
-          </h1>
-          <p className="text-xs text-muted-foreground">Agent Dashboard</p>
+        <div className="p-3 border-b border-border">
+          <CompanySwitcher />
         </div>
         <nav className="flex-1 p-2">
           <div className="space-y-0.5">
