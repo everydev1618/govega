@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/mcp"
@@ -72,18 +74,76 @@ When building engineering/developer agents, bake these assumptions into their sy
 - Code lives in GitHub repos. Engineers should use their GitHub MCP tools (if connected) or file tools to work with code.
 - PRs, issues, and code review happen on GitHub — that's the workflow.
 - If GitHub MCP isn't connected yet, tell the user (via ask_hermes) so Hermes can connect it.
+- **Apps MUST run in Docker containers.** Engineers should write a Dockerfile, build the image, and run it with exposed ports using exec. After the container is running, they MUST share the URL (e.g. http://localhost:PORT) with Hermes via ask_hermes so the user can see their work. No excuses — if it's not running in Docker with a shared URL, it's not done.
+- **Apps MUST have a GitHub repo.** Engineers should create a repo (via GitHub MCP tools), commit early and commit often. Every meaningful change gets a commit. No working on loose files — everything lives in version control from day one.
 
 ## How you build
 
-**Default: build ONE agent.** Only build a team if the user explicitly asks for one.
+**Default: build ONE agent.** Only build a team if the user explicitly asks for one OR if Hermes asks you to "build a company" / "build a team".
 
-**Before creating anything, run list_agents.** If an existing agent already does what's needed — or could with a small update — reuse it. Add existing agents to a team's roster instead of creating duplicates. Don't rebuild what you've already built, love.
+**Before creating anything, run list_agents.** If an existing agent already does what's needed — or could with a small update — reuse it. Don't rebuild what you've already built, love.
 
-When you DO build a team (because the user asked):
-- ALWAYS designate a lead agent — the lead delegates, reviews, and shows the user polished output
-- Create a lead agent with helpers on its team list
-- After creating all agents, create a channel for the team using create_channel. Name it something appropriate (e.g. "content-team", "research-squad"). Include ALL team members in the channel.
-- Every agent on a team MUST include "post_to_channel" and "list_my_channels" in its tools list. Tell them the channel name in their system prompt. If they don't know their channel, they can call list_my_channels to find it.
+## Company departments
+
+When building a company, these are the core departments. Only build what the company needs RIGHT NOW — not all six on day one.
+
+**Engineering** — Builds and ships the product. Lead: Tech Lead or CTO. Helpers: backend dev, frontend dev, DevOps. Tools: read_file, write_file, exec, list_files, append_file.
+
+**Product** — Defines WHAT to build and WHY. Lead: Product Manager. Helpers: UX designer, data analyst. Tools: read_file, write_file, list_files.
+
+**Marketing** — Gets the word out. Lead: Marketing Lead. Helpers: content writer, growth hacker. Tools: read_file, write_file, list_files.
+
+**Sales** — Converts leads into customers. Lead: Sales Lead. Helpers: SDR, account exec. Tools: read_file, write_file, list_files.
+
+**Operations** — Keeps the business running. Lead: Ops Lead. Helpers: project manager, finance analyst. Tools: read_file, write_file, list_files.
+
+**Customer Support** — Keeps users happy. Lead: Support Lead. Helpers: support agent, docs writer. Tools: read_file, write_file, list_files.
+
+When Hermes says "build a company," assess what stage the company is at:
+- **Pre-MVP** → Engineering + Product only (2 teams, ~4-6 agents). Nothing to sell or market yet.
+- **Launching** → Add Marketing. Maybe a solo Sales agent. (~6-8 agents total)
+- **Post-launch / scaling** → Add Sales, Support, Ops as needed.
+
+Don't build departments that have no work to do. A pre-MVP startup doesn't need a Sales team.
+
+## Team structure — CRITICAL
+
+When building a company, you MUST use proper team hierarchy. This means:
+
+1. **Create helper agents FIRST** (they have no team param).
+2. **Create the lead agent LAST** with the "team" param listing all helpers. This is what makes them a real team — the lead can delegate to helpers, and a team channel is auto-created.
+
+Example order for an Engineering team:
+- create_agent(name="kai", title="Frontend Engineer", ...) — no team
+- create_agent(name="alex", title="Backend Engineer", ...) — no team
+- create_agent(name="marcus", title="Tech Lead", team=["kai", "alex"], channel="engineering") — lead created LAST
+
+**DO NOT create all agents as individuals with no team param.** If you're building a company, every department MUST have a lead with a team list. Without the team param, there's no delegation, no team channel, and no structure.
+
+## Team sizing
+
+Start SMALL. You can always add agents later.
+
+- **Solo task** → 1 agent. No team needed.
+- **Small team** → 1 lead + 1-2 helpers (2-3 agents).
+- **Max per team** → 4 agents (1 lead + 3 helpers).
+- **Max per request** → 6 agents total. Build the core first.
+
+Every agent costs real money (LLM tokens). Build for what needs to happen NOW.
+
+## Team channel setup
+
+- Every agent on a team MUST include "post_to_channel" and "list_my_channels" in its tools list. Tell them the channel name in their system prompt.
+- A team channel is auto-created when you create a team lead with the "team" param. Use the "channel" param to name it — use simple functional names: "engineering", "product", "marketing". NO company prefix, NO project prefix, NO "-team" suffix. Just the department name.
+- You do NOT need to call create_channel for team channels — they're created automatically.
+
+## Company channels
+
+When building a company (multiple teams), ALWAYS create these two company-wide channels AFTER creating all agents:
+- **#general** — The company-wide channel. ALL agents are members. Used for announcements, cross-team coordination, and company updates. Tell every agent about this channel in their system prompt.
+- **#random** — The watercooler. ALL agents are members. Used for off-topic chat, jokes, personal stuff, team bonding. Tell agents they can be human here.
+
+Use create_channel to make these. The name param must be exactly "general" and "random" — no company prefix, no project prefix, just the bare word. Include EVERY agent name you just created in the team list array for both channels. This is NOT optional — every company needs a #general and #random.
 
 All agents you create should:
 - Use their tools BEFORE asking the user
@@ -107,7 +167,11 @@ Every agent you create MUST include "ask_hermes" in its tools list. Agents on te
 
 ## Workflow
 
-Check list_agents first (reuse before you rebuild). Then list_available_tools, list_available_skills, and list_mcp_registry. Build what's needed. Tell the user the agent's name.
+1. Run list_agents (reuse before you rebuild), list_available_tools, list_available_skills, list_mcp_registry.
+2. Create helper agents FIRST (no team param).
+3. Create lead agents LAST with team=[] listing their helpers and channel="" for the team channel name.
+4. After ALL agents are created, create #general and #random channels with EVERY agent as a member.
+5. Tell the user the agent names and channel names.
 
 You cannot modify yourself.`
 
@@ -116,6 +180,7 @@ You cannot modify yourself.`
 type MotherCallbacks struct {
 	OnAgentCreated func(agent *Agent) error
 	OnAgentDeleted func(name string)
+	ChannelBackend ChannelBackend // optional — auto-creates channels for team leads
 }
 
 // MotherAgent returns the DSL agent definition for Mother.
@@ -161,11 +226,12 @@ func InjectMother(interp *Interpreter, cb *MotherCallbacks, extraTools ...string
 
 	def := MotherAgent(defaultModel)
 
-	// Give Mother access to her meta-tools plus any extras (e.g. scheduler tools).
+	// Give Mother access to her meta-tools plus channel tools and any extras (e.g. scheduler tools).
 	def.Tools = append([]string{
 		"create_agent", "update_agent", "delete_agent",
 		"list_agents", "list_available_tools", "list_available_skills",
 		"list_mcp_registry",
+		"create_channel", "post_to_channel", "list_my_channels",
 	}, extraTools...)
 
 	return interp.AddAgent(motherAgentName, def)
@@ -185,9 +251,26 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				return "", fmt.Errorf("cannot create an agent named %q", motherAgentName)
 			}
 
+			// Enforce max agent limit (excludes system agents: mother, hermes).
+			const maxAgents = 6
+			interp.mu.RLock()
+			composedCount := 0
+			for n := range interp.Document().Agents {
+				if n != motherAgentName && n != hermesAgentName {
+					composedCount++
+				}
+			}
+			interp.mu.RUnlock()
+			if composedCount >= maxAgents {
+				return "", fmt.Errorf("agent limit reached (%d). Delete an existing agent before creating a new one", maxAgents)
+			}
+
 			displayName, _ := params["display_name"].(string)
 			title, _ := params["title"].(string)
 			avatar, _ := params["avatar"].(string)
+			channelName, _ := params["channel"].(string)
+			channelName = strings.TrimPrefix(channelName, "#")
+			channelName = strings.TrimSuffix(channelName, "-team")
 			model, _ := params["model"].(string)
 			system, _ := params["system"].(string)
 			toolNames := toStringSlice(params["tools"])
@@ -239,7 +322,28 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				}
 			}
 
-			return fmt.Sprintf("Agent %q created successfully. The user can now switch to it in the sidebar.", name), nil
+			// Auto-create a channel for team leads.
+			channelMsg := ""
+			if len(team) > 0 && cb != nil && cb.ChannelBackend != nil {
+				chName := channelName
+				if chName == "" {
+					// Derive from title: "Product Lead" → "product", "Tech Lead" → "tech"
+					chName = sanitizeChannelName(title)
+				}
+				if chName == "" {
+					chName = name + "-team"
+				}
+				chID := fmt.Sprintf("ch_%d", time.Now().UnixNano())
+				members := append([]string{name}, team...)
+				if err := cb.ChannelBackend.CreateChannel(chID, chName, displayName+"'s team channel", "mother", members); err != nil {
+					// Channel may already exist — not fatal.
+					channelMsg = fmt.Sprintf(" (note: channel #%s could not be created: %v)", chName, err)
+				} else {
+					channelMsg = fmt.Sprintf(" Channel **#%s** created with team: %v.", chName, members)
+				}
+			}
+
+			return fmt.Sprintf("Agent %q created successfully. The user can now switch to it in the sidebar.%s", name, channelMsg), nil
 		}),
 		Params: map[string]tools.ParamDef{
 			"name": {
@@ -278,6 +382,10 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			"team": {
 				Type:        "array",
 				Description: "List of other agent names this agent can delegate tasks to",
+			},
+			"channel": {
+				Type:        "string",
+				Description: "Channel name for the team (e.g. 'product', 'engineering', 'design'). Only used when team is set. If omitted, derived from the agent's title.",
 			},
 			"knowledge": {
 				Type:        "array",
@@ -593,6 +701,41 @@ func newListMCPRegistryTool() tools.ToolDef {
 }
 
 // --- helpers ---
+
+// sanitizeChannelName derives a channel name from a title like "Product Lead" → "product".
+// Strips common suffixes (lead, manager, head, director, etc.) and kebab-cases the rest.
+func sanitizeChannelName(title string) string {
+	if title == "" {
+		return ""
+	}
+	t := strings.ToLower(strings.TrimSpace(title))
+	// Remove common leadership suffixes.
+	for _, suffix := range []string{" lead", " manager", " head", " director", " chief", " vp", " officer"} {
+		t = strings.TrimSuffix(t, suffix)
+	}
+	// Remove "senior ", "junior ", "staff " prefixes.
+	for _, prefix := range []string{"senior ", "junior ", "staff ", "principal ", "lead "} {
+		t = strings.TrimPrefix(t, prefix)
+	}
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return ""
+	}
+	// Replace spaces with hyphens, strip non-alphanumeric.
+	t = strings.ReplaceAll(t, " ", "-")
+	t = strings.ReplaceAll(t, "/", "-")
+	var clean []byte
+	for i := range t {
+		c := t[i]
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
+			clean = append(clean, c)
+		}
+	}
+	result := string(clean)
+	// Strip trailing -team — channels should be functional names, not "X-team".
+	result = strings.TrimSuffix(result, "-team")
+	return result
+}
 
 func toStringSlice(v any) []string {
 	if v == nil {

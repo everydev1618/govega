@@ -3,6 +3,7 @@ package dsl
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	vega "github.com/everydev1618/govega"
@@ -16,6 +17,12 @@ type ChannelInfo struct {
 	Team []string
 }
 
+// ChannelMessage holds a single message returned by RecentChannelMessages.
+type ChannelMessage struct {
+	Agent   string
+	Content string
+}
+
 // ChannelBackend is the interface for channel operations.
 // Defined here so dsl/ does not import serve/.
 type ChannelBackend interface {
@@ -24,6 +31,7 @@ type ChannelBackend interface {
 	ListChannelsForAgent(agent string) ([]ChannelInfo, error)
 	FindChannelForAgents(agent1, agent2 string) (channelID string, channelName string, err error)
 	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error)
+	RecentChannelMessages(channelID string, limit int) ([]ChannelMessage, error)
 }
 
 // ChannelPostCallback is called after an agent posts to a channel,
@@ -113,8 +121,25 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			if name == "" {
 				return "", fmt.Errorf("name is required")
 			}
+			// Strip leading # if provided — the UI adds the # prefix.
+			name = strings.TrimPrefix(name, "#")
 			description, _ := params["description"].(string)
 			team := toStringSlice(params["team"])
+
+			// For company-wide channels, auto-populate team with all agents if empty.
+			if len(team) == 0 && (name == "general" || name == "random") {
+				interp.mu.RLock()
+				for n := range interp.Document().Agents {
+					if n != motherAgentName && n != hermesAgentName {
+						team = append(team, n)
+					}
+				}
+				interp.mu.RUnlock()
+			}
+
+			if len(team) == 0 {
+				return "", fmt.Errorf("team is required — provide at least one agent name")
+			}
 
 			id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
 			if err := backend.CreateChannel(id, name, description, "mother", team); err != nil {
