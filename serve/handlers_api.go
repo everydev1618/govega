@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -295,7 +296,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use a detached context so the LLM stream survives client disconnect.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// Bootstrap flows can run 30+ min (Mother builds team, Hermes dispatches to each agent serially).
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
 
 	// Snapshot baseline metrics before the stream so we can compute per-response delta.
@@ -2109,4 +2111,56 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// --- Reset Handler ---
+
+func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
+	slog.Info("reset: stopping all agent processes")
+
+	// 1. Kill all agent processes via the interpreter.
+	for name := range s.interp.Agents() {
+		if err := s.interp.ResetAgent(name); err != nil {
+			slog.Warn("reset: failed to reset agent", "agent", name, "error", err)
+		}
+	}
+
+	// 2. Disconnect MCP servers.
+	s.interp.Tools().DisconnectMCP()
+
+	// 3. Clear database tables.
+	if err := s.store.ResetData(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "clear database: " + err.Error()})
+		return
+	}
+
+	// 4. Clear workspace files on disk.
+	workspace := vega.WorkspacePath()
+
+	// Make all directories writable first (Go module caches etc. mark dirs read-only).
+	filepath.Walk(workspace, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() && info.Mode()&0200 == 0 {
+			os.Chmod(path, info.Mode()|0200)
+		}
+		return nil
+	})
+
+	entries, err := os.ReadDir(workspace)
+	if err == nil {
+		for _, e := range entries {
+			p := filepath.Join(workspace, e.Name())
+			if err := os.RemoveAll(p); err != nil {
+				slog.Warn("reset: failed to remove workspace entry", "path", p, "error", err)
+			}
+		}
+	}
+
+	// 5. Clear active project.
+	s.interp.Tools().SetActiveProject("")
+
+	slog.Info("reset: complete")
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }

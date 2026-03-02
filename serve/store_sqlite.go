@@ -27,7 +27,7 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, err
 	}
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+	if _, err := db.Exec("PRAGMA busy_timeout=30000"); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -680,6 +680,31 @@ func (s *SQLiteStore) Vacuum() {
 	s.db.Exec("VACUUM")
 }
 
+// ResetData clears all transient data but preserves settings.
+func (s *SQLiteStore) ResetData() error {
+	tables := []string{
+		"composed_agents",
+		"chat_messages",
+		"user_memory",
+		"memory_items",
+		"events",
+		"process_snapshots",
+		"workflow_runs",
+		"scheduled_jobs",
+		"channel_messages",
+		"channels",
+		"agent_inbox",
+		"workspace_files",
+	}
+	for _, t := range tables {
+		if err := s.DeleteAllFromTable(t); err != nil {
+			return fmt.Errorf("clear %s: %w", t, err)
+		}
+	}
+	s.Vacuum()
+	return nil
+}
+
 // UpsertSetting creates or updates a setting.
 func (s *SQLiteStore) UpsertSetting(st Setting) error {
 	_, err := s.db.Exec(
@@ -855,8 +880,11 @@ func (s *SQLiteStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, err
 
 // ListChannels returns all channels.
 func (s *SQLiteStore) ListChannels() ([]Channel, error) {
-	rows, err := s.db.Query(
-		`SELECT id, name, description, team, created_by, created_at FROM channels ORDER BY created_at ASC`,
+	rows, err := s.db.Query(`
+		SELECT c.id, c.name, c.description, c.team, c.created_by, c.created_at,
+		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL), 0)
+		FROM channels c
+		ORDER BY c.created_at ASC`,
 	)
 	if err != nil {
 		return nil, err
@@ -867,7 +895,7 @@ func (s *SQLiteStore) ListChannels() ([]Channel, error) {
 	for rows.Next() {
 		var ch Channel
 		var teamJSON string
-		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.CreatedBy, &ch.CreatedAt); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.CreatedBy, &ch.CreatedAt, &ch.MessageCount); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(teamJSON), &ch.Team)
@@ -991,6 +1019,37 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 		messages = append(messages, m)
 	}
 	return messages, rows.Err()
+}
+
+// RecentChannelMessages returns the last N messages in a channel (lightweight, for status checks).
+func (s *SQLiteStore) RecentChannelMessages(channelID string, limit int) ([]dsl.ChannelMessage, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	rows, err := s.db.Query(
+		`SELECT agent, content FROM channel_messages
+		 WHERE channel_id = ? AND thread_id IS NULL
+		 ORDER BY created_at DESC LIMIT ?`,
+		channelID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []dsl.ChannelMessage
+	for rows.Next() {
+		var m dsl.ChannelMessage
+		if err := rows.Scan(&m.Agent, &m.Content); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	// Reverse to chronological order.
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs, rows.Err()
 }
 
 // ListThreadMessages returns all replies in a thread.

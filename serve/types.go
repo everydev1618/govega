@@ -178,12 +178,13 @@ type AgentTemplateResponse struct {
 
 // Channel is a Slack-style group conversation space for a team of agents.
 type Channel struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Team        []string  `json:"team"`
-	CreatedBy   string    `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Team         []string  `json:"team"`
+	CreatedBy    string    `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+	MessageCount int       `json:"message_count"`
 }
 
 // ChannelMessage is a message in a channel, optionally part of a thread.
