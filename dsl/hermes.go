@@ -29,7 +29,7 @@ You're the chief of staff — the operations layer between the user and the agen
 
 ## Your powers
 
-list_agents, send_to_agent, remember, recall, forget, set_project, list_projects, list_files, connect_mcp, disconnect_mcp, list_mcp_registry, list_mcp_status, list_inbox, resolve_inbox.
+list_agents, send_to_agent, check_status, remember, recall, forget, set_project, list_projects, list_files, connect_mcp, disconnect_mcp, list_mcp_registry, list_mcp_status, list_inbox, resolve_inbox, create_channel, post_to_channel, list_my_channels.
 
 ## Inbox
 
@@ -53,21 +53,23 @@ On heartbeat (every 15 min), you'll be prompted to check the inbox. When triagin
 
 1. Read the request — what do they *actually* want?
 2. Check who's available (list_agents)
-3. Route to the right agent(s) — fast
+3. Route to the right agent(s) — fast. send_to_agent is NON-BLOCKING — agents work in parallel while you continue. You can dispatch to multiple agents without waiting.
 4. If no one fits, ask Mother to build one
 5. Bring back the goods — clean, useful, no filler
+
+Completion notifications arrive in your inbox. Check it on heartbeats or when the user asks for status.
 
 ## Bootstrapping a company
 
 When the user sets up a new company or team, YOU drive the kickoff. This is a MULTI-STEP process — do NOT stop after step 1:
 
-1. **Tell Mother to build the team.** Be specific about what roles you need AND remind her to create team channels. Wait for her response — she'll tell you who she built.
-2. **Verify the team.** Run list_agents to confirm the agents exist. If Mother missed channels, tell her.
-3. **Send first tasks.** Use send_to_agent to give EACH lead agent a concrete first task. Be specific — not "get started" but "Design the database schema for user profiles and band profiles" or "Create wireframes for the search page." This is what kicks off real work.
-4. **Set up the project.** Use set_project to create a workspace for the company.
-5. **Brief the user.** Tell them who was created, what teams exist, and what's already in motion.
+1. **Set up the project FIRST.** Use set_project to create a workspace for the company. This MUST happen before Mother creates agents — otherwise agents write files to the wrong place.
+2. **Tell Mother to build the team.** Be specific about what roles you need AND remind her to create team channels. Wait for her FULL response — she'll tell you who she built and what channels she created.
+3. **Verify the team AND channels.** Run list_agents to confirm agents exist. Run list_my_channels to check channels. If Mother missed any channels, create them yourself with create_channel BEFORE moving on. Every team needs a channel. Also verify #general and #random exist with ALL agents — if not, create them.
+4. **Dispatch to the lead agent.** Use send_to_agent to give the lead a short, specific brief — it returns instantly. The lead works in the background while you continue. Do NOT send individual tasks to every agent. One dispatch to the lead, then move on.
+5. **Brief the user immediately.** Tell them who was created, what teams exist, what channel to watch, and that the lead is already working. You'll get an inbox notification when the lead finishes.
 
-Do NOT skip steps 2-4. The user should see agents actively working within a minute of bootstrapping.
+Do NOT skip steps 2-5. Channels MUST exist before agents get tasks. Keep your bootstrap FAST — under 2 minutes. Send one message to the lead and let them run the show.
 
 ## Memory
 
@@ -89,6 +91,20 @@ You manage MCP server connections (GitHub, Slack, Postgres, etc.):
 - NEVER echo back credentials or tokens in your responses
 - Use disconnect_mcp to remove connections
 - Use list_mcp_status to show what's currently connected
+
+## Channels
+
+Channels are where teams work in the open. The user watches channels to see agents collaborate.
+
+- create_channel — create a new channel for a team
+- post_to_channel — post a message to a channel
+- list_my_channels — see which channels you're in
+
+When bootstrapping teams, ALWAYS ensure a channel exists. If Mother didn't create one, create it yourself with create_channel. After sending first tasks to agents, post a kickoff message to the channel so the user can see things are moving.
+
+## Status checks
+
+When the user asks "what's the status", "how's it going", "what are the agents doing", or anything about progress — use **check_status** first. It reads channels and workspace files WITHOUT messaging any agent. Only use send_to_agent if you need to give an agent NEW instructions or ask them to DO something. Checking status should never trigger work.
 
 ## Rules
 
@@ -126,7 +142,8 @@ func HermesAgent(defaultModel string) *Agent {
 // RegisterHermesTools registers Hermes's tools on the interpreter's global
 // tool collection. list_agents is registered only if not already present
 // (Mother registers it when she's injected).
-func RegisterHermesTools(interp *Interpreter) {
+// channelBackend is optional — when provided, enables the check_status tool.
+func RegisterHermesTools(interp *Interpreter, channelBackend ...ChannelBackend) {
 	t := interp.Tools()
 
 	// Only register list_agents if Mother hasn't already provided it.
@@ -148,13 +165,18 @@ func RegisterHermesTools(interp *Interpreter) {
 	t.Register("list_mcp_status", newListMCPStatusTool(interp))
 	t.Register("set_project", newSetProjectTool(interp))
 	t.Register("list_projects", newListProjectsTool(interp))
+
+	// check_status — read-only overview of agents, channels, and recent activity.
+	if len(channelBackend) > 0 && channelBackend[0] != nil {
+		t.Register("check_status", newCheckStatusTool(interp, channelBackend[0]))
+	}
 }
 
 // InjectHermes adds Hermes to the interpreter.
 // extraTools are additional tool names (e.g. memory tools) to include in
 // Hermes's tool list. They must already be registered on the interpreter.
-func InjectHermes(interp *Interpreter, extraTools ...string) error {
-	RegisterHermesTools(interp)
+func InjectHermes(interp *Interpreter, channelBackend ChannelBackend, extraTools ...string) error {
+	RegisterHermesTools(interp, channelBackend)
 
 	defaultModel := ""
 	if interp.Document().Settings != nil {
@@ -162,7 +184,7 @@ func InjectHermes(interp *Interpreter, extraTools ...string) error {
 	}
 
 	def := HermesAgent(defaultModel)
-	def.Tools = append([]string{"list_agents", "send_to_agent", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files"}, extraTools...)
+	def.Tools = append([]string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "create_channel", "post_to_channel", "list_my_channels"}, extraTools...)
 
 	return interp.AddAgent(hermesAgentName, def)
 }
@@ -208,10 +230,10 @@ func newHermesListAgentsTool(interp *Interpreter) tools.ToolDef {
 	}
 }
 
-// newSendToAgentTool sends a message to any agent by name — no team restriction.
+// newSendToAgentTool dispatches a task to any agent — non-blocking.
 func newSendToAgentTool(interp *Interpreter) tools.ToolDef {
 	return tools.ToolDef{
-		Description: "Send a task or message to any agent by name and receive their response. Works for any agent in the universe, including mother.",
+		Description: "Dispatch a task to any agent by name. Returns immediately — the agent works in the background. Completion notifications arrive in your inbox. Watch the agent's channel for real-time progress.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			agent, _ := params["agent"].(string)
 			message, _ := params["message"].(string)
@@ -221,7 +243,7 @@ func newSendToAgentTool(interp *Interpreter) tools.ToolDef {
 			if message == "" {
 				return "", fmt.Errorf("message is required")
 			}
-			return interp.SendToAgent(ctx, agent, message)
+			return interp.DispatchToAgent(ctx, agent, message)
 		}),
 		Params: map[string]tools.ParamDef{
 			"agent": {
@@ -538,8 +560,97 @@ func newListProjectsTool(interp *Interpreter) tools.ToolDef {
 	}
 }
 
+// newCheckStatusTool returns a read-only tool that gives Hermes an overview of
+// agents, channels, and recent activity — without messaging any agent.
+func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolDef {
+	return tools.ToolDef{
+		Description: "Get a read-only status overview: agents, channels, recent channel messages, and workspace files. Use this INSTEAD of send_to_agent when the user asks 'what's the status' or 'how's it going'. This does NOT trigger any agent work.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			var sb strings.Builder
+
+			// Agents
+			interp.mu.RLock()
+			sb.WriteString("## Agents\n")
+			for name, def := range interp.Document().Agents {
+				if name == motherAgentName || name == hermesAgentName {
+					continue
+				}
+				teamStr := ""
+				if len(def.Team) > 0 {
+					teamStr = fmt.Sprintf(" (team: %s)", strings.Join(def.Team, ", "))
+				}
+				sb.WriteString(fmt.Sprintf("- **%s** — %s%s\n", def.DisplayName, def.Title, teamStr))
+			}
+			interp.mu.RUnlock()
+
+			// Channels with recent messages
+			sb.WriteString("\n## Channels\n")
+			channels, err := backend.ListChannelsForAgent(hermesAgentName)
+			if err == nil && len(channels) == 0 {
+				// Hermes may not be in channels — list all by checking each agent
+				interp.mu.RLock()
+				seen := map[string]bool{}
+				for name := range interp.Document().Agents {
+					if name == motherAgentName || name == hermesAgentName {
+						continue
+					}
+					agentChannels, _ := backend.ListChannelsForAgent(name)
+					for _, ch := range agentChannels {
+						if !seen[ch.Name] {
+							seen[ch.Name] = true
+							channels = append(channels, ch)
+						}
+					}
+				}
+				interp.mu.RUnlock()
+			}
+
+			for _, ch := range channels {
+				sb.WriteString(fmt.Sprintf("\n### #%s (team: %s)\n", ch.Name, strings.Join(ch.Team, ", ")))
+				msgs, err := backend.RecentChannelMessages(ch.ID, 5)
+				if err != nil || len(msgs) == 0 {
+					sb.WriteString("  No messages yet.\n")
+					continue
+				}
+				for _, m := range msgs {
+					content := m.Content
+					if len(content) > 150 {
+						content = content[:150] + "..."
+					}
+					sb.WriteString(fmt.Sprintf("  - **%s**: %s\n", m.Agent, content))
+				}
+			}
+
+			// Workspace files
+			sb.WriteString("\n## Workspace Files\n")
+			t := interp.Tools()
+			sandbox := t.Sandbox()
+			active := t.ActiveProject()
+			if sandbox != "" && active != "" {
+				projDir := sandbox + "/" + active
+				entries, err := os.ReadDir(projDir)
+				if err == nil {
+					for _, e := range entries {
+						sb.WriteString(fmt.Sprintf("- %s\n", e.Name()))
+					}
+				}
+			} else {
+				if sandbox != "" {
+					entries, _ := os.ReadDir(sandbox)
+					for _, e := range entries {
+						sb.WriteString(fmt.Sprintf("- %s\n", e.Name()))
+					}
+				}
+			}
+
+			return sb.String(), nil
+		}),
+		Params: map[string]tools.ParamDef{},
+	}
+}
+
 // hermesToolNames are the tools Hermes uses.
-var hermesToolNames = []string{"list_agents", "send_to_agent", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "list_inbox", "resolve_inbox"}
+var hermesToolNames = []string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "list_inbox", "resolve_inbox", "create_channel", "post_to_channel", "list_my_channels"}
 
 // IsHermesTool reports whether a tool name is one of Hermes's tools.
 func IsHermesTool(name string) bool {

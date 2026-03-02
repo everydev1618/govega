@@ -265,7 +265,11 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Register inbox tools — ask_hermes is available to all agents,
 	// list_inbox and resolve_inbox are already in Hermes's tool list.
-	dsl.RegisterInboxTools(s.interp, &inboxAdapter{store: s.store})
+	inboxBack := &inboxAdapter{store: s.store}
+	dsl.RegisterInboxTools(s.interp, inboxBack)
+
+	// Wire inbox backend so DispatchToAgent can post completion notifications.
+	s.interp.SetInboxBackend(inboxBack)
 
 	// Register channel tools — create_channel and post_to_channel.
 	dsl.RegisterChannelTools(s.interp, s.store, func(channelName, agent, content string, msgID int64) {
@@ -478,6 +482,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/channels/{name}/messages", s.handleChannelPost)
 	mux.HandleFunc("POST /api/channels/{name}/stream", s.handleChannelStream)
 	mux.HandleFunc("GET /api/channels/{name}/stream", s.handleChannelStreamReconnect)
+
+	// Reset
+	mux.HandleFunc("POST /api/reset", s.handleReset)
 
 	// SSE
 	mux.HandleFunc("GET /api/events", s.handleSSE)
@@ -748,7 +755,7 @@ func (s *Server) injectMother() {
 			if agent.Skills != nil {
 				skills = agent.Skills.Directories
 			}
-			if err := s.store.InsertComposedAgent(ComposedAgent{
+			ca := ComposedAgent{
 				Name:        agent.Name,
 				DisplayName: agent.DisplayName,
 				Title:       agent.Title,
@@ -760,7 +767,18 @@ func (s *Server) injectMother() {
 				Skills:      skills,
 				Temperature: agent.Temperature,
 				CreatedAt:   time.Now(),
-			}); err != nil {
+			}
+			// Retry up to 3 times on SQLITE_BUSY.
+			var err error
+			for attempt := 0; attempt < 3; attempt++ {
+				err = s.store.InsertComposedAgent(ca)
+				if err == nil {
+					break
+				}
+				slog.Warn("retrying agent persist", "agent", agent.Name, "attempt", attempt+1, "error", err)
+				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+			}
+			if err != nil {
 				slog.Error("failed to persist composed agent", "agent", agent.Name, "error", err)
 				return fmt.Errorf("persist agent: %w", err)
 			}
@@ -781,6 +799,7 @@ func (s *Server) injectMother() {
 				Timestamp: time.Now(),
 			})
 		},
+		ChannelBackend: s.store,
 	}
 
 	if err := dsl.InjectMother(s.interp, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules", "create_channel"); err != nil {
@@ -790,7 +809,7 @@ func (s *Server) injectMother() {
 
 // injectHermes adds Hermes, the cosmic orchestrator, to the interpreter.
 func (s *Server) injectHermes() {
-	if err := dsl.InjectHermes(s.interp, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
+	if err := dsl.InjectHermes(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
 		slog.Warn("failed to inject Hermes agent", "error", err)
 	}
 }

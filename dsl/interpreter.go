@@ -43,6 +43,7 @@ type Interpreter struct {
 	delegationConfigs map[string]*DelegationDef
 	lazySpawn         bool
 	delegationObserver DelegationObserver
+	inboxBackend      InboxBackend // for async dispatch completion notifications
 	mu                sync.RWMutex
 }
 
@@ -1258,6 +1259,58 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 	}
 
 	return response, nil
+}
+
+// SetInboxBackend sets the inbox backend used by DispatchToAgent for
+// posting completion notifications.
+func (i *Interpreter) SetInboxBackend(b InboxBackend) {
+	i.inboxBackend = b
+}
+
+// DispatchToAgent is a non-blocking variant of SendToAgent. It validates the
+// agent exists, then spawns a goroutine that calls SendToAgent. On completion
+// (or error), it posts an inbox item so Hermes knows the work finished.
+// Returns immediately with a confirmation message.
+func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, message string) (string, error) {
+	// Validate agent exists synchronously so callers get immediate errors.
+	if _, err := i.ensureAgent(agentName); err != nil {
+		return "", err
+	}
+
+	go func() {
+		// Use a fresh background context — the caller's ctx/stream will be closed.
+		resp, err := i.SendToAgent(context.Background(), agentName, message)
+		if i.inboxBackend == nil {
+			return
+		}
+
+		if err != nil {
+			i.inboxBackend.InsertInboxItem(
+				agentName,
+				fmt.Sprintf("Task failed for %s", agentName),
+				fmt.Sprintf("Error: %s\n\nOriginal request: %s", err.Error(), truncateStr(message, 500)),
+				"high",
+			)
+			return
+		}
+
+		i.inboxBackend.InsertInboxItem(
+			agentName,
+			fmt.Sprintf("Task completed by %s", agentName),
+			fmt.Sprintf("Result: %s\n\nOriginal request: %s", truncateStr(resp, 1000), truncateStr(message, 500)),
+			"normal",
+		)
+	}()
+
+	return fmt.Sprintf("Dispatched to **%s**. Watch their channel for progress.", agentName), nil
+}
+
+// truncateStr truncates a string to max characters, appending "..." if truncated.
+func truncateStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
 
 // StreamToAgent sends a message to a specific agent and returns a ChatStream
