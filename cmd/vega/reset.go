@@ -143,6 +143,18 @@ Examples:
 	store.Close()
 
 	// Clear workspace files.
+	// First, make all directories writable so os.RemoveAll can descend into
+	// read-only trees (e.g. Go module caches mark dirs read-only).
+	filepath.Walk(workspace, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() && info.Mode()&0200 == 0 {
+			os.Chmod(path, info.Mode()|0200)
+		}
+		return nil
+	})
+
 	entries, err := os.ReadDir(workspace)
 	if err == nil {
 		for _, e := range entries {
