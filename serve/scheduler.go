@@ -140,8 +140,8 @@ func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 	return func() {
 		slog.Info("scheduler: firing job", "name", job.Name, "agent", job.AgentName)
 		ctx := context.Background()
-		if _, err := s.interp.SendToAgent(ctx, job.AgentName, job.Message); err != nil {
-			slog.Warn("scheduler: agent call failed", "name", job.Name, "agent", job.AgentName, "error", err)
+		if _, err := s.interp.DispatchToAgent(ctx, job.AgentName, job.Message); err != nil {
+			slog.Warn("scheduler: agent dispatch failed", "name", job.Name, "agent", job.AgentName, "error", err)
 		}
 	}
 }
