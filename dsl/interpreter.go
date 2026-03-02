@@ -43,7 +43,9 @@ type Interpreter struct {
 	delegationConfigs map[string]*DelegationDef
 	lazySpawn         bool
 	delegationObserver DelegationObserver
-	inboxBackend      InboxBackend // for async dispatch completion notifications
+	inboxBackend      InboxBackend   // for async dispatch completion notifications
+	channelBackend    ChannelBackend // for posting completion summaries to channels
+	channelPostCb     func(channelName, agent, content string, msgID int64)
 	mu                sync.RWMutex
 }
 
@@ -1267,6 +1269,13 @@ func (i *Interpreter) SetInboxBackend(b InboxBackend) {
 	i.inboxBackend = b
 }
 
+// SetChannelBackend sets the channel backend used by DispatchToAgent to post
+// completion summaries to the agent's team channel.
+func (i *Interpreter) SetChannelBackend(b ChannelBackend, onPost func(channelName, agent, content string, msgID int64)) {
+	i.channelBackend = b
+	i.channelPostCb = onPost
+}
+
 // DispatchToAgent is a non-blocking variant of SendToAgent. It validates the
 // agent exists, then spawns a goroutine that calls SendToAgent. On completion
 // (or error), it posts an inbox item so Hermes knows the work finished.
@@ -1280,26 +1289,50 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 	go func() {
 		// Use a fresh background context — the caller's ctx/stream will be closed.
 		resp, err := i.SendToAgent(context.Background(), agentName, message)
-		if i.inboxBackend == nil {
-			return
+
+		// Post completion notification to inbox (auto-resolved since it's informational).
+		if i.inboxBackend != nil {
+			if err != nil {
+				id, insErr := i.inboxBackend.InsertInboxItem(
+					agentName,
+					fmt.Sprintf("Task failed for %s", agentName),
+					fmt.Sprintf("Error: %s\n\nOriginal request: %s", err.Error(), truncateStr(message, 500)),
+					"high",
+				)
+				if insErr == nil {
+					_ = i.inboxBackend.ResolveInboxItem(id, "Auto-resolved: task failed")
+				}
+			} else {
+				id, insErr := i.inboxBackend.InsertInboxItem(
+					agentName,
+					fmt.Sprintf("Task completed by %s", agentName),
+					fmt.Sprintf("Result: %s\n\nOriginal request: %s", truncateStr(resp, 1000), truncateStr(message, 500)),
+					"normal",
+				)
+				if insErr == nil {
+					_ = i.inboxBackend.ResolveInboxItem(id, "Auto-resolved: task completed")
+				}
+			}
 		}
 
-		if err != nil {
-			i.inboxBackend.InsertInboxItem(
-				agentName,
-				fmt.Sprintf("Task failed for %s", agentName),
-				fmt.Sprintf("Error: %s\n\nOriginal request: %s", err.Error(), truncateStr(message, 500)),
-				"high",
-			)
-			return
+		// Post a summary to the agent's team channel for user visibility.
+		if err == nil && i.channelBackend != nil {
+			channels, chErr := i.channelBackend.ListChannelsForAgent(agentName)
+			if chErr == nil {
+				summary := fmt.Sprintf("[Task complete] %s", truncateStr(resp, 500))
+				for _, ch := range channels {
+					// Skip general/random — post to team channels only.
+					if ch.Name == "general" || ch.Name == "random" {
+						continue
+					}
+					msgID, postErr := i.channelBackend.InsertChannelMessage(ch.ID, agentName, "assistant", summary, nil, "")
+					if postErr == nil && i.channelPostCb != nil {
+						i.channelPostCb(ch.Name, agentName, summary, msgID)
+					}
+					break // post to first team channel only
+				}
+			}
 		}
-
-		i.inboxBackend.InsertInboxItem(
-			agentName,
-			fmt.Sprintf("Task completed by %s", agentName),
-			fmt.Sprintf("Result: %s\n\nOriginal request: %s", truncateStr(resp, 1000), truncateStr(message, 500)),
-			"normal",
-		)
 	}()
 
 	return fmt.Sprintf("Dispatched to **%s**. Watch their channel for progress.", agentName), nil

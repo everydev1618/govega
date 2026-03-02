@@ -271,8 +271,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wire inbox backend so DispatchToAgent can post completion notifications.
 	s.interp.SetInboxBackend(inboxBack)
 
-	// Register channel tools — create_channel and post_to_channel.
-	dsl.RegisterChannelTools(s.interp, s.store, func(channelName, agent, content string, msgID int64) {
+	// Channel post callback — publishes SSE events for real-time updates.
+	channelPostCb := func(channelName, agent, content string, msgID int64) {
 		cs := s.getOrCreateChannelStream(channelName)
 		cs.publish(ChannelEvent{
 			Type:      "channel.message",
@@ -282,7 +282,13 @@ func (s *Server) Start(ctx context.Context) error {
 			Role:      "assistant",
 			Content:   content,
 		})
-	})
+	}
+
+	// Register channel tools — create_channel and post_to_channel.
+	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb)
+
+	// Wire channel backend so DispatchToAgent can post completion summaries.
+	s.interp.SetChannelBackend(s.store, channelPostCb)
 
 	// Wire delegation observer so agent-to-agent messages appear in channels.
 	s.interp.SetDelegationObserver(func(ctx context.Context, from, to, message, response string) {
