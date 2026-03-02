@@ -143,8 +143,15 @@ type Store interface {
 	// ListChannelMessages returns top-level messages for a channel with reply counts.
 	ListChannelMessages(channelID string, limit int) ([]ChannelMessage, error)
 
+	// RecentChannelMessages returns the last N messages (lightweight, for status checks).
+	RecentChannelMessages(channelID string, limit int) ([]dsl.ChannelMessage, error)
+
 	// ListThreadMessages returns all replies in a thread.
 	ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error)
+
+	// ResetData clears all transient data (chat, memory, agents, files, etc.)
+	// but preserves settings.
+	ResetData() error
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.
