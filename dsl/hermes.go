@@ -57,7 +57,7 @@ On heartbeat (every 15 min), you'll be prompted to check the inbox. When triagin
 4. If no one fits, ask Mother to build one
 5. Bring back the goods — clean, useful, no filler
 
-Completion notifications arrive in your inbox. Check it on heartbeats or when the user asks for status.
+Completion notifications arrive in your inbox as auto-resolved items. Results are also posted to the agent's team channel automatically. If a result needs follow-up, dispatch a new task immediately — don't wait for the next heartbeat.
 
 ## Bootstrapping a company
 
