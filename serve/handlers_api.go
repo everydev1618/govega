@@ -226,11 +226,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Hydrate conversation history from SQLite if this is a fresh process.
 	s.hydrateAgent(proc, name)
 
-	// Load and inject memory into the process before sending.
+	// Load and inject memory + project context into the process before sending.
+	var memText string
 	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
-		if memText := formatMemoryForInjection(memories); memText != "" {
-			proc.SetExtraSystem(memText)
-		}
+		memText = formatMemoryForInjection(memories)
+	}
+	projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
+	if extra := buildExtraSystem(memText, projectCtx); extra != "" {
+		proc.SetExtraSystem(extra)
 	}
 
 	// Persist user message.
@@ -285,10 +288,14 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	s.hydrateAgent(proc, name)
 
+	// Load and inject memory + project context into the process before sending.
+	var memTextStream string
 	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
-		if memText := formatMemoryForInjection(memories); memText != "" {
-			proc.SetExtraSystem(memText)
-		}
+		memTextStream = formatMemoryForInjection(memories)
+	}
+	projectCtxStream := buildProjectContext(s.interp.Tools().ActiveProject())
+	if extra := buildExtraSystem(memTextStream, projectCtxStream); extra != "" {
+		proc.SetExtraSystem(extra)
 	}
 
 	if err := s.store.InsertChatMessage(name, "user", req.Message); err != nil {

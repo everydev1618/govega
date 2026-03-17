@@ -271,12 +271,15 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wire inbox backend so DispatchToAgent can post completion notifications.
 	s.interp.SetInboxBackend(inboxBack)
 
-	// Wire memory injector so agents get their memories during delegated tasks.
+	// Wire memory injector so agents get their memories + project context during delegated tasks.
 	s.interp.SetMemoryInjector(func(proc *vega.Process, agentName string) {
+		var memText string
 		if memories, err := s.store.GetUserMemory("default", agentName); err == nil && len(memories) > 0 {
-			if memText := formatMemoryForInjection(memories); memText != "" {
-				proc.SetExtraSystem(memText)
-			}
+			memText = formatMemoryForInjection(memories)
+		}
+		projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
+		if extra := buildExtraSystem(memText, projectCtx); extra != "" {
+			proc.SetExtraSystem(extra)
 		}
 	})
 
