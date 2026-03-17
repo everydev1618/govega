@@ -238,6 +238,17 @@ type InboxItem struct {
 	Resolution string     `json:"resolution,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	ReplyCount int        `json:"reply_count"`
+}
+
+// InboxReply is a threaded reply on an inbox item.
+type InboxReply struct {
+	ID        int64     `json:"id"`
+	InboxID   int64     `json:"inbox_id"`
+	Role      string    `json:"role"`
+	Agent     string    `json:"agent,omitempty"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ErrorResponse is returned on API errors.

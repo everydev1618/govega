@@ -2033,6 +2033,118 @@ func (s *Server) handleListInbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
+// --- Inbox Reply ---
+
+func (s *Server) handleInboxReply(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	var id int64
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid inbox item id"})
+		return
+	}
+
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
+		return
+	}
+
+	// Fetch the inbox item for context.
+	item, err := s.store.GetInboxItem(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "inbox item not found"})
+		return
+	}
+
+	// Insert the user's reply into the thread.
+	if _, err := s.store.InsertInboxReply(id, "user", "", req.Message); err != nil {
+		slog.Error("failed to persist user inbox reply", "error", err)
+	}
+
+	// Load prior replies to build full thread context.
+	replies, err := s.store.ListInboxReplies(id)
+	if err != nil {
+		slog.Error("failed to load inbox replies", "error", err)
+		replies = nil
+	}
+
+	// Build a context message for Hermes with the original item and full thread history.
+	var threadHistory strings.Builder
+	for _, reply := range replies {
+		sender := reply.Role
+		if reply.Agent != "" {
+			sender = reply.Agent
+		}
+		fmt.Fprintf(&threadHistory, "[%s]: %s\n", sender, reply.Content)
+	}
+
+	contextMsg := fmt.Sprintf(
+		"[Inbox thread #%d from %s]\nSubject: %s\nOriginal message: %s\n\n--- Thread History ---\n%s",
+		item.ID, item.FromAgent, item.Subject, item.Body, threadHistory.String(),
+	)
+
+	// Send to Hermes via the chat flow.
+	proc, err := s.interp.EnsureAgent("hermes")
+	if err != nil {
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
+		return
+	}
+	s.hydrateAgent(proc, "hermes")
+
+	if err := s.store.InsertChatMessage("hermes", "user", contextMsg); err != nil {
+		slog.Error("failed to persist inbox reply message", "error", err)
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	defer cancel()
+
+	response, err := s.interp.SendToAgent(ctx, "hermes", contextMsg)
+	if err != nil {
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
+		return
+	}
+
+	if err := s.store.InsertChatMessage("hermes", "assistant", response); err != nil {
+		slog.Error("failed to persist inbox reply response", "error", err)
+	}
+
+	// Insert Hermes's response into the thread.
+	if _, err := s.store.InsertInboxReply(id, "assistant", "hermes", response); err != nil {
+		slog.Error("failed to persist hermes inbox reply", "error", err)
+	}
+
+	// Resolve the inbox item — the user got their answer.
+	if err := s.store.ResolveInboxItem(id, truncate(response, 200)); err != nil {
+		slog.Error("failed to resolve inbox item after reply", "error", err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"response": response})
+}
+
+// handleListInboxReplies returns all threaded replies for an inbox item.
+func (s *Server) handleListInboxReplies(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	var id int64
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid inbox item id"})
+		return
+	}
+
+	replies, err := s.store.ListInboxReplies(id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to list replies"})
+		return
+	}
+	if replies == nil {
+		replies = []InboxReply{}
+	}
+	writeJSON(w, http.StatusOK, replies)
+}
+
 // --- Helpers ---
 
 

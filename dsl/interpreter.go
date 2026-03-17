@@ -45,6 +45,7 @@ type Interpreter struct {
 	delegationObserver DelegationObserver
 	inboxBackend      InboxBackend   // for async dispatch completion notifications
 	channelBackend    ChannelBackend // for posting completion summaries to channels
+	memoryInjector    func(proc *vega.Process, agentName string) // injects memory into agent before send
 	channelPostCb     func(channelName, agent, content string, msgID int64)
 	mu                sync.RWMutex
 }
@@ -1204,6 +1205,11 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 		return "", err
 	}
 
+	// Inject memory so the agent has context from prior conversations.
+	if i.memoryInjector != nil {
+		i.memoryInjector(proc, agentName)
+	}
+
 	// If the parent is streaming, use rich streaming so we can forward
 	// nested tool activity back to the parent's event channel.
 	parentSink := vega.EventSinkFromContext(ctx)
@@ -1261,6 +1267,13 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 	}
 
 	return response, nil
+}
+
+// SetMemoryInjector sets a callback that injects memory into an agent process
+// before sending messages. This gives agents access to their stored memories
+// during delegated tasks, not just during direct chat.
+func (i *Interpreter) SetMemoryInjector(fn func(proc *vega.Process, agentName string)) {
+	i.memoryInjector = fn
 }
 
 // SetInboxBackend sets the inbox backend used by DispatchToAgent for
