@@ -182,6 +182,7 @@ type Channel struct {
 	Name         string    `json:"name"`
 	Description  string    `json:"description"`
 	Team         []string  `json:"team"`
+	Mode         string    `json:"mode,omitempty"` // "" = default (team-lead responds), "social" = all members respond
 	CreatedBy    string    `json:"created_by"`
 	CreatedAt    time.Time `json:"created_at"`
 	MessageCount int       `json:"message_count"`

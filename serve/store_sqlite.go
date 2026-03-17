@@ -160,6 +160,7 @@ func (s *SQLiteStore) Init() error {
 		name        TEXT NOT NULL UNIQUE,
 		description TEXT DEFAULT '',
 		team        TEXT DEFAULT '[]',
+		mode        TEXT DEFAULT '',
 		created_by  TEXT NOT NULL,
 		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
@@ -225,6 +226,9 @@ func (s *SQLiteStore) Init() error {
 
 	// Migrate: add avatar column to composed_agents if missing.
 	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`)
+
+	// Migrate: add mode column to channels if missing.
+	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
 
 	return nil
 }
@@ -837,11 +841,11 @@ func (s *SQLiteStore) SetMCPServerDisabled(name string, disabled bool) error {
 // --- Channel Methods ---
 
 // CreateChannel creates a new channel.
-func (s *SQLiteStore) CreateChannel(id, name, description, createdBy string, team []string) error {
+func (s *SQLiteStore) CreateChannel(id, name, description, createdBy string, team []string, mode string) error {
 	teamJSON, _ := json.Marshal(team)
 	_, err := s.db.Exec(
-		`INSERT INTO channels (id, name, description, team, created_by) VALUES (?, ?, ?, ?, ?)`,
-		id, name, description, string(teamJSON), createdBy,
+		`INSERT INTO channels (id, name, description, team, mode, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, name, description, string(teamJSON), mode, createdBy,
 	)
 	return err
 }
@@ -851,8 +855,8 @@ func (s *SQLiteStore) GetChannel(name string) (*Channel, error) {
 	var ch Channel
 	var teamJSON string
 	err := s.db.QueryRow(
-		`SELECT id, name, description, team, created_by, created_at FROM channels WHERE name = ?`, name,
-	).Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.CreatedBy, &ch.CreatedAt)
+		`SELECT id, name, description, team, mode, created_by, created_at FROM channels WHERE name = ?`, name,
+	).Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -893,7 +897,7 @@ func (s *SQLiteStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, err
 // ListChannels returns all channels.
 func (s *SQLiteStore) ListChannels() ([]Channel, error) {
 	rows, err := s.db.Query(`
-		SELECT c.id, c.name, c.description, c.team, c.created_by, c.created_at,
+		SELECT c.id, c.name, c.description, c.team, c.mode, c.created_by, c.created_at,
 		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL), 0)
 		FROM channels c
 		ORDER BY c.created_at ASC`,
@@ -907,7 +911,7 @@ func (s *SQLiteStore) ListChannels() ([]Channel, error) {
 	for rows.Next() {
 		var ch Channel
 		var teamJSON string
-		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.CreatedBy, &ch.CreatedAt, &ch.MessageCount); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt, &ch.MessageCount); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(teamJSON), &ch.Team)

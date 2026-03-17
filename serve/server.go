@@ -298,12 +298,17 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Reactive channel callback — notifies other team members when an agent posts.
 	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int) {
+		// Look up channel mode for social prompt selection.
+		social := false
+		if ch, err := s.store.GetChannel(channelName); err == nil && ch != nil {
+			social = ch.Mode == "social"
+		}
 		for _, member := range team {
 			if member == poster {
 				continue
 			}
 			m := member
-			go s.notifyChannelTeammate(channelName, m, poster, message, depth)
+			go s.notifyChannelTeammate(channelName, m, poster, message, depth, social)
 		}
 	}
 
