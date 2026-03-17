@@ -32,7 +32,7 @@ func canNotify(channelName, agent string) bool {
 // notifyChannelTeammate sends a channel message notification to a teammate
 // so they can decide whether to respond. The depth parameter is used to
 // track reactive depth and prevent infinite loops.
-func (s *Server) notifyChannelTeammate(channelName, targetAgent, poster, message string, depth int) {
+func (s *Server) notifyChannelTeammate(channelName, targetAgent, poster, message string, depth int, social bool) {
 	if !canNotify(channelName, targetAgent) {
 		return
 	}
@@ -51,13 +51,24 @@ func (s *Server) notifyChannelTeammate(channelName, targetAgent, poster, message
 		preview = preview[:300] + "..."
 	}
 
-	prompt := fmt.Sprintf(
-		`[Channel #%s] %s posted:
+	var prompt string
+	if social {
+		prompt = fmt.Sprintf(
+			`[Channel #%s] %s said:
+"%s"
+
+This is the social/fun channel! Jump in with your own personality — share a thought, joke, reaction, or hot take. Be yourself, keep it short (1-2 sentences), and use post_to_channel(channel="%s", message="...") to respond. Don't be formal.`,
+			channelName, poster, preview, channelName,
+		)
+	} else {
+		prompt = fmt.Sprintf(
+			`[Channel #%s] %s posted:
 "%s"
 
 If this is relevant to your work or needs your input, respond using post_to_channel(channel="%s", message="..."). If not, just say "noted" and move on. Keep responses brief.`,
-		channelName, poster, preview, channelName,
-	)
+			channelName, poster, preview, channelName,
+		)
+	}
 
 	ctx := dsl.ContextWithChannelReactiveDepth(context.Background(), depth+1)
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -69,4 +80,17 @@ If this is relevant to your work or needs your input, respond using post_to_chan
 		return
 	}
 	_ = resp
+}
+
+// notifyChannelTeammates notifies all channel team members (except the poster)
+// about a new message. Used to get multiple agents to respond to user messages.
+func (s *Server) notifyChannelTeammates(ch *Channel, poster, message string, depth int) {
+	social := ch.Mode == "social"
+	for _, member := range ch.Team {
+		if member == poster {
+			continue
+		}
+		m := member
+		go s.notifyChannelTeammate(ch.Name, m, poster, message, depth, social)
+	}
 }

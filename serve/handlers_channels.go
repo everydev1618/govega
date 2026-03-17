@@ -46,7 +46,7 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
-	if err := s.store.CreateChannel(id, req.Name, req.Description, userID, req.Team); err != nil {
+	if err := s.store.CreateChannel(id, req.Name, req.Description, userID, req.Team, ""); err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -194,6 +194,11 @@ func (s *Server) handleChannelPost(w http.ResponseWriter, r *http.Request) {
 
 	go s.runChannelAgent(ch, targetAgent, req.Message, threadID)
 
+	// In social mode, notify all OTHER team members so they respond too.
+	if ch.Mode == "social" {
+		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"message_id": msgID, "thread_id": threadID})
 }
 
@@ -265,6 +270,11 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 
 	if targetAgent != "" {
 		go s.runChannelAgentStreamed(ch, cs, targetAgent, req.Message, threadID)
+	}
+
+	// In social mode, notify all OTHER team members so they respond too.
+	if ch.Mode == "social" {
+		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0)
 	}
 
 	// Relay SSE to this client.

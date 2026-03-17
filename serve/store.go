@@ -105,7 +105,7 @@ type Store interface {
 	DeleteSetting(key string) error
 
 	// CreateChannel creates a new channel.
-	CreateChannel(id, name, description, createdBy string, team []string) error
+	CreateChannel(id, name, description, createdBy string, team []string, mode string) error
 
 	// GetChannel returns a channel by name.
 	GetChannel(name string) (*Channel, error)

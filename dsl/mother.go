@@ -141,7 +141,7 @@ Every agent costs real money (LLM tokens). Build for what needs to happen NOW.
 
 When building a company (multiple teams), ALWAYS create these two company-wide channels AFTER creating all agents:
 - **#general** — The company-wide channel. ALL agents are members. Used for announcements, cross-team coordination, and company updates. Tell every agent about this channel in their system prompt.
-- **#random** — The watercooler. ALL agents are members. Used for off-topic chat, jokes, personal stuff, team bonding. Tell agents they can be human here.
+- **#random** — The watercooler. ALL agents are members. Used for off-topic chat, jokes, personal stuff, team bonding. Tell agents they can be human here. **Create this with mode="social"** so ALL members respond to every message (not just the team lead).
 
 Use create_channel to make these. The name param must be exactly "general" and "random" — no company prefix, no project prefix, just the bare word. Include EVERY agent name you just created in the team list array for both channels. This is NOT optional — every company needs a #general and #random.
 
@@ -335,7 +335,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				}
 				chID := fmt.Sprintf("ch_%d", time.Now().UnixNano())
 				members := append([]string{name}, team...)
-				if err := cb.ChannelBackend.CreateChannel(chID, chName, displayName+"'s team channel", "mother", members); err != nil {
+				if err := cb.ChannelBackend.CreateChannel(chID, chName, displayName+"'s team channel", "mother", members, ""); err != nil {
 					// Channel may already exist — not fatal.
 					channelMsg = fmt.Sprintf(" (note: channel #%s could not be created: %v)", chName, err)
 				} else {

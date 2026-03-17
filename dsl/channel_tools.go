@@ -52,7 +52,7 @@ type ChannelMessage struct {
 // ChannelBackend is the interface for channel operations.
 // Defined here so dsl/ does not import serve/.
 type ChannelBackend interface {
-	CreateChannel(id, name, description, createdBy string, team []string) error
+	CreateChannel(id, name, description, createdBy string, team []string, mode string) error
 	GetChannelByName(name string) (*ChannelInfo, error)
 	ListChannelsForAgent(agent string) ([]ChannelInfo, error)
 	FindChannelForAgents(agent1, agent2 string) (channelID string, channelName string, err error)
@@ -157,6 +157,7 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			// Strip leading # if provided — the UI adds the # prefix.
 			name = strings.TrimPrefix(name, "#")
 			description, _ := params["description"].(string)
+			mode, _ := params["mode"].(string)
 			team := toStringSlice(params["team"])
 
 			// For company-wide channels, auto-populate team with all agents if empty.
@@ -170,15 +171,24 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				interp.mu.RUnlock()
 			}
 
+			// Default: #random is social mode.
+			if mode == "" && name == "random" {
+				mode = "social"
+			}
+
 			if len(team) == 0 {
 				return "", fmt.Errorf("team is required — provide at least one agent name")
 			}
 
 			id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
-			if err := backend.CreateChannel(id, name, description, "mother", team); err != nil {
+			if err := backend.CreateChannel(id, name, description, "mother", team, mode); err != nil {
 				return "", fmt.Errorf("create channel: %w", err)
 			}
-			return fmt.Sprintf("Channel **#%s** created with team: %v", name, team), nil
+			modeMsg := ""
+			if mode == "social" {
+				modeMsg = " (social mode — all members respond to messages)"
+			}
+			return fmt.Sprintf("Channel **#%s** created with team: %v%s", name, team, modeMsg), nil
 		}),
 		Params: map[string]tools.ParamDef{
 			"name": {
@@ -194,6 +204,10 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				Type:        "array",
 				Description: "List of agent names to include in the channel",
 				Required:    true,
+			},
+			"mode": {
+				Type:        "string",
+				Description: "Channel mode: 'social' means ALL members respond to every message (great for watercooler/fun channels). Default is normal mode where only the team lead responds.",
 			},
 		},
 	})
