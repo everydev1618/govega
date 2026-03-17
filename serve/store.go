@@ -134,8 +134,17 @@ type Store interface {
 	// ListInboxItems returns inbox items filtered by status.
 	ListInboxItems(status string, limit int) ([]InboxItem, error)
 
+	// GetInboxItem returns a single inbox item by ID.
+	GetInboxItem(id int64) (*InboxItem, error)
+
 	// ResolveInboxItem marks an inbox item as resolved.
 	ResolveInboxItem(id int64, resolution string) error
+
+	// InsertInboxReply adds a threaded reply to an inbox item.
+	InsertInboxReply(inboxID int64, role, agent, content string) (int64, error)
+
+	// ListInboxReplies returns all replies for an inbox item, oldest first.
+	ListInboxReplies(inboxID int64) ([]InboxReply, error)
 
 	// InsertChannelMessage inserts a message into a channel.
 	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error)

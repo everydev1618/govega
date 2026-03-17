@@ -10,6 +10,32 @@ import (
 	"github.com/everydev1618/govega/tools"
 )
 
+// contextKey is a private type for context keys in this package.
+type contextKey string
+
+const channelReactiveDepthKey contextKey = "channelReactiveDepth"
+
+// ChannelReactiveDepthFromContext returns the current reactive depth from ctx.
+func ChannelReactiveDepthFromContext(ctx context.Context) int {
+	if v, ok := ctx.Value(channelReactiveDepthKey).(int); ok {
+		return v
+	}
+	return 0
+}
+
+// ContextWithChannelReactiveDepth returns a new context with the given reactive depth.
+func ContextWithChannelReactiveDepth(ctx context.Context, depth int) context.Context {
+	return context.WithValue(ctx, channelReactiveDepthKey, depth)
+}
+
+// MaxReactiveDepth is the maximum depth for reactive channel notifications
+// to prevent infinite loops.
+const MaxReactiveDepth = 2
+
+// ChannelReactiveCallback is called after a post_to_channel so that other
+// team members can be notified and optionally respond.
+type ChannelReactiveCallback func(channelName string, team []string, poster string, message string, depth int)
+
 // ChannelInfo holds minimal channel data returned to dsl tools.
 type ChannelInfo struct {
 	ID   string
@@ -39,7 +65,7 @@ type ChannelBackend interface {
 type ChannelPostCallback func(channelName, agent, content string, msgID int64)
 
 // RegisterChannelTools registers channel tools on the interpreter.
-func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost ChannelPostCallback) {
+func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost ChannelPostCallback, onReactive ChannelReactiveCallback) {
 	t := interp.Tools()
 
 	t.Register("post_to_channel", tools.ToolDef{
@@ -72,6 +98,13 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 
 			if onPost != nil {
 				onPost(channelName, agent, message, msgID)
+			}
+
+			if onReactive != nil {
+				depth := ChannelReactiveDepthFromContext(ctx)
+				if depth < MaxReactiveDepth {
+					onReactive(channelName, ch.Team, agent, message, depth)
+				}
 			}
 
 			return fmt.Sprintf("Posted to #%s (message %d)", channelName, msgID), nil

@@ -192,6 +192,17 @@ func (s *SQLiteStore) Init() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_agent_inbox_status ON agent_inbox(status, created_at);
 
+	CREATE TABLE IF NOT EXISTS inbox_replies (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		inbox_id  INTEGER NOT NULL,
+		role      TEXT NOT NULL,
+		agent     TEXT NOT NULL DEFAULT '',
+		content   TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (inbox_id) REFERENCES agent_inbox(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_inbox_replies_inbox ON inbox_replies(inbox_id, created_at);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -693,6 +704,7 @@ func (s *SQLiteStore) ResetData() error {
 		"scheduled_jobs",
 		"channel_messages",
 		"channels",
+		"inbox_replies",
 		"agent_inbox",
 		"workspace_files",
 	}
@@ -1104,11 +1116,13 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 	var query string
 	var args []any
 	if status == "all" || status == "" {
-		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at,
+				COALESCE((SELECT COUNT(*) FROM inbox_replies WHERE inbox_id = agent_inbox.id), 0) as reply_count
 			FROM agent_inbox ORDER BY created_at DESC LIMIT ?`
 		args = []any{limit}
 	} else {
-		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at,
+				COALESCE((SELECT COUNT(*) FROM inbox_replies WHERE inbox_id = agent_inbox.id), 0) as reply_count
 			FROM agent_inbox WHERE status = ? ORDER BY created_at DESC LIMIT ?`
 		args = []any{status, limit}
 	}
@@ -1125,7 +1139,7 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 		var resolution sql.NullString
 		var resolvedAt sql.NullTime
 		if err := rows.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
-			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt, &item.ReplyCount); err != nil {
 			return nil, err
 		}
 		if resolution.Valid {
@@ -1137,6 +1151,28 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// GetInboxItem returns a single inbox item by ID.
+func (s *SQLiteStore) GetInboxItem(id int64) (*InboxItem, error) {
+	row := s.db.QueryRow(
+		`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		FROM agent_inbox WHERE id = ?`, id)
+
+	var item InboxItem
+	var resolution sql.NullString
+	var resolvedAt sql.NullTime
+	if err := row.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
+		&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+		return nil, err
+	}
+	if resolution.Valid {
+		item.Resolution = resolution.String
+	}
+	if resolvedAt.Valid {
+		item.ResolvedAt = &resolvedAt.Time
+	}
+	return &item, nil
 }
 
 // ResolveInboxItem marks an inbox item as resolved.
@@ -1153,6 +1189,40 @@ func (s *SQLiteStore) ResolveInboxItem(id int64, resolution string) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// InsertInboxReply adds a threaded reply to an inbox item and returns the reply ID.
+func (s *SQLiteStore) InsertInboxReply(inboxID int64, role, agent, content string) (int64, error) {
+	result, err := s.db.Exec(
+		`INSERT INTO inbox_replies (inbox_id, role, agent, content) VALUES (?, ?, ?, ?)`,
+		inboxID, role, agent, content,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// ListInboxReplies returns all replies for an inbox item, oldest first.
+func (s *SQLiteStore) ListInboxReplies(inboxID int64) ([]InboxReply, error) {
+	rows, err := s.db.Query(
+		`SELECT id, inbox_id, role, agent, content, created_at
+		 FROM inbox_replies WHERE inbox_id = ? ORDER BY created_at ASC`, inboxID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var replies []InboxReply
+	for rows.Next() {
+		var r InboxReply
+		if err := rows.Scan(&r.ID, &r.InboxID, &r.Role, &r.Agent, &r.Content, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		replies = append(replies, r)
+	}
+	return replies, rows.Err()
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.

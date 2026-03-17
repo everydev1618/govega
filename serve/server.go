@@ -271,6 +271,15 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wire inbox backend so DispatchToAgent can post completion notifications.
 	s.interp.SetInboxBackend(inboxBack)
 
+	// Wire memory injector so agents get their memories during delegated tasks.
+	s.interp.SetMemoryInjector(func(proc *vega.Process, agentName string) {
+		if memories, err := s.store.GetUserMemory("default", agentName); err == nil && len(memories) > 0 {
+			if memText := formatMemoryForInjection(memories); memText != "" {
+				proc.SetExtraSystem(memText)
+			}
+		}
+	})
+
 	// Channel post callback — publishes SSE events for real-time updates.
 	channelPostCb := func(channelName, agent, content string, msgID int64) {
 		cs := s.getOrCreateChannelStream(channelName)
@@ -284,8 +293,19 @@ func (s *Server) Start(ctx context.Context) error {
 		})
 	}
 
+	// Reactive channel callback — notifies other team members when an agent posts.
+	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int) {
+		for _, member := range team {
+			if member == poster {
+				continue
+			}
+			m := member
+			go s.notifyChannelTeammate(channelName, m, poster, message, depth)
+		}
+	}
+
 	// Register channel tools — create_channel and post_to_channel.
-	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb)
+	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb, channelReactiveCb)
 
 	// Wire channel backend so DispatchToAgent can post completion summaries.
 	s.interp.SetChannelBackend(s.store, channelPostCb)
@@ -336,7 +356,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Add the hermes-heartbeat schedule if not already persisted.
 	s.scheduler.AddJob(dsl.ScheduledJob{
 		Name:      "hermes-heartbeat",
-		Cron:      "*/15 * * * *",
+		Cron:      "* * * * *",
 		AgentName: "hermes",
 		Message:   "Heartbeat: Check your inbox (list_inbox) for pending questions from agents. Triage and resolve what you can. Only escalate to the user if it truly requires their input.",
 		Enabled:   true,
@@ -471,6 +491,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Inbox
 	mux.HandleFunc("GET /api/inbox", s.handleListInbox)
+	mux.HandleFunc("GET /api/inbox/{id}/replies", s.handleListInboxReplies)
+	mux.HandleFunc("POST /api/inbox/{id}/reply", s.handleInboxReply)
 
 	// Settings
 	mux.HandleFunc("GET /api/settings", s.handleListSettings)
@@ -815,7 +837,7 @@ func (s *Server) injectMother() {
 
 // injectHermes adds Hermes, the cosmic orchestrator, to the interpreter.
 func (s *Server) injectHermes() {
-	if err := dsl.InjectHermes(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
+	if err := dsl.InjectHermes(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox", "reply_to_inbox"); err != nil {
 		slog.Warn("failed to inject Hermes agent", "error", err)
 	}
 }
@@ -869,6 +891,29 @@ func (a *inboxAdapter) ListInboxItems(status string, limit int) ([]dsl.InboxItem
 
 func (a *inboxAdapter) ResolveInboxItem(id int64, resolution string) error {
 	return a.store.ResolveInboxItem(id, resolution)
+}
+
+func (a *inboxAdapter) InsertInboxReply(inboxID int64, role, agent, content string) (int64, error) {
+	return a.store.InsertInboxReply(inboxID, role, agent, content)
+}
+
+func (a *inboxAdapter) ListInboxReplies(inboxID int64) ([]dsl.InboxReply, error) {
+	replies, err := a.store.ListInboxReplies(inboxID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]dsl.InboxReply, len(replies))
+	for i, r := range replies {
+		result[i] = dsl.InboxReply{
+			ID:        r.ID,
+			InboxID:   r.InboxID,
+			Role:      r.Role,
+			Agent:     r.Agent,
+			Content:   r.Content,
+			CreatedAt: r.CreatedAt,
+		}
+	}
+	return result, nil
 }
 
 func truncate(s string, max int) string {
