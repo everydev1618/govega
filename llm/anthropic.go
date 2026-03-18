@@ -71,7 +71,7 @@ func WithMaxConcurrent(n int) AnthropicOption {
 // Default Anthropic configuration values
 const (
 	DefaultAnthropicTimeout = 5 * time.Minute
-	DefaultAnthropicModel   = "claude-sonnet-4-20250514"
+	DefaultAnthropicModel   = "claude-opus-4-6-20250514"
 	DefaultAnthropicBaseURL = "https://api.anthropic.com"
 )
 
@@ -106,6 +106,12 @@ type systemBlock struct {
 	CacheControl *cacheControl `json:"cache_control,omitempty"`
 }
 
+// thinkingBlock configures extended thinking for the API request.
+type thinkingBlock struct {
+	Type         string `json:"type"`          // "enabled"
+	BudgetTokens int    `json:"budget_tokens"` // max tokens for thinking
+}
+
 // anthropicRequest is the API request format.
 type anthropicRequest struct {
 	Model       string           `json:"model"`
@@ -115,6 +121,7 @@ type anthropicRequest struct {
 	Temperature *float64         `json:"temperature,omitempty"`
 	Tools       []anthropicTool  `json:"tools,omitempty"`
 	Stream      bool             `json:"stream,omitempty"`
+	Thinking    *thinkingBlock   `json:"thinking,omitempty"`
 }
 
 type anthropicMsg struct {
@@ -271,11 +278,31 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 	return eventCh, nil
 }
 
+// isThinkingModel returns true if the model supports extended thinking.
+func isThinkingModel(model string) bool {
+	return strings.Contains(model, "opus")
+}
+
 func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stream bool) *anthropicRequest {
+	maxTokens := 8192
+	if isThinkingModel(a.model) {
+		maxTokens = 16000
+	}
+
 	req := &anthropicRequest{
 		Model:     a.model,
-		MaxTokens: 8192,
+		MaxTokens: maxTokens,
 		Stream:    stream,
+	}
+
+	// Enable extended thinking for capable models.
+	if isThinkingModel(a.model) {
+		req.Thinking = &thinkingBlock{
+			Type:         "enabled",
+			BudgetTokens: 10000,
+		}
+		// Temperature must not be set when thinking is enabled.
+		req.Temperature = nil
 	}
 
 	// Extract system message and convert others
@@ -588,6 +615,9 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 				Name:      block.Name,
 				Arguments: block.Input,
 			})
+		case "thinking":
+			// Extended thinking block — logged but not included in response content.
+			slog.Debug("thinking block", "length", len(block.Text))
 		}
 	}
 
@@ -650,7 +680,8 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 			} `json:"content_block"`
 		}
 		json.Unmarshal([]byte(data), &block)
-		if block.ContentBlock.Type == "tool_use" {
+		switch block.ContentBlock.Type {
+		case "tool_use":
 			eventCh <- StreamEvent{
 				Type: StreamEventToolStart,
 				ToolCall: &ToolCall{
@@ -659,7 +690,9 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 					Arguments: make(map[string]any),
 				},
 			}
-		} else {
+		case "thinking":
+			// Thinking block start — silently consumed.
+		default:
 			eventCh <- StreamEvent{Type: StreamEventContentStart}
 		}
 
@@ -668,6 +701,7 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 			Delta struct {
 				Type        string `json:"type"`
 				Text        string `json:"text"`
+				Thinking    string `json:"thinking"`
 				PartialJSON string `json:"partial_json"`
 			} `json:"delta"`
 		}
@@ -683,6 +717,8 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 				Type:  StreamEventToolDelta,
 				Delta: delta.Delta.PartialJSON,
 			}
+		case "thinking_delta":
+			// Thinking deltas — silently consumed (not shown to user).
 		}
 
 	case "content_block_stop":

@@ -23,24 +23,12 @@ type InboxItem struct {
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 }
 
-// InboxReply is a threaded reply on an inbox item (dsl-side mirror).
-type InboxReply struct {
-	ID        int64     `json:"id"`
-	InboxID   int64     `json:"inbox_id"`
-	Role      string    `json:"role"`
-	Agent     string    `json:"agent,omitempty"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 // InboxBackend is the interface that the store implements for inbox operations.
 // Defined here so dsl/ does not import serve/.
 type InboxBackend interface {
 	InsertInboxItem(fromAgent, subject, body, priority string) (int64, error)
 	ListInboxItems(status string, limit int) ([]InboxItem, error)
 	ResolveInboxItem(id int64, resolution string) error
-	InsertInboxReply(inboxID int64, role, agent, content string) (int64, error)
-	ListInboxReplies(inboxID int64) ([]InboxReply, error)
 }
 
 // RegisterInboxTools registers the inbox tools on the interpreter.
@@ -161,35 +149,4 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 		},
 	})
 
-	t.Register("reply_to_inbox", tools.ToolDef{
-		Description: "Post a threaded reply to an inbox item. Use this to add follow-up messages to an existing inbox conversation.",
-		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
-			id, ok := params["id"].(float64)
-			if !ok || id <= 0 {
-				return "", fmt.Errorf("id is required (positive integer)")
-			}
-			content, _ := params["content"].(string)
-			if content == "" {
-				return "", fmt.Errorf("content is required")
-			}
-
-			replyID, err := backend.InsertInboxReply(int64(id), "assistant", "hermes", content)
-			if err != nil {
-				return "", fmt.Errorf("reply to inbox: %w", err)
-			}
-			return fmt.Sprintf("Reply posted to inbox item %d (reply_id=%d).", int64(id), replyID), nil
-		}),
-		Params: map[string]tools.ParamDef{
-			"id": {
-				Type:        "number",
-				Description: "ID of the inbox item to reply to",
-				Required:    true,
-			},
-			"content": {
-				Type:        "string",
-				Description: "The reply message content",
-				Required:    true,
-			},
-		},
-	})
 }

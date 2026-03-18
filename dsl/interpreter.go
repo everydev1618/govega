@@ -46,7 +46,7 @@ type Interpreter struct {
 	inboxBackend      InboxBackend   // for async dispatch completion notifications
 	channelBackend    ChannelBackend // for posting completion summaries to channels
 	memoryInjector    func(proc *vega.Process, agentName string) // injects memory into agent before send
-	channelPostCb     func(channelName, agent, content string, msgID int64)
+	channelPostCb     func(channelName, agent, content string, msgID int64, threadID *int64)
 	mu                sync.RWMutex
 }
 
@@ -242,6 +242,9 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 
 	// Inject current date so agents know what day it is.
 	systemStr += "\nToday's date is " + time.Now().Format("January 2, 2006") + "."
+
+	// Universal brevity directive — applies to ALL agents.
+	systemStr += "\n\n## Communication style\nBe direct and concise. Lead with the answer, not the reasoning. 1-3 sentences for simple responses. Use bullet points only when listing concrete items — never for padding. No filler phrases, no restating the question, no sign-offs. The user's time is sacred."
 
 	// Inject workspace path so agents know where relative paths resolve.
 	systemStr += "\nYour working directory is " + vega.WorkspacePath()
@@ -1284,7 +1287,7 @@ func (i *Interpreter) SetInboxBackend(b InboxBackend) {
 
 // SetChannelBackend sets the channel backend used by DispatchToAgent to post
 // completion summaries to the agent's team channel.
-func (i *Interpreter) SetChannelBackend(b ChannelBackend, onPost func(channelName, agent, content string, msgID int64)) {
+func (i *Interpreter) SetChannelBackend(b ChannelBackend, onPost func(channelName, agent, content string, msgID int64, threadID *int64)) {
 	i.channelBackend = b
 	i.channelPostCb = onPost
 }
@@ -1340,7 +1343,7 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 					}
 					msgID, postErr := i.channelBackend.InsertChannelMessage(ch.ID, agentName, "assistant", summary, nil, "")
 					if postErr == nil && i.channelPostCb != nil {
-						i.channelPostCb(ch.Name, agentName, summary, msgID)
+						i.channelPostCb(ch.Name, agentName, summary, msgID, nil)
 					}
 					break // post to first team channel only
 				}

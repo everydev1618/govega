@@ -134,6 +134,7 @@ var modelPricing = map[string]struct {
 }{
 	"claude-sonnet-4-20250514":   {3.00, 15.00},
 	"claude-opus-4-20250514":     {15.00, 75.00},
+	"claude-opus-4-6-20250514":   {15.00, 75.00},
 	"claude-haiku-3-20240307":    {0.25, 1.25},
 	"claude-3-5-sonnet-20241022": {3.00, 15.00},
 	"claude-3-opus-20240229":     {15.00, 75.00},

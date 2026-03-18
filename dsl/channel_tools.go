@@ -34,7 +34,8 @@ const MaxReactiveDepth = 2
 
 // ChannelReactiveCallback is called after a post_to_channel so that other
 // team members can be notified and optionally respond.
-type ChannelReactiveCallback func(channelName string, team []string, poster string, message string, depth int)
+// triggerMsgID is the message that triggered the reaction, so agents can reply in-thread.
+type ChannelReactiveCallback func(channelName string, team []string, poster string, message string, depth int, triggerMsgID int64)
 
 // ChannelInfo holds minimal channel data returned to dsl tools.
 type ChannelInfo struct {
@@ -62,7 +63,7 @@ type ChannelBackend interface {
 
 // ChannelPostCallback is called after an agent posts to a channel,
 // so the server can publish SSE events to connected clients.
-type ChannelPostCallback func(channelName, agent, content string, msgID int64)
+type ChannelPostCallback func(channelName, agent, content string, msgID int64, threadID *int64)
 
 // RegisterChannelTools registers channel tools on the interpreter.
 func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost ChannelPostCallback, onReactive ChannelReactiveCallback) {
@@ -86,24 +87,36 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				agent = proc.Agent.Name
 			}
 
+			// Optional thread_id to post as a thread reply.
+			var threadID *int64
+			if tid, ok := params["thread_id"].(float64); ok && tid > 0 {
+				v := int64(tid)
+				threadID = &v
+			}
+
 			ch, err := backend.GetChannelByName(channelName)
 			if err != nil || ch == nil {
 				return "", fmt.Errorf("channel #%s not found", channelName)
 			}
 
-			msgID, err := backend.InsertChannelMessage(ch.ID, agent, "assistant", message, nil, "")
+			msgID, err := backend.InsertChannelMessage(ch.ID, agent, "assistant", message, threadID, "")
 			if err != nil {
 				return "", fmt.Errorf("post to channel: %w", err)
 			}
 
 			if onPost != nil {
-				onPost(channelName, agent, message, msgID)
+				onPost(channelName, agent, message, msgID, threadID)
 			}
 
 			if onReactive != nil {
 				depth := ChannelReactiveDepthFromContext(ctx)
 				if depth < MaxReactiveDepth {
-					onReactive(channelName, ch.Team, agent, message, depth)
+					// Reactive replies should thread under the message that triggered them.
+					triggerID := msgID
+					if threadID != nil {
+						triggerID = *threadID
+					}
+					onReactive(channelName, ch.Team, agent, message, depth, triggerID)
 				}
 			}
 
@@ -119,6 +132,10 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				Type:        "string",
 				Description: "The message to post",
 				Required:    true,
+			},
+			"thread_id": {
+				Type:        "number",
+				Description: "Optional message ID to reply to in a thread. When responding to another agent's message, use the thread_id to keep the conversation threaded.",
 			},
 		},
 	})

@@ -284,20 +284,32 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	// Channel post callback — publishes SSE events for real-time updates.
-	channelPostCb := func(channelName, agent, content string, msgID int64) {
+	channelPostCb := func(channelName, agent, content string, msgID int64, threadID *int64) {
 		cs := s.getOrCreateChannelStream(channelName)
-		cs.publish(ChannelEvent{
-			Type:      "channel.message",
-			Channel:   channelName,
-			MessageID: msgID,
-			Agent:     agent,
-			Role:      "assistant",
-			Content:   content,
-		})
+		if threadID != nil {
+			cs.publish(ChannelEvent{
+				Type:      "channel.thread_reply",
+				Channel:   channelName,
+				MessageID: msgID,
+				ThreadID:  threadID,
+				Agent:     agent,
+				Role:      "assistant",
+				Content:   content,
+			})
+		} else {
+			cs.publish(ChannelEvent{
+				Type:      "channel.message",
+				Channel:   channelName,
+				MessageID: msgID,
+				Agent:     agent,
+				Role:      "assistant",
+				Content:   content,
+			})
+		}
 	}
 
 	// Reactive channel callback — notifies other team members when an agent posts.
-	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int) {
+	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int, triggerMsgID int64) {
 		// Look up channel mode for social prompt selection.
 		social := false
 		if ch, err := s.store.GetChannel(channelName); err == nil && ch != nil {
@@ -308,7 +320,7 @@ func (s *Server) Start(ctx context.Context) error {
 				continue
 			}
 			m := member
-			go s.notifyChannelTeammate(channelName, m, poster, message, depth, social)
+			go s.notifyChannelTeammate(channelName, m, poster, message, depth, social, triggerMsgID)
 		}
 	}
 
@@ -364,9 +376,9 @@ func (s *Server) Start(ctx context.Context) error {
 	// Add the hermes-heartbeat schedule if not already persisted.
 	s.scheduler.AddJob(dsl.ScheduledJob{
 		Name:      "hermes-heartbeat",
-		Cron:      "* * * * *",
+		Cron:      "*/15 * * * *",
 		AgentName: "hermes",
-		Message:   "Heartbeat: Check your inbox (list_inbox) for pending questions from agents. Triage and resolve what you can. Only escalate to the user if it truly requires their input.",
+		Message:   "Heartbeat: Check your inbox (list_inbox) for pending questions from agents. Triage and resolve what you can.",
 		Enabled:   true,
 	})
 
@@ -499,8 +511,6 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Inbox
 	mux.HandleFunc("GET /api/inbox", s.handleListInbox)
-	mux.HandleFunc("GET /api/inbox/{id}/replies", s.handleListInboxReplies)
-	mux.HandleFunc("POST /api/inbox/{id}/reply", s.handleInboxReply)
 
 	// Settings
 	mux.HandleFunc("GET /api/settings", s.handleListSettings)
@@ -518,6 +528,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/channels/{name}/messages", s.handleChannelPost)
 	mux.HandleFunc("POST /api/channels/{name}/stream", s.handleChannelStream)
 	mux.HandleFunc("GET /api/channels/{name}/stream", s.handleChannelStreamReconnect)
+
+	// Prompt History (survives reset)
+	mux.HandleFunc("GET /api/prompt-history", s.handleListPromptHistory)
+	mux.HandleFunc("GET /api/prompt-history/search", s.handleSearchPromptHistory)
+	mux.HandleFunc("DELETE /api/prompt-history/{id}", s.handleDeletePromptHistory)
 
 	// Reset
 	mux.HandleFunc("POST /api/reset", s.handleReset)
@@ -845,7 +860,7 @@ func (s *Server) injectMother() {
 
 // injectHermes adds Hermes, the cosmic orchestrator, to the interpreter.
 func (s *Server) injectHermes() {
-	if err := dsl.InjectHermes(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox", "reply_to_inbox"); err != nil {
+	if err := dsl.InjectHermes(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
 		slog.Warn("failed to inject Hermes agent", "error", err)
 	}
 }
@@ -899,29 +914,6 @@ func (a *inboxAdapter) ListInboxItems(status string, limit int) ([]dsl.InboxItem
 
 func (a *inboxAdapter) ResolveInboxItem(id int64, resolution string) error {
 	return a.store.ResolveInboxItem(id, resolution)
-}
-
-func (a *inboxAdapter) InsertInboxReply(inboxID int64, role, agent, content string) (int64, error) {
-	return a.store.InsertInboxReply(inboxID, role, agent, content)
-}
-
-func (a *inboxAdapter) ListInboxReplies(inboxID int64) ([]dsl.InboxReply, error) {
-	replies, err := a.store.ListInboxReplies(inboxID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]dsl.InboxReply, len(replies))
-	for i, r := range replies {
-		result[i] = dsl.InboxReply{
-			ID:        r.ID,
-			InboxID:   r.InboxID,
-			Role:      r.Role,
-			Agent:     r.Agent,
-			Content:   r.Content,
-			CreatedAt: r.CreatedAt,
-		}
-	}
-	return result, nil
 }
 
 func truncate(s string, max int) string {

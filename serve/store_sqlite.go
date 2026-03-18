@@ -204,6 +204,12 @@ func (s *SQLiteStore) Init() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_inbox_replies_inbox ON inbox_replies(inbox_id, created_at);
 
+	CREATE TABLE IF NOT EXISTS prompt_history (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		prompt     TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -1120,13 +1126,11 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 	var query string
 	var args []any
 	if status == "all" || status == "" {
-		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at,
-				COALESCE((SELECT COUNT(*) FROM inbox_replies WHERE inbox_id = agent_inbox.id), 0) as reply_count
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
 			FROM agent_inbox ORDER BY created_at DESC LIMIT ?`
 		args = []any{limit}
 	} else {
-		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at,
-				COALESCE((SELECT COUNT(*) FROM inbox_replies WHERE inbox_id = agent_inbox.id), 0) as reply_count
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
 			FROM agent_inbox WHERE status = ? ORDER BY created_at DESC LIMIT ?`
 		args = []any{status, limit}
 	}
@@ -1143,7 +1147,7 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 		var resolution sql.NullString
 		var resolvedAt sql.NullTime
 		if err := rows.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
-			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt, &item.ReplyCount); err != nil {
+			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
 			return nil, err
 		}
 		if resolution.Valid {
@@ -1195,11 +1199,12 @@ func (s *SQLiteStore) ResolveInboxItem(id int64, resolution string) error {
 	return nil
 }
 
-// InsertInboxReply adds a threaded reply to an inbox item and returns the reply ID.
-func (s *SQLiteStore) InsertInboxReply(inboxID int64, role, agent, content string) (int64, error) {
+// --- Prompt History Methods ---
+
+// InsertPromptHistory records an original user prompt to hermes.
+func (s *SQLiteStore) InsertPromptHistory(prompt string) (int64, error) {
 	result, err := s.db.Exec(
-		`INSERT INTO inbox_replies (inbox_id, role, agent, content) VALUES (?, ?, ?, ?)`,
-		inboxID, role, agent, content,
+		`INSERT INTO prompt_history (prompt) VALUES (?)`, prompt,
 	)
 	if err != nil {
 		return 0, err
@@ -1207,26 +1212,69 @@ func (s *SQLiteStore) InsertInboxReply(inboxID int64, role, agent, content strin
 	return result.LastInsertId()
 }
 
-// ListInboxReplies returns all replies for an inbox item, oldest first.
-func (s *SQLiteStore) ListInboxReplies(inboxID int64) ([]InboxReply, error) {
+// ListPromptHistory returns prompt history entries, newest first.
+func (s *SQLiteStore) ListPromptHistory(limit int) ([]PromptHistoryItem, error) {
+	if limit <= 0 {
+		limit = 100
+	}
 	rows, err := s.db.Query(
-		`SELECT id, inbox_id, role, agent, content, created_at
-		 FROM inbox_replies WHERE inbox_id = ? ORDER BY created_at ASC`, inboxID,
+		`SELECT id, prompt, created_at FROM prompt_history ORDER BY id DESC LIMIT ?`, limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var replies []InboxReply
+	var items []PromptHistoryItem
 	for rows.Next() {
-		var r InboxReply
-		if err := rows.Scan(&r.ID, &r.InboxID, &r.Role, &r.Agent, &r.Content, &r.CreatedAt); err != nil {
+		var item PromptHistoryItem
+		if err := rows.Scan(&item.ID, &item.Prompt, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		replies = append(replies, r)
+		items = append(items, item)
 	}
-	return replies, rows.Err()
+	return items, rows.Err()
+}
+
+// SearchPromptHistory searches prompt history by keyword via LIKE.
+func (s *SQLiteStore) SearchPromptHistory(query string, limit int) ([]PromptHistoryItem, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, prompt, created_at FROM prompt_history
+		 WHERE prompt LIKE ?
+		 ORDER BY id DESC LIMIT ?`,
+		pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []PromptHistoryItem
+	for rows.Next() {
+		var item PromptHistoryItem
+		if err := rows.Scan(&item.ID, &item.Prompt, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// DeletePromptHistory removes a prompt history entry by ID.
+func (s *SQLiteStore) DeletePromptHistory(id int64) error {
+	result, err := s.db.Exec(`DELETE FROM prompt_history WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.
