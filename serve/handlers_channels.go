@@ -196,7 +196,7 @@ func (s *Server) handleChannelPost(w http.ResponseWriter, r *http.Request) {
 
 	// In social mode, notify all OTHER team members so they respond too.
 	if ch.Mode == "social" {
-		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0)
+		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0, threadID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"message_id": msgID, "thread_id": threadID})
@@ -274,7 +274,7 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 
 	// In social mode, notify all OTHER team members so they respond too.
 	if ch.Mode == "social" {
-		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0)
+		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0, threadID)
 	}
 
 	// Relay SSE to this client.

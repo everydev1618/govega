@@ -140,12 +140,6 @@ type Store interface {
 	// ResolveInboxItem marks an inbox item as resolved.
 	ResolveInboxItem(id int64, resolution string) error
 
-	// InsertInboxReply adds a threaded reply to an inbox item.
-	InsertInboxReply(inboxID int64, role, agent, content string) (int64, error)
-
-	// ListInboxReplies returns all replies for an inbox item, oldest first.
-	ListInboxReplies(inboxID int64) ([]InboxReply, error)
-
 	// InsertChannelMessage inserts a message into a channel.
 	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error)
 
@@ -159,8 +153,20 @@ type Store interface {
 	ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error)
 
 	// ResetData clears all transient data (chat, memory, agents, files, etc.)
-	// but preserves settings.
+	// but preserves settings and prompt history.
 	ResetData() error
+
+	// InsertPromptHistory records an original user prompt to hermes.
+	InsertPromptHistory(prompt string) (int64, error)
+
+	// ListPromptHistory returns prompt history entries, newest first.
+	ListPromptHistory(limit int) ([]PromptHistoryItem, error)
+
+	// SearchPromptHistory searches prompt history by keyword.
+	SearchPromptHistory(query string, limit int) ([]PromptHistoryItem, error)
+
+	// DeletePromptHistory removes a prompt history entry by ID.
+	DeletePromptHistory(id int64) error
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.
@@ -262,6 +268,13 @@ type Setting struct {
 	Sensitive bool      `json:"sensitive"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PromptHistoryItem is a persisted original prompt sent to hermes.
+type PromptHistoryItem struct {
+	ID        int64     `json:"id"`
+	Prompt    string    `json:"prompt"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // WorkflowRun is a persisted workflow execution.

@@ -31,8 +31,9 @@ func canNotify(channelName, agent string) bool {
 
 // notifyChannelTeammate sends a channel message notification to a teammate
 // so they can decide whether to respond. The depth parameter is used to
-// track reactive depth and prevent infinite loops.
-func (s *Server) notifyChannelTeammate(channelName, targetAgent, poster, message string, depth int, social bool) {
+// track reactive depth and prevent infinite loops. triggerMsgID is the
+// message to thread replies under.
+func (s *Server) notifyChannelTeammate(channelName, targetAgent, poster, message string, depth int, social bool, triggerMsgID int64) {
 	if !canNotify(channelName, targetAgent) {
 		return
 	}
@@ -54,19 +55,19 @@ func (s *Server) notifyChannelTeammate(channelName, targetAgent, poster, message
 	var prompt string
 	if social {
 		prompt = fmt.Sprintf(
-			`[Channel #%s] %s said:
+			`[Channel #%s] %s said (message %d):
 "%s"
 
-This is the social/fun channel! Jump in with your own personality — share a thought, joke, reaction, or hot take. Be yourself, keep it short (1-2 sentences), and use post_to_channel(channel="%s", message="...") to respond. Don't be formal.`,
-			channelName, poster, preview, channelName,
+This is the social/fun channel! Jump in with your own personality — share a thought, joke, reaction, or hot take. Be yourself, keep it short (1-2 sentences), and use post_to_channel(channel="%s", message="...", thread_id=%d) to respond in the thread. Don't be formal.`,
+			channelName, poster, triggerMsgID, preview, channelName, triggerMsgID,
 		)
 	} else {
 		prompt = fmt.Sprintf(
-			`[Channel #%s] %s posted:
+			`[Channel #%s] %s posted (message %d):
 "%s"
 
-If this is relevant to your work or needs your input, respond using post_to_channel(channel="%s", message="..."). If not, just say "noted" and move on. Keep responses brief.`,
-			channelName, poster, preview, channelName,
+If this is relevant to your work or needs your input, respond using post_to_channel(channel="%s", message="...", thread_id=%d) to reply in the thread. If not, just say "noted" and move on. Keep responses brief.`,
+			channelName, poster, triggerMsgID, preview, channelName, triggerMsgID,
 		)
 	}
 
@@ -84,13 +85,14 @@ If this is relevant to your work or needs your input, respond using post_to_chan
 
 // notifyChannelTeammates notifies all channel team members (except the poster)
 // about a new message. Used to get multiple agents to respond to user messages.
-func (s *Server) notifyChannelTeammates(ch *Channel, poster, message string, depth int) {
+// triggerMsgID is the message to thread replies under.
+func (s *Server) notifyChannelTeammates(ch *Channel, poster, message string, depth int, triggerMsgID int64) {
 	social := ch.Mode == "social"
 	for _, member := range ch.Team {
 		if member == poster {
 			continue
 		}
 		m := member
-		go s.notifyChannelTeammate(ch.Name, m, poster, message, depth, social)
+		go s.notifyChannelTeammate(ch.Name, m, poster, message, depth, social, triggerMsgID)
 	}
 }
