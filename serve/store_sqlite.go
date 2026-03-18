@@ -1199,6 +1199,17 @@ func (s *SQLiteStore) ResolveInboxItem(id int64, resolution string) error {
 	return nil
 }
 
+// DeleteResolvedInboxItems removes all resolved inbox items and their replies.
+func (s *SQLiteStore) DeleteResolvedInboxItems() (int64, error) {
+	// Delete replies for resolved items first.
+	s.db.Exec(`DELETE FROM inbox_replies WHERE inbox_id IN (SELECT id FROM agent_inbox WHERE status = 'resolved')`)
+	result, err := s.db.Exec(`DELETE FROM agent_inbox WHERE status = 'resolved'`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 // --- Prompt History Methods ---
 
 // InsertPromptHistory records an original user prompt to hermes.

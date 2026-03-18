@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -165,13 +166,27 @@ This is non-negotiable. Users hate walls of text, and agents should escalate thr
 
 Every agent you create MUST include "ask_hermes" in its tools list. Agents on teams with channels MUST also include "post_to_channel" and "list_my_channels".
 
+## Blueprints — IMPORTANT
+
+After you finish building a team or company, you MUST save a blueprint using save_blueprint. This is your record of what you built, why, and how the pieces fit together. Blueprints survive resets so the user can reference them later or ask you to rebuild.
+
+Your blueprint should be a clean markdown document that includes:
+- **Company/team name** and what it does
+- **Agent roster**: each agent's name, display name, title, and one-line role description
+- **Team structure**: who reports to whom, which channels exist
+- **The original request** that led to this build (quote or paraphrase)
+- **Key decisions** you made (why these departments, why this size, any trade-offs)
+
+Name the blueprint after the company or team (e.g. "acme-corp", "content-team"). Keep it concise — this is a reference doc, not an essay.
+
 ## Workflow
 
 1. Run list_agents (reuse before you rebuild), list_available_tools, list_available_skills, list_mcp_registry.
 2. Create helper agents FIRST (no team param).
 3. Create lead agents LAST with team=[] listing their helpers and channel="" for the team channel name.
 4. After ALL agents are created, create #general and #random channels with EVERY agent as a member.
-5. Tell the user the agent names and channel names.
+5. Save a blueprint with save_blueprint.
+6. Tell the user the agent names and channel names.
 
 You cannot modify yourself.`
 
@@ -210,6 +225,8 @@ func RegisterMotherTools(interp *Interpreter, cb *MotherCallbacks) {
 	t.Register("list_available_tools", newListAvailableToolsTool(interp))
 	t.Register("list_available_skills", newListAvailableSkillsTool(interp))
 	t.Register("list_mcp_registry", newListMCPRegistryTool())
+	t.Register("save_blueprint", newSaveBlueprintTool())
+	t.Register("list_blueprints", newListBlueprintsTool())
 }
 
 // InjectMother adds the Mother agent to the interpreter.
@@ -231,6 +248,7 @@ func InjectMother(interp *Interpreter, cb *MotherCallbacks, extraTools ...string
 		"create_agent", "update_agent", "delete_agent",
 		"list_agents", "list_available_tools", "list_available_skills",
 		"list_mcp_registry",
+		"save_blueprint", "list_blueprints",
 		"create_channel", "post_to_channel", "list_my_channels",
 	}, extraTools...)
 
@@ -700,6 +718,88 @@ func newListMCPRegistryTool() tools.ToolDef {
 	}
 }
 
+// blueprintsDir returns the path to the blueprints directory (~/.vega/workspace/blueprints).
+func blueprintsDir() string {
+	return fmt.Sprintf("%s/blueprints", vega.WorkspacePath())
+}
+
+func newSaveBlueprintTool() tools.ToolDef {
+	return tools.ToolDef{
+		Description: "Save a blueprint document recording what you built (team structure, agents, decisions). Blueprints survive resets.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			name, _ := params["name"].(string)
+			if name == "" {
+				return "", fmt.Errorf("name is required")
+			}
+			content, _ := params["content"].(string)
+			if content == "" {
+				return "", fmt.Errorf("content is required")
+			}
+
+			dir := blueprintsDir()
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return "", fmt.Errorf("create blueprints dir: %w", err)
+			}
+
+			// Sanitize name for filesystem.
+			safeName := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), " ", "-")
+			if !strings.HasSuffix(safeName, ".md") {
+				safeName += ".md"
+			}
+
+			path := fmt.Sprintf("%s/%s", dir, safeName)
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				return "", fmt.Errorf("write blueprint: %w", err)
+			}
+
+			return fmt.Sprintf("Blueprint saved to %s", path), nil
+		}),
+		Params: map[string]tools.ParamDef{
+			"name": {
+				Type:        "string",
+				Description: "Blueprint name (e.g. 'acme-corp', 'content-team'). Will be used as the filename.",
+				Required:    true,
+			},
+			"content": {
+				Type:        "string",
+				Description: "Markdown content of the blueprint document.",
+				Required:    true,
+			},
+		},
+	}
+}
+
+func newListBlueprintsTool() tools.ToolDef {
+	return tools.ToolDef{
+		Description: "List all saved blueprints.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			dir := blueprintsDir()
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return "No blueprints found.", nil
+				}
+				return "", err
+			}
+
+			var names []string
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+					names = append(names, e.Name())
+				}
+			}
+
+			if len(names) == 0 {
+				return "No blueprints found.", nil
+			}
+
+			out, _ := json.MarshalIndent(names, "", "  ")
+			return string(out), nil
+		}),
+		Params: map[string]tools.ParamDef{},
+	}
+}
+
 // --- helpers ---
 
 // sanitizeChannelName derives a channel name from a title like "Product Lead" → "product".
@@ -770,6 +870,7 @@ var motherToolNames = []string{
 	"create_agent", "update_agent", "delete_agent",
 	"list_agents", "list_available_tools", "list_available_skills",
 	"list_mcp_registry",
+	"save_blueprint", "list_blueprints",
 	"create_schedule", "update_schedule", "delete_schedule", "list_schedules",
 	"create_channel",
 }

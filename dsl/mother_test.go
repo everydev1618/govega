@@ -329,8 +329,8 @@ func TestMotherListMCPRegistry(t *testing.T) {
 
 func TestMotherAgentDefaults(t *testing.T) {
 	def := MotherAgent("")
-	if def.Model != "claude-sonnet-4-20250514" {
-		t.Errorf("default model = %q, want claude-sonnet-4-20250514", def.Model)
+	if def.Model != "claude-opus-4-20250514" {
+		t.Errorf("default model = %q, want claude-opus-4-20250514", def.Model)
 	}
 
 	def = MotherAgent("custom-model")

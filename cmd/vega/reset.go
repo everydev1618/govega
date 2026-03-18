@@ -33,6 +33,7 @@ This will delete:
   - All inbox items
   - All file metadata
   - All workspace files on disk (~/.vega/workspace/)
+    (blueprints and prompt history are preserved)
 
 Options:`)
 		fs.PrintDefaults()
@@ -158,6 +159,10 @@ Examples:
 	entries, err := os.ReadDir(workspace)
 	if err == nil {
 		for _, e := range entries {
+			// Preserve blueprints directory across resets.
+			if e.Name() == "blueprints" {
+				continue
+			}
 			p := filepath.Join(workspace, e.Name())
 			if err := os.RemoveAll(p); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error removing %s: %v\n", p, err)

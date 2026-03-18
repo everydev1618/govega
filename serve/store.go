@@ -140,6 +140,9 @@ type Store interface {
 	// ResolveInboxItem marks an inbox item as resolved.
 	ResolveInboxItem(id int64, resolution string) error
 
+	// DeleteResolvedInboxItems removes all resolved inbox items and their replies.
+	DeleteResolvedInboxItems() (int64, error)
+
 	// InsertChannelMessage inserts a message into a channel.
 	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error)
 
