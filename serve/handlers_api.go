@@ -2055,6 +2055,15 @@ func (s *Server) handleListInbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
+func (s *Server) handleClearResolvedInbox(w http.ResponseWriter, r *http.Request) {
+	count, err := s.store.DeleteResolvedInboxItems()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"deleted": count})
+}
+
 // --- Helpers ---
 
 

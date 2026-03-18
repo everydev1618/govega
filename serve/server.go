@@ -511,6 +511,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Inbox
 	mux.HandleFunc("GET /api/inbox", s.handleListInbox)
+	mux.HandleFunc("DELETE /api/inbox/resolved", s.handleClearResolvedInbox)
 
 	// Settings
 	mux.HandleFunc("GET /api/settings", s.handleListSettings)
