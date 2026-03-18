@@ -187,7 +187,7 @@ type MotherCallbacks struct {
 func MotherAgent(defaultModel string) *Agent {
 	model := defaultModel
 	if model == "" {
-		model = "claude-sonnet-4-20250514"
+		model = "claude-opus-4-20250514"
 	}
 	return &Agent{
 		Name:          motherAgentName,

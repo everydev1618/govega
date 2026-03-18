@@ -133,7 +133,7 @@ Now go. The universe isn't going to message itself.`
 func HermesAgent(defaultModel string) *Agent {
 	model := defaultModel
 	if model == "" {
-		model = "claude-sonnet-4-20250514"
+		model = "claude-opus-4-20250514"
 	}
 	return &Agent{
 		Name:          hermesAgentName,
