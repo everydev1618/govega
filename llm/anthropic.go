@@ -71,7 +71,7 @@ func WithMaxConcurrent(n int) AnthropicOption {
 // Default Anthropic configuration values
 const (
 	DefaultAnthropicTimeout = 5 * time.Minute
-	DefaultAnthropicModel   = "claude-opus-4-6-20250514"
+	DefaultAnthropicModel   = "claude-opus-4-20250514"
 	DefaultAnthropicBaseURL = "https://api.anthropic.com"
 )
 
@@ -265,6 +265,16 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 			}
 
 			httpResp.Body.Close()
+			slog.Error("anthropic API error (stream)",
+				"status", httpResp.StatusCode,
+				"body", string(body),
+				"model", req.Model,
+				"url", a.baseURL+"/v1/messages",
+				"request_headers", fmt.Sprintf("%v", httpReq.Header),
+				"stream", req.Stream,
+				"thinking", req.Thinking != nil,
+				"tools", len(req.Tools),
+			)
 			eventCh <- StreamEvent{
 				Type:  StreamEventError,
 				Error: fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body)),
@@ -502,6 +512,17 @@ func (a *AnthropicLLM) createHTTPRequest(ctx context.Context, req *anthropicRequ
 	httpReq.Header.Set("x-api-key", a.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
+	slog.Debug("anthropic request",
+		"model", req.Model,
+		"url", a.baseURL+"/v1/messages",
+		"anthropic-version", httpReq.Header.Get("anthropic-version"),
+		"stream", req.Stream,
+		"thinking", req.Thinking != nil,
+		"tools", len(req.Tools),
+		"messages", len(req.Messages),
+		"body_bytes", len(body),
+	)
+
 	return httpReq, nil
 }
 
@@ -553,6 +574,16 @@ func (a *AnthropicLLM) doRequest(ctx context.Context, req *anthropicRequest) (*a
 			}
 		}
 
+		slog.Error("anthropic API error",
+			"status", httpResp.StatusCode,
+			"body", string(body),
+			"model", req.Model,
+			"url", a.baseURL+"/v1/messages",
+			"request_headers", fmt.Sprintf("%v", httpReq.Header),
+			"stream", req.Stream,
+			"thinking", req.Thinking != nil,
+			"tools", len(req.Tools),
+		)
 		return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
 	}
 
