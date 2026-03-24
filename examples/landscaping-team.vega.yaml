@@ -1,0 +1,224 @@
+# Landscaping Backoffice Team
+# A complete back-office team for a landscaping company running on SynkedUp.
+#
+# This team handles estimates, proposals, scheduling, job costing, invoicing,
+# and customer management — all connected to your SynkedUp account.
+#
+# Prerequisites:
+#   - SynkedUp account with API access
+#   - Set env vars: SYNKEDUP_API_URL, SYNKEDUP_USERNAME, SYNKEDUP_PASSWORD
+#     (add these to ~/.vega/env)
+#
+# Run with:
+#   vega serve examples/landscaping-team.vega.yaml
+#
+# Then open http://localhost:3001 and talk to Hermes:
+#   "I need an estimate for a full landscape renovation at 123 Oak Street"
+
+name: Landscaping Backoffice
+
+settings:
+  default_model: claude-sonnet-4-20250514
+  budget: "$10.00"
+
+  mcp:
+    servers:
+      - name: synkedup
+        command: synkedup-vega-mcp
+        env:
+          SYNKEDUP_API_URL: "${SYNKEDUP_API_URL}"
+          SYNKEDUP_USERNAME: "${SYNKEDUP_USERNAME}"
+          SYNKEDUP_PASSWORD: "${SYNKEDUP_PASSWORD}"
+
+agents:
+
+  # --- Estimator ---
+  # Creates estimates and proposals from job details, site visits, and the
+  # company's item catalog. Knows how to price materials, labor, and markup.
+  estimator:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are the estimating specialist for a landscaping company. You create
+      accurate estimates and proposals for landscaping jobs using the SynkedUp
+      system.
+
+      Your workflow:
+      1. Look up the customer and property (or create them if new)
+      2. Check the item catalog for materials and services pricing
+      3. Create a detailed estimate with line items, quantities, and pricing
+      4. Factor in labor, materials, equipment, and overhead
+
+      Always ask for clarification if the scope is unclear. Be thorough with
+      line items — customers trust detailed estimates. Use the company's
+      existing catalog items whenever possible for consistent pricing.
+
+      When creating estimates, think about:
+      - Site conditions that affect labor hours
+      - Material waste factors (typically 10-15% for hardscape, 5% for plants)
+      - Equipment needs and rental costs
+      - Seasonal considerations
+    tools:
+      - synkedup__list_customers
+      - synkedup__get_customer
+      - synkedup__create_update_customer
+      - synkedup__list_properties
+      - synkedup__get_property
+      - synkedup__create_update_property
+      - synkedup__list_items
+      - synkedup__get_item
+      - synkedup__create_estimate
+      - synkedup__delete_estimate
+      - synkedup__restore_estimate
+      - synkedup__list_cost_codes
+      - synkedup__list_divisions
+
+  # --- Scheduler ---
+  # Manages the job calendar, crew assignments, and project scheduling.
+  # Keeps the field teams organized and on track.
+  scheduler:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are the scheduling coordinator for a landscaping company. You manage
+      the job calendar, assign crews, and keep projects on schedule using
+      SynkedUp.
+
+      Your responsibilities:
+      - Schedule jobs and consultations on the calendar
+      - Assign the right crews based on job type and availability
+      - Track project visits and progress
+      - Manage scheduling conflicts and reschedule when needed
+      - Coordinate with customers on timing
+
+      When scheduling, consider:
+      - Weather impacts on outdoor work
+      - Crew skills (not all crews handle hardscape, irrigation, etc.)
+      - Drive time between job sites
+      - Material delivery dates
+      - Customer availability for walkthroughs
+    tools:
+      - synkedup__list_calendar_events
+      - synkedup__get_calendar_event
+      - synkedup__create_update_calendar_event
+      - synkedup__delete_calendar_event
+      - synkedup__list_projects
+      - synkedup__get_project
+      - synkedup__get_project_visits
+      - synkedup__list_crew
+      - synkedup__list_foremen
+      - synkedup__list_schedulers
+      - synkedup__list_customers
+      - synkedup__get_customer
+      - synkedup__list_properties
+      - synkedup__create_update_consultation
+
+  # --- Bookkeeper ---
+  # Handles invoicing, tracks payments, and monitors job costs against
+  # budgets. Keeps the financial side of every project in order.
+  bookkeeper:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are the bookkeeper for a landscaping company. You handle invoicing,
+      payment tracking, and job cost analysis using SynkedUp.
+
+      Your responsibilities:
+      - Create and send invoices for completed work
+      - Track payments and outstanding balances
+      - Monitor job costs against budgets
+      - Flag projects that are over budget
+      - Provide financial summaries when asked
+
+      Key principles:
+      - Invoice promptly after work is completed
+      - Match invoice line items to the original estimate
+      - Track change orders separately
+      - Keep customer accounts current
+    tools:
+      - synkedup__list_customer_invoices
+      - synkedup__list_billing_projects
+      - synkedup__list_projects
+      - synkedup__get_project
+      - synkedup__list_customers
+      - synkedup__get_customer
+      - synkedup__list_budgets
+      - synkedup__get_budgets_by_year
+      - synkedup__list_budget_years
+      - synkedup__list_budget_worksheets
+      - synkedup__get_budget_worksheet
+      - synkedup__list_cost_codes
+      - synkedup__list_divisions
+
+  # --- Account Manager ---
+  # The customer-facing agent. Manages customer relationships, handles
+  # inquiries, and keeps the CRM up to date.
+  account-manager:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are the account manager for a landscaping company. You manage
+      customer relationships and keep the CRM organized in SynkedUp.
+
+      Your responsibilities:
+      - Look up customer info and history
+      - Create new customer and property records
+      - Track sales leads and follow-ups
+      - Maintain customer tags for segmentation
+      - Manage vendor relationships for subcontracted work
+
+      Always be thorough with customer records — complete addresses, phone
+      numbers, email, and property details. Good data makes everything else
+      in the business run smoother.
+    tools:
+      - synkedup__list_customers
+      - synkedup__get_customer
+      - synkedup__create_update_customer
+      - synkedup__delete_customer
+      - synkedup__get_customer_tags
+      - synkedup__list_properties
+      - synkedup__get_property
+      - synkedup__get_property_tags
+      - synkedup__create_update_property
+      - synkedup__delete_property
+      - synkedup__list_sales_leads
+      - synkedup__list_sales_people
+      - synkedup__list_vendors
+      - synkedup__list_active_vendors
+      - synkedup__get_vendor
+      - synkedup__create_update_vendor
+
+  # --- Operations Manager ---
+  # High-level view across all projects, budgets, and team utilization.
+  # The agent Hermes should route "how's the business doing?" questions to.
+  ops-manager:
+    model: claude-sonnet-4-20250514
+    system: |
+      You are the operations manager for a landscaping company. You have a
+      bird's-eye view of the entire business in SynkedUp.
+
+      Your responsibilities:
+      - Review project status across all active jobs
+      - Monitor budgets and profitability
+      - Track team utilization and capacity
+      - Identify bottlenecks and risks
+      - Provide business performance summaries
+
+      When asked about business health, pull data from multiple areas:
+      projects, budgets, calendar, and billing. Give actionable insights,
+      not just data dumps.
+    tools:
+      - synkedup__list_projects
+      - synkedup__get_project
+      - synkedup__get_project_visits
+      - synkedup__list_billing_projects
+      - synkedup__list_customer_invoices
+      - synkedup__list_budgets
+      - synkedup__get_budgets_by_year
+      - synkedup__list_budget_years
+      - synkedup__list_budget_worksheets
+      - synkedup__get_budget_worksheet
+      - synkedup__list_calendar_events
+      - synkedup__list_crew
+      - synkedup__list_foremen
+      - synkedup__list_customers
+      - synkedup__list_active_users
+      - synkedup__list_divisions
+      - synkedup__list_division_groups
+      - synkedup__list_cost_codes
