@@ -153,7 +153,7 @@ func (s *Server) resolveCompany() *dsl.Company {
 // getExtractLLM returns the lazily-initialized LLM client for memory extraction.
 func (s *Server) getExtractLLM() llm.LLM {
 	s.extractLLMMu.Do(func() {
-		s.extractLLM = llm.NewAnthropic(llm.WithModel("claude-haiku-4-5-20251001"))
+		s.extractLLM = llm.New()
 	})
 	return s.extractLLM
 }
