@@ -100,11 +100,21 @@ go get github.com/everydev1618/govega
 
 ### Configuration
 
-Set your Anthropic API key:
+**Anthropic (default):**
 
 ```bash
 export ANTHROPIC_API_KEY=your-key-here
 ```
+
+**OpenAI-compatible (LiteLLM, OpenRouter, Ollama, vLLM, etc.):**
+
+```bash
+export OPENAI_BASE_URL=https://openrouter.ai/api   # or http://localhost:4000, etc.
+export OPENAI_MODEL=deepseek/deepseek-chat-v3-0324  # any model your endpoint supports
+export VEGA_API_KEY=your-key-here                    # API key for the endpoint
+```
+
+When `OPENAI_BASE_URL` is set, Vega uses the OpenAI chat completions API. Remove it to fall back to Anthropic. All env vars can also be set in `~/.vega/env`.
 
 ---
 
@@ -125,11 +135,11 @@ import (
 )
 
 func main() {
-    // Create LLM backend
-    anthropic := llm.NewAnthropic()
+    // Create LLM backend (auto-selects Anthropic or OpenAI-compatible based on env)
+    backend := llm.New()
 
     // Create orchestrator
-    orch := vega.NewOrchestrator(vega.WithLLM(anthropic))
+    orch := vega.NewOrchestrator(vega.WithLLM(backend))
 
     // Define an agent
     agent := vega.Agent{
@@ -1260,7 +1270,9 @@ vega/
 ├── llm.go             # LLM interface, cost calculation
 ├── errors.go          # Error types, classification, retry decisions
 ├── llm/
-│   └── anthropic.go   # Anthropic backend with streaming
+│   ├── anthropic.go   # Anthropic backend with streaming
+│   ├── openai.go      # OpenAI-compatible backend (LiteLLM, OpenRouter, Ollama)
+│   └── factory.go     # llm.New() auto-selects backend from env
 ├── mcp/               # Model Context Protocol client
 │   ├── types.go       # MCP types and JSON-RPC
 │   ├── client.go      # MCP client implementation
