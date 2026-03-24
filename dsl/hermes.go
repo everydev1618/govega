@@ -133,6 +133,9 @@ Now go. The universe isn't going to message itself.`
 func HermesAgent(defaultModel string) *Agent {
 	model := defaultModel
 	if model == "" {
+		model = os.Getenv("OPENAI_MODEL")
+	}
+	if model == "" {
 		model = "claude-opus-4-20250514"
 	}
 	return &Agent{

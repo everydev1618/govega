@@ -77,9 +77,14 @@ const (
 
 // NewAnthropic creates a new Anthropic LLM client.
 func NewAnthropic(opts ...AnthropicOption) *AnthropicLLM {
+	baseURL := os.Getenv("ANTHROPIC_BASE_URL")
+	if baseURL == "" {
+		baseURL = DefaultAnthropicBaseURL
+	}
+
 	a := &AnthropicLLM{
 		apiKey:  os.Getenv("ANTHROPIC_API_KEY"),
-		baseURL: DefaultAnthropicBaseURL,
+		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: DefaultAnthropicTimeout,
 		},

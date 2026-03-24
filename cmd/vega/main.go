@@ -514,15 +514,16 @@ Commands:
 // requireAPIKey checks that ANTHROPIC_API_KEY is set (loadEnvFile must have run
 // first). If missing it prints a friendly error and exits.
 func requireAPIKey() {
-	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+	if os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("OPENAI_BASE_URL") != "" {
 		return
 	}
-	fmt.Fprintln(os.Stderr, `Error: ANTHROPIC_API_KEY is not set.
+	fmt.Fprintln(os.Stderr, `Error: No LLM backend configured.
 
-Set it in one of:
-  1. Run 'vega init' to configure interactively
-  2. Add ANTHROPIC_API_KEY=sk-... to ~/.vega/env
-  3. Export it: export ANTHROPIC_API_KEY=sk-...`)
+Set one of:
+  1. ANTHROPIC_API_KEY for the Anthropic API
+  2. OPENAI_BASE_URL for an OpenAI-compatible endpoint (LiteLLM, Ollama, etc.)
+
+Configure via 'vega init', ~/.vega/env, or environment variables.`)
 	os.Exit(1)
 }
 

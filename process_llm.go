@@ -433,7 +433,7 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 			"fallback_model", p.Agent.FallbackModel,
 		)
 
-		fallbackLLM := llm.NewAnthropic(llm.WithModel(p.Agent.FallbackModel))
+		fallbackLLM := llm.New()
 		start := time.Now()
 		resp, err := fallbackLLM.Generate(ctx, messages, tools)
 		latency := time.Since(start)

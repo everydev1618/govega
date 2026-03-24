@@ -66,9 +66,9 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 		}
 	}
 
-	// Create default LLM
-	anthropicLLM := llm.NewAnthropic()
-	orchOpts = append(orchOpts, vega.WithLLM(anthropicLLM))
+	// Create default LLM (picks OpenAI-compatible or Anthropic based on env)
+	defaultLLM := llm.New()
+	orchOpts = append(orchOpts, vega.WithLLM(defaultLLM))
 
 	orch := vega.NewOrchestrator(orchOpts...)
 

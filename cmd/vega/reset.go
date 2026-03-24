@@ -33,7 +33,6 @@ This will delete:
   - All inbox items
   - All file metadata
   - All workspace files on disk (~/.vega/workspace/)
-    (blueprints and prompt history are preserved)
 
 Options:`)
 		fs.PrintDefaults()
@@ -53,11 +52,16 @@ Examples:
 	dbAbs, _ := filepath.Abs(*dbPath)
 
 	var fileCount int
-	filepath.Walk(workspace, func(_ string, info os.FileInfo, err error) error {
+	var dirCount int
+	filepath.Walk(workspace, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() {
+		if info.IsDir() {
+			if path != workspace {
+				dirCount++
+			}
+		} else {
 			fileCount++
 		}
 		return nil
@@ -99,22 +103,20 @@ Examples:
 			fmt.Printf("  %-22s %d records\n", tc.label, count)
 		}
 	}
-	if fileCount > 0 {
-		fmt.Printf("  %-22s %d files\n", "Workspace files", fileCount)
+	if fileCount > 0 || dirCount > 0 {
+		fmt.Printf("  %-22s %d files, %d folders\n", "Workspace", fileCount, dirCount)
 	}
 	fmt.Println()
 	fmt.Printf("  Database: %s\n", dbAbs)
 	fmt.Printf("  Workspace: %s\n", workspace)
 	fmt.Println()
 
-	if totalRows == 0 && fileCount == 0 {
+	if totalRows == 0 && fileCount == 0 && dirCount == 0 {
 		fmt.Println("Nothing to reset — already clean.")
 		store.Close()
 		return
 	}
 
-	fmt.Println("Mother and Hermes are built-in and will NOT be affected.")
-	fmt.Println()
 
 	// Confirm unless --yes.
 	if !*yes {
@@ -159,16 +161,12 @@ Examples:
 	entries, err := os.ReadDir(workspace)
 	if err == nil {
 		for _, e := range entries {
-			// Preserve blueprints directory across resets.
-			if e.Name() == "blueprints" {
-				continue
-			}
 			p := filepath.Join(workspace, e.Name())
 			if err := os.RemoveAll(p); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error removing %s: %v\n", p, err)
 			}
 		}
-		fmt.Printf("  Cleared workspace (%d files)\n", fileCount)
+		fmt.Printf("  Cleared workspace (%d files, %d folders)\n", fileCount, dirCount)
 	}
 
 	fmt.Println()
