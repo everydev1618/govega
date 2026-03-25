@@ -1,6 +1,7 @@
 # Trevor Fountain Landscaping — SynkedUp Backoffice
 # AI-powered back-office team for Trevor Fountain's landscaping business.
 # Connected to SynkedUp for estimates, scheduling, invoicing, and CRM.
+# Deployed via: deploy-customer.yml → trevorfountain.synkedup.ai
 
 name: Trevor Fountain Landscaping
 
