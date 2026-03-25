@@ -2149,7 +2149,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	slog.Info("reset: stopping all agent processes")
 
-	// 1. Kill all agent processes via the interpreter.
+	// 1. Kill all agent processes and remove composed (non-YAML) agents.
+	s.interp.RemoveComposedAgents()
 	for name := range s.interp.Agents() {
 		if err := s.interp.ResetAgent(name); err != nil {
 			slog.Warn("reset: failed to reset agent", "agent", name, "error", err)
@@ -2271,4 +2272,32 @@ func (s *Server) handleDeletePromptHistory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// handleMarkChatRead marks all messages in a DM conversation as read.
+func (s *Server) handleMarkChatRead(w http.ResponseWriter, r *http.Request) {
+	agent := r.PathValue("name")
+	userID := r.Header.Get("X-Auth-User")
+	if userID == "" {
+		userID = "default"
+	}
+	if err := s.store.MarkChatRead(agent, userID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleChatUnreadCounts returns unread counts for all DM conversations.
+func (s *Server) handleChatUnreadCounts(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-Auth-User")
+	if userID == "" {
+		userID = "default"
+	}
+	counts, err := s.store.ChatUnreadCounts(userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, counts)
 }
