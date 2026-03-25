@@ -186,6 +186,7 @@ type Channel struct {
 	CreatedBy    string    `json:"created_by"`
 	CreatedAt    time.Time `json:"created_at"`
 	MessageCount int       `json:"message_count"`
+	UnreadCount  int       `json:"unread_count"`
 }
 
 // ChannelMessage is a message in a channel, optionally part of a thread.

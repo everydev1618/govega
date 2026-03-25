@@ -562,3 +562,22 @@ func (s *Server) relayChannelStreamSSE(w http.ResponseWriter, r *http.Request, c
 		}
 	}
 }
+
+// handleMarkChannelRead marks all messages in a channel as read.
+func (s *Server) handleMarkChannelRead(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ch, err := s.store.GetChannel(name)
+	if err != nil || ch == nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "channel not found"})
+		return
+	}
+	userID := r.Header.Get("X-Auth-User")
+	if userID == "" {
+		userID = "default"
+	}
+	if err := s.store.MarkChannelRead(ch.ID, userID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}

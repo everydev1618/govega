@@ -42,6 +42,7 @@ export function Layout() {
   const [agents, setAgents] = useState<AgentResponse[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
+  const [chatUnread, setChatUnread] = useState<Record<string, number>>({})
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -49,14 +50,16 @@ export function Layout() {
     api.getAgents().then(list => setAgents(list ?? [])).catch(() => {})
     api.getChannels().then(list => setChannels(list ?? [])).catch(() => {})
     api.getInbox('pending').then(list => setInboxItems(list ?? [])).catch(() => {})
+    api.chatUnreadCounts().then(counts => setChatUnread(counts ?? {})).catch(() => {})
   }, [])
 
-  // Refresh agents, channels, and inbox periodically
+  // Refresh agents, channels, inbox, and unread counts periodically
   useEffect(() => {
     const id = setInterval(() => {
       api.getAgents().then(list => setAgents(list ?? [])).catch(() => {})
       api.getChannels().then(list => setChannels(list ?? [])).catch(() => {})
       api.getInbox('pending').then(list => setInboxItems(list ?? [])).catch(() => {})
+      api.chatUnreadCounts().then(counts => setChatUnread(counts ?? {})).catch(() => {})
     }, 10000)
     return () => clearInterval(id)
   }, [])
@@ -129,6 +132,7 @@ export function Layout() {
                 to={'/chat'}
                 displayName="Hermes"
                 avatar="n2"
+                unreadCount={chatUnread[hermesAgent.name] || 0}
               />
             )}
             {specialists.length > 0 && hermesAgent && (
@@ -141,6 +145,7 @@ export function Layout() {
                 to={`/chat/${a.name}`}
                 displayName={a.display_name || capitalize(a.name)}
                 avatar={a.avatar}
+                unreadCount={chatUnread[a.name] || 0}
               />
             ))}
           </div>
@@ -175,9 +180,9 @@ export function Layout() {
                 }
               >
                 <span className="truncate"># {ch.name}</span>
-                {ch.message_count > 0 && (
+                {ch.unread_count > 0 && (
                   <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 font-medium leading-none flex-shrink-0 ml-1">
-                    {ch.message_count}
+                    {ch.unread_count}
                   </span>
                 )}
               </NavLink>
@@ -260,11 +265,13 @@ function AgentNavItem({
   to,
   displayName,
   avatar,
+  unreadCount = 0,
 }: {
   agent: AgentResponse
   to: string
   displayName: string
   avatar?: string
+  unreadCount?: number
 }) {
   const isRunning = agent.process_status === 'running'
 
@@ -286,10 +293,15 @@ function AgentNavItem({
           isRunning ? 'bg-green-400' : 'bg-muted-foreground/30'
         }`} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <span className="block truncate">{displayName}</span>
         {agent.title && <span className="block truncate text-[11px] text-muted-foreground/60 leading-tight">{agent.title}</span>}
       </div>
+      {unreadCount > 0 && (
+        <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 font-medium leading-none flex-shrink-0">
+          {unreadCount}
+        </span>
+      )}
     </NavLink>
   )
 }

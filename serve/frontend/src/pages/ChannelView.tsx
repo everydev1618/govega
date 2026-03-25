@@ -31,6 +31,8 @@ export function ChannelView() {
     api.getChannel(channelName).then(setChannel).catch(() => {})
     api.getAgents().then(list => setAgents(list ?? [])).catch(() => {})
     loadMessages()
+    // Mark channel as read when viewing
+    api.markChannelRead(channelName).catch(() => {})
   }, [channelName, loadMessages])
 
   const agentDisplayInfo = useMemo(() => {

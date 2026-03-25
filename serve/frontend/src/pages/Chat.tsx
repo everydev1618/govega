@@ -311,6 +311,8 @@ export function Chat() {
       })
       .catch(() => {})
       .finally(() => {
+        // Mark DM as read when viewing
+        api.markChatRead(activeAgent).catch(() => {})
         setLoaded(true)
 
         api.chatStatus(activeAgent)

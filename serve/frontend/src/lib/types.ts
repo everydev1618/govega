@@ -305,6 +305,7 @@ export interface Channel {
   created_by: string
   created_at: string
   message_count: number
+  unread_count: number
 }
 
 export interface ChannelMessage {

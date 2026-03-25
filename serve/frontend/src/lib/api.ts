@@ -282,6 +282,14 @@ export const api = {
     })
   },
 
+  // Read tracking
+  markChannelRead: (name: string) =>
+    fetchAPI<{ status: string }>(`/api/channels/${encodeURIComponent(name)}/read`, { method: 'POST' }),
+  markChatRead: (agent: string) =>
+    fetchAPI<{ status: string }>(`/api/agents/${encodeURIComponent(agent)}/chat/read`, { method: 'POST' }),
+  chatUnreadCounts: () =>
+    fetchAPI<Record<string, number>>('/api/chat/unread'),
+
   // Inbox
   getInbox: (status?: string) => {
     const params = status ? `?status=${encodeURIComponent(status)}` : ''

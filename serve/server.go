@@ -509,6 +509,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/{name}/chat/stream", s.handleChatStreamReconnect)
 	mux.HandleFunc("GET /api/agents/{name}/chat/status", s.handleChatStatus)
 	mux.HandleFunc("DELETE /api/agents/{name}/chat", s.handleClearChat)
+	mux.HandleFunc("POST /api/agents/{name}/chat/read", s.handleMarkChatRead)
+	mux.HandleFunc("GET /api/chat/unread", s.handleChatUnreadCounts)
 
 	// Memory
 	mux.HandleFunc("GET /api/agents/{name}/memory", s.handleGetMemory)
@@ -545,6 +547,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/channels/{name}/messages", s.handleChannelPost)
 	mux.HandleFunc("POST /api/channels/{name}/stream", s.handleChannelStream)
 	mux.HandleFunc("GET /api/channels/{name}/stream", s.handleChannelStreamReconnect)
+	mux.HandleFunc("POST /api/channels/{name}/read", s.handleMarkChannelRead)
 
 	// Prompt History (survives reset)
 	mux.HandleFunc("GET /api/prompt-history", s.handleListPromptHistory)
