@@ -47,6 +47,7 @@ type Interpreter struct {
 	channelBackend    ChannelBackend // for posting completion summaries to channels
 	memoryInjector    func(proc *vega.Process, agentName string) // injects memory into agent before send
 	channelPostCb     func(channelName, agent, content string, msgID int64, threadID *int64)
+	yamlAgents        map[string]bool // original YAML-defined agent names (survives reset)
 	mu                sync.RWMutex
 }
 
@@ -153,6 +154,12 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 		skillsLoader.Load(ctx)
 	}
 
+	// Record which agents came from the YAML file — these survive reset.
+	yamlAgents := make(map[string]bool, len(doc.Agents))
+	for name := range doc.Agents {
+		yamlAgents[name] = true
+	}
+
 	interp := &Interpreter{
 		doc:               doc,
 		orch:              orch,
@@ -160,6 +167,7 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 		tools:             t,
 		skillsLoader:      skillsLoader,
 		delegationConfigs: make(map[string]*DelegationDef),
+		yamlAgents:        yamlAgents,
 	}
 
 	for _, opt := range opts {
@@ -1191,6 +1199,32 @@ func (i *Interpreter) ResetAgent(name string) error {
 	return i.orch.Kill(proc.ID)
 }
 
+// RemoveComposedAgents kills and removes all agents that were NOT defined in
+// the original YAML file and are not meta-agents (hermes, mother). This
+// restores the interpreter to its YAML-defined state after a reset.
+func (i *Interpreter) RemoveComposedAgents() {
+	i.mu.Lock()
+	var toRemove []string
+	for name := range i.doc.Agents {
+		if i.yamlAgents[name] {
+			continue // YAML-defined, keep it
+		}
+		if name == motherAgentName || name == hermesAgentName {
+			continue // meta-agents, keep them
+		}
+		toRemove = append(toRemove, name)
+	}
+	i.mu.Unlock()
+
+	for _, name := range toRemove {
+		if err := i.RemoveAgent(name); err != nil {
+			slog.Warn("reset: failed to remove composed agent", "agent", name, "error", err)
+		} else {
+			slog.Info("reset: removed composed agent", "agent", name)
+		}
+	}
+}
+
 // EnsureAgent ensures the named agent process is spawned and returns it.
 // If the process already exists it is returned immediately; otherwise the
 // agent is lazily spawned from its definition.
@@ -1306,28 +1340,23 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		// Use a fresh background context — the caller's ctx/stream will be closed.
 		resp, err := i.SendToAgent(context.Background(), agentName, message)
 
-		// Post completion notification to inbox (auto-resolved since it's informational).
+		// Post completion notification to inbox as pending so Hermes triages it
+		// on his next heartbeat. Failed tasks are marked urgent.
 		if i.inboxBackend != nil {
 			if err != nil {
-				id, insErr := i.inboxBackend.InsertInboxItem(
+				i.inboxBackend.InsertInboxItem(
 					agentName,
 					fmt.Sprintf("Task failed for %s", agentName),
 					fmt.Sprintf("Error: %s\n\nOriginal request: %s", err.Error(), truncateStr(message, 500)),
-					"high",
+					"urgent",
 				)
-				if insErr == nil {
-					_ = i.inboxBackend.ResolveInboxItem(id, "Auto-resolved: task failed")
-				}
 			} else {
-				id, insErr := i.inboxBackend.InsertInboxItem(
+				i.inboxBackend.InsertInboxItem(
 					agentName,
 					fmt.Sprintf("Task completed by %s", agentName),
 					fmt.Sprintf("Result: %s\n\nOriginal request: %s", truncateStr(resp, 1000), truncateStr(message, 500)),
 					"normal",
 				)
-				if insErr == nil {
-					_ = i.inboxBackend.ResolveInboxItem(id, "Auto-resolved: task completed")
-				}
 			}
 		}
 
