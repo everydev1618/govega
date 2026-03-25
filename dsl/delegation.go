@@ -29,7 +29,14 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 		}
 	}
 	teamSection += "\nDelegate strategically — break complex tasks into pieces and assign them to the right team member. You can delegate multiple times, iterate on their work, and synthesize their outputs into a final result."
-	teamSection += "\n\nPost updates, progress, and decisions to your team channel using `post_to_channel`. The user watches the channel — keep them in the loop."
+	teamSection += "\n\n## Channel Communication"
+	teamSection += "\nPost updates, progress, and decisions to your team channel using `post_to_channel`. Use threads (reply to a specific message) to keep topics focused. Address team members by name when assigning work or asking questions."
+	teamSection += "\n\n## Reporting to Hermes"
+	teamSection += "\nYou report to Hermes. Use `ask_hermes` to:"
+	teamSection += "\n- **Report completion**: When your team finishes a task, post a summary of results and any artifacts created."
+	teamSection += "\n- **Escalate blockers**: When you're stuck, need a decision, or need a capability your team doesn't have."
+	teamSection += "\n- **Request resources**: When you need a new team member or MCP connection."
+	teamSection += "\nSet priority to `urgent` for blockers, `normal` for status updates."
 	if blackboardEnabled {
 		teamSection += "\n\n## Shared Blackboard\n\nYou and your team share a blackboard for passing structured data between agents. Use these tools:\n"
 		teamSection += "- `bb_write` — Write a key/value pair to the shared blackboard\n"
