@@ -199,6 +199,42 @@ func (s *Server) handleListFileMetadata(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// handleWorkspaceStatic serves raw files from the workspace directory.
+// This allows agents to produce deliverables (HTML sites, images, etc.) that
+// are accessible via direct URLs like /workspace/project/index.html.
+func (s *Server) handleWorkspaceStatic(w http.ResponseWriter, r *http.Request) {
+	relPath := r.URL.Path
+	absPath, err := safePath(relPath)
+	if err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Serve index.html for directories.
+	if info.IsDir() {
+		indexPath := filepath.Join(absPath, "index.html")
+		if _, err := os.Stat(indexPath); err == nil {
+			absPath = indexPath
+			info, _ = os.Stat(indexPath)
+		} else {
+			http.NotFound(w, r)
+			return
+		}
+	}
+
+	http.ServeFile(w, r, absPath)
+}
+
 // safePath resolves the given relative path within the workspace directory,
 // rejecting any traversal attempts.
 func safePath(relPath string) (string, error) {
