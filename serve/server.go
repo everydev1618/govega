@@ -356,10 +356,26 @@ func (s *Server) Start(ctx context.Context) error {
 		slog.Info("dispatch complete, poking hermes to triage inbox", "agent", agentName)
 		go func() {
 			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", agentName)
-			_, err := s.interp.SendToAgent(context.Background(), "hermes", msg)
+			resp, err := s.interp.SendToAgent(context.Background(), "hermes", msg)
 			if err != nil {
 				slog.Error("failed to poke hermes after dispatch", "agent", agentName, "error", err)
+				return
 			}
+
+			// Persist Hermes's triage response to all hermes chat clones
+			// so the user sees it in their chat.
+			for name := range s.interp.Agents() {
+				if name == "hermes" || strings.HasPrefix(name, "hermes:") {
+					_ = s.store.InsertChatMessage(name, "assistant", resp)
+				}
+			}
+
+			// Notify connected frontends to refresh Hermes chat.
+			s.broker.Publish(BrokerEvent{
+				Type:      "chat.update",
+				Agent:     "hermes",
+				Timestamp: time.Now(),
+			})
 		}()
 	})
 
