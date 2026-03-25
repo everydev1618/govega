@@ -327,6 +327,22 @@ func (s *Server) Start(ctx context.Context) error {
 	// Register channel tools — create_channel and post_to_channel.
 	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb, channelReactiveCb)
 
+	// Create channels defined in the YAML document (idempotent — skips existing).
+	if doc := s.interp.Document(); doc != nil && doc.Channels != nil {
+		for name, chDef := range doc.Channels {
+			if ch, _ := s.store.GetChannel(name); ch != nil {
+				continue // channel already exists
+			}
+			id := "ch_" + name
+			mode := chDef.Mode
+			if err := s.store.CreateChannel(id, name, chDef.Description, "yaml", chDef.Team, mode); err != nil {
+				slog.Warn("failed to create YAML channel", "name", name, "error", err)
+			} else {
+				slog.Info("created channel from YAML", "name", name, "team", chDef.Team)
+			}
+		}
+	}
+
 	// Wire channel backend so DispatchToAgent can post completion summaries.
 	s.interp.SetChannelBackend(s.store, channelPostCb)
 

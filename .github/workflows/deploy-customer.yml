@@ -1,0 +1,209 @@
+name: Deploy Customers
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      customers: ${{ steps.detect.outputs.customers }}
+      should_deploy: ${{ steps.detect.outputs.should_deploy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changes
+        id: detect
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD)
+
+          # Check if core vega code changed (binary needs rebuild + deploy to all)
+          CORE_CHANGED=false
+          if echo "$CHANGED" | grep -qE '^(cmd/|dsl/|llm/|tools/|serve/|mcp/|memory/|go\.(mod|sum)|Makefile|\.goreleaser)'; then
+            CORE_CHANGED=true
+          fi
+
+          # Find which customer configs changed
+          CONFIG_CUSTOMERS=$(echo "$CHANGED" | grep -oP '^deploy/customers/\K[^/]+' | sort -u || true)
+
+          if [ "$CORE_CHANGED" = "true" ]; then
+            # Deploy to ALL customers
+            CUSTOMERS=$(ls -d deploy/customers/*/  2>/dev/null | xargs -I{} basename {} | jq -R -s -c 'split("\n") | map(select(. != "" and . != "_template"))')
+          elif [ -n "$CONFIG_CUSTOMERS" ]; then
+            # Deploy only to changed customers
+            CUSTOMERS=$(echo "$CONFIG_CUSTOMERS" | jq -R -s -c 'split("\n") | map(select(. != ""))')
+          else
+            CUSTOMERS="[]"
+          fi
+
+          echo "customers=$CUSTOMERS" >> $GITHUB_OUTPUT
+          if [ "$CUSTOMERS" = "[]" ]; then
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          fi
+
+          echo "### Deploy Detection" >> $GITHUB_STEP_SUMMARY
+          echo "Core changed: $CORE_CHANGED" >> $GITHUB_STEP_SUMMARY
+          echo "Customers: $CUSTOMERS" >> $GITHUB_STEP_SUMMARY
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: serve/frontend/package-lock.json
+
+      - name: Build frontend
+        run: cd serve/frontend && npm ci && npm run build
+
+      - name: Cross-compile for linux/amd64
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags "-s -w -X main.version=$(git describe --tags --always)" \
+            -o vega-linux-amd64 \
+            ./cmd/vega
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: vega-linux-amd64
+          path: vega-linux-amd64
+          retention-days: 1
+
+  deploy:
+    needs: [detect, build]
+    if: needs.detect.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        customer: ${{ fromJson(needs.detect.outputs.customers) }}
+      fail-fast: false
+    concurrency:
+      group: deploy-${{ matrix.customer }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: vega-linux-amd64
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Get instance info from Terraform state
+        id: tf
+        working-directory: deploy/terraform
+        run: |
+          terraform init -backend-config="bucket=vega-tfstate-214057697325" \
+            -backend-config="key=${{ matrix.customer }}/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=vega-terraform-locks" \
+            -backend-config="encrypt=true"
+          echo "ip=$(terraform output -raw elastic_ip)" >> $GITHUB_OUTPUT
+          echo "sg=$(terraform output -raw security_group_id)" >> $GITHUB_OUTPUT
+
+      - name: Get runner IP
+        id: runner
+        run: echo "ip=$(curl -s https://checkip.amazonaws.com)" >> $GITHUB_OUTPUT
+
+      - name: Open SSH
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ steps.tf.outputs.sg }} \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.runner.outputs.ip }}/32
+          sleep 5
+
+      - name: Fetch env from SSM
+        run: |
+          aws ssm get-parameter \
+            --name "/vega/${{ matrix.customer }}/env" \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text > env_file
+
+      - name: Write SSH key
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > deploy_key
+          chmod 600 deploy_key
+
+      - name: Deploy binary, config, and env
+        env:
+          IP: ${{ steps.tf.outputs.ip }}
+        run: |
+          SSH="ssh -o StrictHostKeyChecking=no -i deploy_key ubuntu@$IP"
+          SCP="scp -o StrictHostKeyChecking=no -i deploy_key"
+
+          chmod +x vega-linux-amd64
+
+          # Upload files to /tmp first
+          $SCP vega-linux-amd64 ubuntu@$IP:/tmp/vega
+          $SCP deploy/customers/${{ matrix.customer }}/config.vega.yaml ubuntu@$IP:/tmp/config.vega.yaml
+          $SCP env_file ubuntu@$IP:/tmp/vega-env
+
+          # Move into place and restart
+          $SSH << 'EOF'
+          sudo systemctl stop vega || true
+          sudo mv /tmp/vega /usr/local/bin/vega
+          sudo chmod +x /usr/local/bin/vega
+          sudo mv /tmp/config.vega.yaml /home/vega/.vega/config.vega.yaml
+          sudo mv /tmp/vega-env /home/vega/.vega/env
+          sudo chown vega:vega /home/vega/.vega/config.vega.yaml /home/vega/.vega/env
+          sudo chmod 600 /home/vega/.vega/env
+          sudo systemctl start vega
+          EOF
+
+      - name: Close SSH
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ steps.tf.outputs.sg }} \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.runner.outputs.ip }}/32 2>/dev/null || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -f deploy_key env_file
+
+      - name: Health check
+        run: |
+          FQDN=$(cd deploy/terraform && terraform output -raw fqdn)
+          echo "Checking https://$FQDN ..."
+          for i in $(seq 1 12); do
+            if curl -sf --max-time 5 "https://$FQDN/api/agents" > /dev/null 2>&1; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i/12 — waiting 10s..."
+            sleep 10
+          done
+          echo "::warning::Health check did not pass within 2 minutes"

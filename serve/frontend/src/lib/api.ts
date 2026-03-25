@@ -213,6 +213,83 @@ export const api = {
     })
   },
 
+  // Channels
+  getChannels: () => fetchAPI<import('./types').Channel[]>('/api/channels'),
+  getChannel: (name: string) =>
+    fetchAPI<import('./types').Channel>(`/api/channels/${encodeURIComponent(name)}`),
+  createChannel: (req: import('./types').CreateChannelRequest) =>
+    fetchAPI<import('./types').Channel>('/api/channels', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+  deleteChannel: (name: string) =>
+    fetchAPI<{ status: string }>(`/api/channels/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  getChannelMessages: (name: string, limit?: number) => {
+    const params = limit ? `?limit=${limit}` : ''
+    return fetchAPI<import('./types').ChannelMessage[]>(`/api/channels/${encodeURIComponent(name)}/messages${params}`)
+  },
+  getThreadMessages: (name: string, messageId: number) =>
+    fetchAPI<import('./types').ChannelMessage[]>(`/api/channels/${encodeURIComponent(name)}/messages/${messageId}/thread`),
+  postChannelMessage: (name: string, message: string, threadId?: number, agent?: string) =>
+    fetchAPI<{ message_id: number; thread_id?: number }>(`/api/channels/${encodeURIComponent(name)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message, thread_id: threadId, agent }),
+    }),
+  channelStream: (
+    name: string,
+    message: string,
+    onEvent: (event: import('./types').ChannelEvent) => void,
+    signal?: AbortSignal,
+    threadId?: number,
+    agent?: string,
+  ): Promise<void> => {
+    return fetch(`${BASE}/api/channels/${encodeURIComponent(name)}/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, thread_id: threadId, agent }),
+      signal,
+    }).then(async (res) => {
+      if (!res.ok) {
+        throw await parseErrorResponse(res)
+      }
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop()!
+
+        let currentData: string | null = null
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            currentData = line.slice(6)
+          } else if (line === '' && currentData !== null) {
+            try {
+              onEvent(JSON.parse(currentData))
+            } catch { /* skip malformed */ }
+            currentData = null
+          }
+        }
+      }
+    }).catch((err) => {
+      if (err.name === 'AbortError') return
+      throw err
+    })
+  },
+
+  // Inbox
+  getInbox: (status?: string) => {
+    const params = status ? `?status=${encodeURIComponent(status)}` : ''
+    return fetchAPI<import('./types').InboxItem[]>(`/api/inbox${params}`)
+  },
+  clearResolvedInbox: () =>
+    fetchAPI<{ deleted: number }>('/api/inbox/resolved', { method: 'DELETE' }),
+
   // Streaming chat
   chatStream: (
     agent: string,

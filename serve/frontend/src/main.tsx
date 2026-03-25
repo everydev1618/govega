@@ -13,6 +13,8 @@ import { WorkflowLauncher } from './pages/WorkflowLauncher'
 import { CostDashboard } from './pages/CostDashboard'
 import { Population } from './pages/Population'
 import { Chat } from './pages/Chat'
+import { ChannelView } from './pages/ChannelView'
+import { InboxView } from './pages/InboxView'
 import { Tasks } from './pages/Tasks'
 import { Files } from './pages/Files'
 import { Schedules } from './pages/Schedules'
@@ -27,6 +29,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route index element={<Chat />} />
           <Route path="chat" element={<Chat />} />
           <Route path="chat/:agent" element={<Chat />} />
+          <Route path="channels/:name" element={<ChannelView />} />
+          <Route path="inbox" element={<InboxView />} />
           <Route path="overview" element={<Overview />} />
           <Route path="processes" element={<ProcessExplorer />} />
           <Route path="tasks" element={<Tasks />} />

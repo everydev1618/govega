@@ -64,6 +64,30 @@ func (p *Parser) Parse(data []byte) (*Document, error) {
 		}
 	}
 
+	// Parse channels
+	if channels, ok := raw["channels"].(map[string]any); ok {
+		doc.Channels = make(map[string]*ChannelDef)
+		for name, chRaw := range channels {
+			ch := &ChannelDef{}
+			if m, ok := chRaw.(map[string]any); ok {
+				if v, ok := m["description"].(string); ok {
+					ch.Description = v
+				}
+				if v, ok := m["mode"].(string); ok {
+					ch.Mode = v
+				}
+				if team, ok := m["team"].([]any); ok {
+					for _, t := range team {
+						if s, ok := t.(string); ok {
+							ch.Team = append(ch.Team, s)
+						}
+					}
+				}
+			}
+			doc.Channels[name] = ch
+		}
+	}
+
 	// Parse workflows
 	if workflows, ok := raw["workflows"].(map[string]any); ok {
 		for name, wfRaw := range workflows {
@@ -107,6 +131,16 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 		agent.Name = v
 	} else {
 		agent.Name = name
+	}
+
+	if v, ok := m["display_name"].(string); ok {
+		agent.DisplayName = v
+	}
+	if v, ok := m["title"].(string); ok {
+		agent.Title = v
+	}
+	if v, ok := m["avatar"].(string); ok {
+		agent.Avatar = v
 	}
 
 	if v, ok := m["extends"].(string); ok {

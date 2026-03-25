@@ -1,0 +1,84 @@
+name: Provision Customer
+
+on:
+  workflow_dispatch:
+    inputs:
+      customer:
+        description: "Customer name (must match a folder in deploy/customers/)"
+        required: true
+        type: string
+
+concurrency:
+  group: provision-${{ inputs.customer }}
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate customer directory
+        run: |
+          if [ ! -d "deploy/customers/${{ inputs.customer }}" ]; then
+            echo "::error::No directory found at deploy/customers/${{ inputs.customer }}"
+            exit 1
+          fi
+          if [ ! -f "deploy/customers/${{ inputs.customer }}/terraform.tfvars" ]; then
+            echo "::error::No terraform.tfvars found for ${{ inputs.customer }}"
+            exit 1
+          fi
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init
+        working-directory: deploy/terraform
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+        run: |
+          terraform init \
+            -backend-config="bucket=vega-tfstate-214057697325" \
+            -backend-config="key=${{ inputs.customer }}/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=vega-terraform-locks" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Plan
+        working-directory: deploy/terraform
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+        run: |
+          terraform plan \
+            -var-file="../customers/${{ inputs.customer }}/terraform.tfvars" \
+            -var="ssh_public_key=${{ secrets.DEPLOY_SSH_PUBLIC_KEY }}" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: deploy/terraform
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+        run: terraform apply tfplan
+
+      - name: Show outputs
+        working-directory: deploy/terraform
+        run: |
+          echo "### Provisioned: ${{ inputs.customer }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Output | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Instance ID | $(terraform output -raw instance_id) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Elastic IP | $(terraform output -raw elastic_ip) |" >> $GITHUB_STEP_SUMMARY
+          echo "| FQDN | $(terraform output -raw fqdn) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Group | $(terraform output -raw security_group_id) |" >> $GITHUB_STEP_SUMMARY

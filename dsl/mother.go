@@ -127,10 +127,8 @@ Start SMALL. You can always add agents later.
 
 - **Solo task** → 1 agent. No team needed.
 - **Small team** → 1 lead + 1-2 helpers (2-3 agents).
-- **Max per team** → 4 agents (1 lead + 3 helpers).
-- **Max per request** → 6 agents total. Build the core first.
-
-Every agent costs real money (LLM tokens). Build for what needs to happen NOW.
+- **Max per team** → 5 agents (1 lead + 4 helpers).
+- **No hard limit on total agents** — but be practical. Every agent costs real money (LLM tokens). Build for what needs to happen NOW, not everything at once.
 
 ## Team channel setup
 
@@ -270,20 +268,6 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			}
 			if name == motherAgentName {
 				return "", fmt.Errorf("cannot create an agent named %q", motherAgentName)
-			}
-
-			// Enforce max agent limit (excludes system agents: mother, hermes).
-			const maxAgents = 6
-			interp.mu.RLock()
-			composedCount := 0
-			for n := range interp.Document().Agents {
-				if n != motherAgentName && n != hermesAgentName {
-					composedCount++
-				}
-			}
-			interp.mu.RUnlock()
-			if composedCount >= maxAgents {
-				return "", fmt.Errorf("agent limit reached (%d). Delete an existing agent before creating a new one", maxAgents)
 			}
 
 			displayName, _ := params["display_name"].(string)

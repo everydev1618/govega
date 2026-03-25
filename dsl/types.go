@@ -33,15 +33,23 @@ type AgentTemplate struct {
 	ExportedAt  string   `json:"exported_at,omitempty" yaml:"exported_at,omitempty"`
 }
 
+// ChannelDef defines a channel in the DSL.
+type ChannelDef struct {
+	Description string   `yaml:"description"`
+	Team        []string `yaml:"team"`
+	Mode        string   `yaml:"mode"` // "" (default) or "social"
+}
+
 // Document represents a parsed .vega.yaml file.
 type Document struct {
-	Name        string              `yaml:"name"`
-	Description string              `yaml:"description"`
-	Agents      map[string]*Agent   `yaml:"agents"`
-	Workflows   map[string]*Workflow `yaml:"workflows"`
-	Tools       map[string]*ToolDef `yaml:"tools"`
-	Settings    *Settings           `yaml:"settings"`
-	Company     *Company            `yaml:"company,omitempty"`
+	Name        string                `yaml:"name"`
+	Description string                `yaml:"description"`
+	Agents      map[string]*Agent     `yaml:"agents"`
+	Channels    map[string]*ChannelDef `yaml:"channels"`
+	Workflows   map[string]*Workflow  `yaml:"workflows"`
+	Tools       map[string]*ToolDef   `yaml:"tools"`
+	Settings    *Settings             `yaml:"settings"`
+	Company     *Company              `yaml:"company,omitempty"`
 }
 
 // Agent represents an agent definition in the DSL.

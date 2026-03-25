@@ -1,0 +1,2264 @@
+openapi: "3.0.3"
+info:
+  title: Vega API
+  description: REST API for Vega, an AI agent orchestration framework.
+  version: "1.0.0"
+servers:
+  - url: https://synkedup.v3ga.dev
+    description: Production
+
+paths:
+  # ── Company ───────────────────────────────────────────────────────────
+  /api/company:
+    get:
+      tags: [Company]
+      summary: Get company identity
+      description: Returns the company name, logo, accent colour, and sibling instances.
+      operationId: getCompany
+      responses:
+        "200":
+          description: Company info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+
+  # ── Processes ─────────────────────────────────────────────────────────
+  /api/processes:
+    get:
+      tags: [Processes]
+      summary: List all processes
+      operationId: listProcesses
+      responses:
+        "200":
+          description: Array of running and completed processes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProcessResponse"
+
+  /api/processes/{id}:
+    get:
+      tags: [Processes]
+      summary: Get process detail
+      operationId: getProcess
+      parameters:
+        - $ref: "#/components/parameters/ProcessId"
+      responses:
+        "200":
+          description: Process detail with conversation messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Processes]
+      summary: Kill a process
+      operationId: killProcess
+      parameters:
+        - $ref: "#/components/parameters/ProcessId"
+      responses:
+        "200":
+          description: Process killed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Agents ────────────────────────────────────────────────────────────
+  /api/agents:
+    get:
+      tags: [Agents]
+      summary: List all agents
+      operationId: listAgents
+      responses:
+        "200":
+          description: Array of agent definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentResponse"
+    post:
+      tags: [Agents]
+      summary: Create (compose) a new agent
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+      responses:
+        "201":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Agent name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agents/{name}:
+    put:
+      tags: [Agents]
+      summary: Update an existing composed agent
+      operationId: updateAgent
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentRequest"
+      responses:
+        "200":
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "403":
+          description: Forbidden (e.g. Mother cannot be updated)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Agents]
+      summary: Delete an agent
+      operationId: deleteAgent
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Agent deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "403":
+          description: Forbidden (e.g. Mother cannot be deleted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/agents/{name}/template:
+    get:
+      tags: [Agents]
+      summary: Export agent as portable template
+      operationId: exportTemplate
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Portable agent template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTemplateResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/agents/import:
+    post:
+      tags: [Agents]
+      summary: Import an agent from a template
+      operationId: importTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentTemplateResponse"
+      responses:
+        "201":
+          description: Agent created from template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Agent name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Chat ──────────────────────────────────────────────────────────────
+  /api/agents/{name}/chat:
+    get:
+      tags: [Chat]
+      summary: Get chat history
+      operationId: getChatHistory
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Array of chat messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessage"
+    post:
+      tags: [Chat]
+      summary: Send a message (non-streaming)
+      operationId: chat
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/XAuthUser"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: Agent response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    delete:
+      tags: [Chat]
+      summary: Clear chat history and reset agent
+      operationId: clearChat
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Chat cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+
+  /api/agents/{name}/chat/stream:
+    post:
+      tags: [Chat]
+      summary: Send a message (streaming via SSE)
+      description: |
+        Sends a message to the agent and returns a Server-Sent Events stream.
+        Events use the `event:` field for type and `data:` for JSON payload.
+
+        Event types: `text_delta`, `tool_start`, `tool_end`, `error`, `done`.
+
+        The stream survives client disconnect -- use the GET reconnect endpoint to resume.
+      operationId: chatStream
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/XAuthUser"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ChatEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    get:
+      tags: [Chat]
+      summary: Reconnect to an in-progress stream
+      description: |
+        If the agent has an active stream, replays all buffered events then continues live.
+        If no active stream, returns `{"streaming": false}`.
+      operationId: chatStreamReconnect
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/XAuthUser"
+      responses:
+        "200":
+          description: SSE stream or status JSON
+
+  /api/agents/{name}/chat/status:
+    get:
+      tags: [Chat]
+      summary: Check if agent has an active stream
+      operationId: chatStatus
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Streaming status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatStatusResponse"
+
+  # ── Memory ────────────────────────────────────────────────────────────
+  /api/agents/{name}/memory:
+    get:
+      tags: [Memory]
+      summary: Get agent memory for a user
+      operationId: getMemory
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+        - name: user
+          in: query
+          schema:
+            type: string
+          description: User ID (defaults to X-Auth-User header or "default")
+      responses:
+        "200":
+          description: Memory layers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+    delete:
+      tags: [Memory]
+      summary: Delete agent memory for a user
+      operationId: deleteMemory
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+        - name: user
+          in: query
+          schema:
+            type: string
+          description: User ID (defaults to X-Auth-User header or "default")
+      responses:
+        "200":
+          description: Memory deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+
+  # ── Workflows ─────────────────────────────────────────────────────────
+  /api/workflows:
+    get:
+      tags: [Workflows]
+      summary: List defined workflows
+      operationId: listWorkflows
+      responses:
+        "200":
+          description: Array of workflow definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkflowResponse"
+
+  /api/workflows/{name}/run:
+    post:
+      tags: [Workflows]
+      summary: Run a workflow
+      operationId: runWorkflow
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowRunRequest"
+      responses:
+        "202":
+          description: Workflow launched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowRunResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── MCP Servers ───────────────────────────────────────────────────────
+  /api/mcp/servers:
+    get:
+      tags: [MCP]
+      summary: List connected MCP servers
+      operationId: listMCPServers
+      responses:
+        "200":
+          description: Array of MCP server statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MCPServerResponse"
+    post:
+      tags: [MCP]
+      summary: Connect an MCP server
+      operationId: connectMCPServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectMCPRequest"
+      responses:
+        "200":
+          description: Server connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectMCPResponse"
+        "409":
+          description: Server already connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Connection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectMCPResponse"
+
+  /api/mcp/registry:
+    get:
+      tags: [MCP]
+      summary: List MCP registry entries
+      operationId: listMCPRegistry
+      responses:
+        "200":
+          description: Array of available MCP integrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MCPRegistryEntryResponse"
+
+  /api/mcp/servers/{name}:
+    put:
+      tags: [MCP]
+      summary: Update an MCP server (disconnect, update config, reconnect)
+      operationId: updateMCPServer
+      parameters:
+        - $ref: "#/components/parameters/MCPServerName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectMCPRequest"
+      responses:
+        "200":
+          description: Server updated and reconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectMCPResponse"
+        "502":
+          description: Reconnect failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectMCPResponse"
+    delete:
+      tags: [MCP]
+      summary: Disconnect and remove an MCP server
+      operationId: disconnectMCPServer
+      parameters:
+        - $ref: "#/components/parameters/MCPServerName"
+      responses:
+        "200":
+          description: Server disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/mcp/servers/{name}/config:
+    get:
+      tags: [MCP]
+      summary: Get persisted MCP server config
+      operationId: getMCPServerConfig
+      parameters:
+        - $ref: "#/components/parameters/MCPServerName"
+      responses:
+        "200":
+          description: Server configuration (suitable for pre-filling edit forms)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServerConfigResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/mcp/servers/{name}/refresh:
+    post:
+      tags: [MCP]
+      summary: Refresh an MCP server (disconnect and reconnect)
+      operationId: refreshMCPServer
+      parameters:
+        - $ref: "#/components/parameters/MCPServerName"
+      responses:
+        "200":
+          description: Server refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectMCPResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Reconnect failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectMCPResponse"
+
+  /api/mcp/servers/{name}/duplicate:
+    post:
+      tags: [MCP]
+      summary: Duplicate an MCP server with a new name
+      operationId: duplicateMCPServer
+      parameters:
+        - $ref: "#/components/parameters/MCPServerName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_name]
+              properties:
+                new_name:
+                  type: string
+      responses:
+        "200":
+          description: Server duplicated and connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectMCPResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: New name already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/mcp/servers/{name}/disable:
+    put:
+      tags: [MCP]
+      summary: Enable or disable an MCP server
+      operationId: toggleMCPServer
+      parameters:
+        - $ref: "#/components/parameters/MCPServerName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [disabled]
+              properties:
+                disabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Server toggled
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/StatusResponse"
+                  - $ref: "#/components/schemas/ConnectMCPResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Stats & Spawn Tree ────────────────────────────────────────────────
+  /api/stats:
+    get:
+      tags: [System]
+      summary: Get aggregate system stats
+      operationId: getStats
+      responses:
+        "200":
+          description: System statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+
+  /api/spawn-tree:
+    get:
+      tags: [System]
+      summary: Get process spawn tree
+      operationId: getSpawnTree
+      responses:
+        "200":
+          description: Hierarchical spawn tree
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SpawnTreeNodeResponse"
+
+  # ── Population ────────────────────────────────────────────────────────
+  /api/population/search:
+    get:
+      tags: [Population]
+      summary: Search the population registry
+      operationId: populationSearch
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [persona, skill, profile]
+          description: Filter by item kind
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PopulationSearchResult"
+
+  /api/population/info/{kind}/{name}:
+    get:
+      tags: [Population]
+      summary: Get detailed info about a population item
+      operationId: populationInfo
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [persona, skill, profile]
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Item details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopulationInfoResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/population/install:
+    post:
+      tags: [Population]
+      summary: Install a population item
+      operationId: populationInstall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PopulationInstallRequest"
+      responses:
+        "200":
+          description: Item installed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/population/installed:
+    get:
+      tags: [Population]
+      summary: List installed population items
+      operationId: populationInstalled
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [persona, skill, profile]
+          description: Filter by item kind
+      responses:
+        "200":
+          description: Installed items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PopulationInstalledItem"
+
+  # ── Channels ──────────────────────────────────────────────────────────
+  /api/channels:
+    get:
+      tags: [Channels]
+      summary: List all channels
+      operationId: listChannels
+      responses:
+        "200":
+          description: Array of channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+    post:
+      tags: [Channels]
+      summary: Create a channel
+      operationId: createChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/channels/{name}:
+    get:
+      tags: [Channels]
+      summary: Get a channel by name
+      operationId: getChannel
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+      responses:
+        "200":
+          description: Channel details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Channels]
+      summary: Delete a channel
+      operationId: deleteChannel
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+      responses:
+        "200":
+          description: Channel deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/channels/{name}/team:
+    put:
+      tags: [Channels]
+      summary: Update channel team members
+      operationId: updateChannelTeam
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [team]
+              properties:
+                team:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Team updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/channels/{name}/messages:
+    get:
+      tags: [Channels]
+      summary: List channel messages
+      operationId: listChannelMessages
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Max messages to return
+      responses:
+        "200":
+          description: Array of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelMessage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Channels]
+      summary: Post a message to a channel (non-streaming)
+      operationId: channelPost
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelPostRequest"
+      responses:
+        "200":
+          description: Message posted; agent response is async
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message_id:
+                    type: integer
+                    format: int64
+                  thread_id:
+                    type: integer
+                    format: int64
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/channels/{name}/messages/{id}/thread:
+    get:
+      tags: [Channels]
+      summary: List thread replies for a message
+      operationId: listThreadMessages
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Parent message ID
+      responses:
+        "200":
+          description: Array of thread messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelMessage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/channels/{name}/stream:
+    post:
+      tags: [Channels]
+      summary: Post a message and stream agent responses via SSE
+      description: |
+        Posts a user message, then returns an SSE stream of channel events.
+        Event types: `channel.message`, `channel.typing`, `channel.text_delta`,
+        `channel.tool_start`, `channel.tool_end`, `channel.thread_reply`,
+        `channel.error`, `channel.done`.
+      operationId: channelStream
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelPostRequest"
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ChannelEvent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    get:
+      tags: [Channels]
+      summary: Reconnect to a channel stream
+      operationId: channelStreamReconnect
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+      responses:
+        "200":
+          description: SSE event stream (replays buffered events first)
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ChannelEvent"
+
+  # ── Files ─────────────────────────────────────────────────────────────
+  /api/files:
+    get:
+      tags: [Files]
+      summary: List directory contents in workspace
+      operationId: listFiles
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+          description: Relative path under workspace (empty for root)
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileEntry"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Files]
+      summary: Delete a file or empty directory
+      operationId: deleteFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Relative path under workspace
+      responses:
+        "200":
+          description: File deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/files/read:
+    get:
+      tags: [Files]
+      summary: Read file content
+      operationId: readFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Relative path under workspace
+      responses:
+        "200":
+          description: File content (text as UTF-8, binary as base64)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/files/metadata:
+    get:
+      tags: [Files]
+      summary: List file metadata records (files written by agents)
+      operationId: listFileMetadata
+      parameters:
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: Filter by agent name
+      responses:
+        "200":
+          description: File metadata with agent list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileMetadataResponse"
+
+  # ── Schedules ─────────────────────────────────────────────────────────
+  /api/schedules:
+    get:
+      tags: [Schedules]
+      summary: List scheduled jobs
+      operationId: listSchedules
+      responses:
+        "200":
+          description: Array of scheduled jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledJob"
+
+  /api/schedules/{name}:
+    delete:
+      tags: [Schedules]
+      summary: Delete a scheduled job
+      operationId: deleteSchedule
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Schedule deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Schedules]
+      summary: Enable or disable a scheduled job
+      operationId: toggleSchedule
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Schedule toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Inbox ─────────────────────────────────────────────────────────────
+  /api/inbox:
+    get:
+      tags: [Inbox]
+      summary: List inbox items
+      operationId: listInbox
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, resolved]
+          description: Filter by status
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Array of inbox items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InboxItem"
+
+  /api/inbox/resolved:
+    delete:
+      tags: [Inbox]
+      summary: Clear all resolved inbox items
+      operationId: clearResolvedInbox
+      responses:
+        "200":
+          description: Count of deleted items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+                    format: int64
+
+  # ── Settings ──────────────────────────────────────────────────────────
+  /api/settings:
+    get:
+      tags: [Settings]
+      summary: List all settings (sensitive values masked)
+      operationId: listSettings
+      responses:
+        "200":
+          description: Array of settings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Setting"
+    put:
+      tags: [Settings]
+      summary: Create or update a setting
+      operationId: upsertSetting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Setting"
+      responses:
+        "200":
+          description: Setting saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/settings/{key}:
+    delete:
+      tags: [Settings]
+      summary: Delete a setting
+      operationId: deleteSetting
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Setting deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Prompt History ────────────────────────────────────────────────────
+  /api/prompt-history:
+    get:
+      tags: [Prompt History]
+      summary: List prompt history (survives reset)
+      operationId: listPromptHistory
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Array of prompt history items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PromptHistoryItem"
+
+  /api/prompt-history/search:
+    get:
+      tags: [Prompt History]
+      summary: Search prompt history
+      operationId: searchPromptHistory
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Matching prompt history items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PromptHistoryItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/prompt-history/{id}:
+    delete:
+      tags: [Prompt History]
+      summary: Delete a prompt history entry
+      operationId: deletePromptHistory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Entry deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Reset ─────────────────────────────────────────────────────────────
+  /api/reset:
+    post:
+      tags: [System]
+      summary: Full system reset
+      description: |
+        Kills all processes, disconnects MCP servers, clears database tables
+        (except prompt_history), and removes all workspace files.
+      operationId: reset
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+
+  # ── SSE Events ────────────────────────────────────────────────────────
+  /api/events:
+    get:
+      tags: [System]
+      summary: Global SSE event stream
+      description: |
+        Server-Sent Events stream for real-time orchestration updates.
+        Events include process lifecycle, agent status, workflow completions, etc.
+        Sends a heartbeat comment every 30 seconds.
+      operationId: sseEvents
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/BrokerEvent"
+        "503":
+          description: Too many subscribers
+
+# ═══════════════════════════════════════════════════════════════════════
+components:
+  parameters:
+    ProcessId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Process ID
+
+    AgentName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Agent name
+
+    ChannelName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Channel name
+
+    MCPServerName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: MCP server name
+
+    XAuthUser:
+      name: X-Auth-User
+      in: header
+      schema:
+        type: string
+      description: User identifier for per-user agent sessions and memory
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    # ── Generic ───────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    # ── Company ───────────────────────────────────────────────────────
+    CompanyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        logo_url:
+          type: string
+        accent_color:
+          type: string
+        siblings:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              url:
+                type: string
+              icon:
+                type: string
+
+    # ── Processes ─────────────────────────────────────────────────────
+    MetricsResponse:
+      type: object
+      properties:
+        iterations:
+          type: integer
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cost_usd:
+          type: number
+          format: double
+        tool_calls:
+          type: integer
+        errors:
+          type: integer
+        last_active_at:
+          type: string
+          format: date-time
+
+    ProcessResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        agent:
+          type: string
+        task:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, timeout]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        parent_id:
+          type: string
+        spawn_depth:
+          type: integer
+        spawn_reason:
+          type: string
+        metrics:
+          $ref: "#/components/schemas/MetricsResponse"
+
+    ProcessDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/ProcessResponse"
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/MessageResponse"
+
+    MessageResponse:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
+    # ── Agents ────────────────────────────────────────────────────────
+    AgentResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        title:
+          type: string
+        avatar:
+          type: string
+        model:
+          type: string
+        system:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        team:
+          type: array
+          items:
+            type: string
+        process_id:
+          type: string
+        process_status:
+          type: string
+        source:
+          type: string
+          description: '"composed" if created via API, absent if defined in YAML'
+
+    CreateAgentRequest:
+      type: object
+      required: [name, model]
+      properties:
+        name:
+          type: string
+        model:
+          type: string
+        persona:
+          type: string
+          description: Population persona name (loads system prompt from installed persona)
+        skills:
+          type: array
+          items:
+            type: string
+          description: Population skill names to install tools from
+        team:
+          type: array
+          items:
+            type: string
+          description: Agent names this agent can delegate to
+        system:
+          type: string
+          description: System prompt (overrides persona if both provided)
+        temperature:
+          type: number
+          format: double
+
+    CreateAgentResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        model:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        process_id:
+          type: string
+
+    UpdateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New name (for renaming)
+        model:
+          type: string
+        system:
+          type: string
+        team:
+          type: array
+          items:
+            type: string
+        temperature:
+          type: number
+          format: double
+
+    AgentTemplateResponse:
+      type: object
+      properties:
+        version:
+          type: string
+        name:
+          type: string
+        display_name:
+          type: string
+        title:
+          type: string
+        model:
+          type: string
+        system:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        team:
+          type: array
+          items:
+            type: string
+        exported_by:
+          type: string
+        exported_at:
+          type: string
+          format: date-time
+
+    # ── Chat ──────────────────────────────────────────────────────────
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    ChatMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
+    ChatStatusResponse:
+      type: object
+      properties:
+        streaming:
+          type: boolean
+
+    ChatEvent:
+      type: object
+      description: SSE event emitted during streaming chat
+      properties:
+        type:
+          type: string
+          enum: [text_delta, tool_start, tool_end, error, done]
+        delta:
+          type: string
+          description: Text chunk (text_delta events)
+        tool_call_id:
+          type: string
+        tool_name:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        result:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        error:
+          type: string
+        nested_agent:
+          type: string
+        metrics:
+          $ref: "#/components/schemas/ChatEventMetrics"
+
+    ChatEventMetrics:
+      type: object
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cost_usd:
+          type: number
+          format: double
+        duration_ms:
+          type: integer
+          format: int64
+
+    # ── Memory ────────────────────────────────────────────────────────
+    MemoryResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+        agent:
+          type: string
+        layers:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserMemory"
+
+    UserMemory:
+      type: object
+      properties:
+        user_id:
+          type: string
+        agent:
+          type: string
+        layer:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # ── Workflows ─────────────────────────────────────────────────────
+    WorkflowResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        steps:
+          type: integer
+        inputs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/InputResponse"
+
+    InputResponse:
+      type: object
+      properties:
+        type:
+          type: string
+        description:
+          type: string
+        required:
+          type: boolean
+        default: {}
+        enum:
+          type: array
+          items:
+            type: string
+
+    WorkflowRunRequest:
+      type: object
+      properties:
+        inputs:
+          type: object
+          additionalProperties: true
+
+    WorkflowRunResponse:
+      type: object
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+          example: running
+
+    # ── MCP ───────────────────────────────────────────────────────────
+    MCPServerResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        connected:
+          type: boolean
+        disabled:
+          type: boolean
+        transport:
+          type: string
+        url:
+          type: string
+        command:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+
+    MCPRegistryEntryResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        required_env:
+          type: array
+          items:
+            type: string
+        optional_env:
+          type: array
+          items:
+            type: string
+        builtin_go:
+          type: boolean
+        connected:
+          type: boolean
+        existing_settings:
+          type: object
+          additionalProperties:
+            type: string
+
+    ConnectMCPRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        transport:
+          type: string
+          enum: [stdio, http, sse]
+        command:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        timeout:
+          type: integer
+          description: Timeout in seconds
+
+    ConnectMCPResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        connected:
+          type: boolean
+        tools:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+
+    MCPServerConfigResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        transport:
+          type: string
+        command:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        timeout:
+          type: integer
+        env_keys:
+          type: array
+          items:
+            type: string
+        existing_settings:
+          type: object
+          additionalProperties:
+            type: string
+        is_registry:
+          type: boolean
+
+    # ── Stats ─────────────────────────────────────────────────────────
+    StatsResponse:
+      type: object
+      properties:
+        total_processes:
+          type: integer
+        running_processes:
+          type: integer
+        completed_processes:
+          type: integer
+        failed_processes:
+          type: integer
+        total_input_tokens:
+          type: integer
+        total_output_tokens:
+          type: integer
+        total_cache_creation_tokens:
+          type: integer
+        total_cache_read_tokens:
+          type: integer
+        total_cost_usd:
+          type: number
+          format: double
+        total_tool_calls:
+          type: integer
+        total_errors:
+          type: integer
+        uptime:
+          type: string
+          example: "2h15m30s"
+
+    SpawnTreeNodeResponse:
+      type: object
+      properties:
+        process_id:
+          type: string
+        agent_name:
+          type: string
+        task:
+          type: string
+        status:
+          type: string
+        spawn_depth:
+          type: integer
+        spawn_reason:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpawnTreeNodeResponse"
+
+    # ── Population ────────────────────────────────────────────────────
+    PopulationSearchResult:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        score:
+          type: number
+          format: double
+
+    PopulationInfoResponse:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        author:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        persona:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+        recommended_skills:
+          type: array
+          items:
+            type: string
+        system_prompt:
+          type: string
+        installed:
+          type: boolean
+        installed_path:
+          type: string
+
+    PopulationInstalledItem:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        path:
+          type: string
+
+    PopulationInstallRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    # ── Channels ──────────────────────────────────────────────────────
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        team:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+          description: '"social" = all members respond, default = team lead only'
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        message_count:
+          type: integer
+
+    ChannelMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        channel_id:
+          type: string
+        thread_id:
+          type: integer
+          format: int64
+        agent:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        metadata:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        reply_count:
+          type: integer
+
+    CreateChannelRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        team:
+          type: array
+          items:
+            type: string
+
+    ChannelPostRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        thread_id:
+          type: integer
+          format: int64
+          description: Post as a reply in this thread
+        agent:
+          type: string
+          description: Target a specific agent (defaults to team lead)
+
+    ChannelEvent:
+      type: object
+      description: SSE event for channel activity
+      properties:
+        type:
+          type: string
+          enum:
+            - channel.message
+            - channel.typing
+            - channel.text_delta
+            - channel.tool_start
+            - channel.tool_end
+            - channel.thread_reply
+            - channel.error
+            - channel.done
+        channel:
+          type: string
+        message_id:
+          type: integer
+          format: int64
+        thread_id:
+          type: integer
+          format: int64
+        agent:
+          type: string
+        role:
+          type: string
+        content:
+          type: string
+        delta:
+          type: string
+        metrics:
+          type: object
+          additionalProperties: true
+
+    # ── Files ─────────────────────────────────────────────────────────
+    FileEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        is_dir:
+          type: boolean
+        size:
+          type: integer
+          format: int64
+        mod_time:
+          type: string
+          format: date-time
+        content_type:
+          type: string
+
+    FileContentResponse:
+      type: object
+      properties:
+        path:
+          type: string
+        content_type:
+          type: string
+        content:
+          type: string
+          description: UTF-8 text or base64-encoded binary
+        encoding:
+          type: string
+          enum: [utf-8, base64]
+        size:
+          type: integer
+          format: int64
+
+    FileMetadataResponse:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceFile"
+        agents:
+          type: array
+          items:
+            type: string
+
+    WorkspaceFile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        path:
+          type: string
+        agent:
+          type: string
+        process_id:
+          type: string
+        operation:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Schedules ─────────────────────────────────────────────────────
+    ScheduledJob:
+      type: object
+      properties:
+        name:
+          type: string
+        cron:
+          type: string
+        agent:
+          type: string
+        message:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Inbox ─────────────────────────────────────────────────────────
+    InboxItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        from_agent:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        priority:
+          type: string
+        status:
+          type: string
+        resolution:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+
+    # ── Settings ──────────────────────────────────────────────────────
+    Setting:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        sensitive:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # ── Prompt History ────────────────────────────────────────────────
+    PromptHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        prompt:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ── SSE Events ────────────────────────────────────────────────────
+    BrokerEvent:
+      type: object
+      properties:
+        type:
+          type: string
+        process_id:
+          type: string
+        agent:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
