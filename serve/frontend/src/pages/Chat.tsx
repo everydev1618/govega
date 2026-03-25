@@ -191,12 +191,18 @@ function VegaStar() {
   )
 }
 
+// Strip per-user clone suffix (e.g. "hermes:Etienne" → "hermes").
+function baseAgentName(name: string): string {
+  const i = name.indexOf(':')
+  return i >= 0 ? name.substring(0, i) : name
+}
+
 export function Chat() {
   const { agent: agentParam } = useParams<{ agent?: string }>()
   const navigate = useNavigate()
   const { events } = useSSE()
 
-  const [activeAgent, setActiveAgent] = useState(agentParam || HERMES)
+  const [activeAgent, setActiveAgent] = useState(baseAgentName(agentParam || HERMES))
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -215,7 +221,9 @@ export function Chat() {
       if (stored) {
         const parsed = JSON.parse(stored) as string[]
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.includes(HERMES) ? parsed : [HERMES, ...parsed]
+          // Strip any per-user clone suffixes from stored tabs.
+          const cleaned = [...new Set(parsed.map(baseAgentName))]
+          return cleaned.includes(HERMES) ? cleaned : [HERMES, ...cleaned]
         }
       }
     } catch { /* ignore */ }
@@ -283,10 +291,12 @@ export function Chat() {
   useEffect(() => { ensureTab(activeAgent) }, [activeAgent, ensureTab])
 
   useEffect(() => {
-    if (specialists.length === 0) return
     const specialistNames = new Set(specialists.map(a => a.name))
-    setOpenTabs(prev => prev.filter(t => META_AGENTS.has(t) || specialistNames.has(t) || t === activeAgent))
-  }, [specialists, activeAgent])
+    setOpenTabs(prev => {
+      const filtered = prev.filter(t => META_AGENTS.has(t) || specialistNames.has(t))
+      return filtered.length > 0 ? filtered : [HERMES]
+    })
+  }, [specialists])
 
   const reconnectAbortRef = useRef<AbortController | null>(null)
 
@@ -468,8 +478,9 @@ export function Chat() {
   }
 
   useEffect(() => {
-    if (agentParam && agentParam !== activeAgent) {
-      setActiveAgent(agentParam)
+    const base = baseAgentName(agentParam || HERMES)
+    if (base !== activeAgent) {
+      setActiveAgent(base)
     }
   }, [agentParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -490,7 +501,7 @@ export function Chat() {
     }
     setHandoffFrom(null)
     setShowWelcomeTools(false)
-    setActiveAgent(name)
+    setActiveAgent(baseAgentName(name))
   }
 
   const clearChat = async () => {
