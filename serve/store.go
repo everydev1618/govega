@@ -155,6 +155,15 @@ type Store interface {
 	// ListThreadMessages returns all replies in a thread.
 	ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error)
 
+	// MarkChannelRead updates the read cursor for a channel.
+	MarkChannelRead(channelID, userID string) error
+
+	// MarkChatRead updates the read cursor for a DM conversation.
+	MarkChatRead(agent, userID string) error
+
+	// ChatUnreadCounts returns agent → unread message count for DMs.
+	ChatUnreadCounts(userID string) (map[string]int, error)
+
 	// ResetData clears all transient data (chat, memory, agents, files, etc.)
 	// but preserves settings and prompt history.
 	ResetData() error

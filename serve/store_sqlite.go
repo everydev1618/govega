@@ -210,6 +210,22 @@ func (s *SQLiteStore) Init() error {
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS channel_read_cursors (
+		channel_id TEXT NOT NULL,
+		user_id    TEXT NOT NULL DEFAULT 'default',
+		last_read_id INTEGER NOT NULL DEFAULT 0,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (channel_id, user_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS chat_read_cursors (
+		agent   TEXT NOT NULL,
+		user_id TEXT NOT NULL DEFAULT 'default',
+		last_read_id INTEGER NOT NULL DEFAULT 0,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (agent, user_id)
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -717,6 +733,8 @@ func (s *SQLiteStore) ResetData() error {
 		"inbox_replies",
 		"agent_inbox",
 		"workspace_files",
+		"channel_read_cursors",
+		"chat_read_cursors",
 	}
 	for _, t := range tables {
 		if err := s.DeleteAllFromTable(t); err != nil {
@@ -900,11 +918,13 @@ func (s *SQLiteStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, err
 	return result, nil
 }
 
-// ListChannels returns all channels.
+// ListChannels returns all channels with unread counts for the default user.
 func (s *SQLiteStore) ListChannels() ([]Channel, error) {
 	rows, err := s.db.Query(`
 		SELECT c.id, c.name, c.description, c.team, c.mode, c.created_by, c.created_at,
-		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL), 0)
+		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL), 0),
+		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL
+		                 AND id > COALESCE((SELECT last_read_id FROM channel_read_cursors WHERE channel_id = c.id AND user_id = 'default'), 0)), 0)
 		FROM channels c
 		ORDER BY c.created_at ASC`,
 	)
@@ -917,7 +937,7 @@ func (s *SQLiteStore) ListChannels() ([]Channel, error) {
 	for rows.Next() {
 		var ch Channel
 		var teamJSON string
-		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt, &ch.MessageCount); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt, &ch.MessageCount, &ch.UnreadCount); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(teamJSON), &ch.Team)
@@ -1286,6 +1306,67 @@ func (s *SQLiteStore) DeletePromptHistory(id int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// MarkChannelRead updates the read cursor for a channel so unread count resets.
+func (s *SQLiteStore) MarkChannelRead(channelID, userID string) error {
+	if userID == "" {
+		userID = "default"
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO channel_read_cursors (channel_id, user_id, last_read_id, updated_at)
+		VALUES (?, ?, COALESCE((SELECT MAX(id) FROM channel_messages WHERE channel_id = ? AND thread_id IS NULL), 0), CURRENT_TIMESTAMP)
+		ON CONFLICT(channel_id, user_id) DO UPDATE SET
+			last_read_id = COALESCE((SELECT MAX(id) FROM channel_messages WHERE channel_id = excluded.channel_id AND thread_id IS NULL), 0),
+			updated_at = CURRENT_TIMESTAMP`,
+		channelID, userID, channelID,
+	)
+	return err
+}
+
+// MarkChatRead updates the read cursor for a DM conversation so unread count resets.
+func (s *SQLiteStore) MarkChatRead(agent, userID string) error {
+	if userID == "" {
+		userID = "default"
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO chat_read_cursors (agent, user_id, last_read_id, updated_at)
+		VALUES (?, ?, COALESCE((SELECT MAX(id) FROM chat_messages WHERE agent = ?), 0), CURRENT_TIMESTAMP)
+		ON CONFLICT(agent, user_id) DO UPDATE SET
+			last_read_id = COALESCE((SELECT MAX(id) FROM chat_messages WHERE agent = excluded.agent), 0),
+			updated_at = CURRENT_TIMESTAMP`,
+		agent, userID, agent,
+	)
+	return err
+}
+
+// ChatUnreadCounts returns a map of agent name → unread message count for DMs.
+func (s *SQLiteStore) ChatUnreadCounts(userID string) (map[string]int, error) {
+	if userID == "" {
+		userID = "default"
+	}
+	rows, err := s.db.Query(`
+		SELECT cm.agent, COUNT(*) as unread
+		FROM chat_messages cm
+		LEFT JOIN chat_read_cursors crc ON cm.agent = crc.agent AND crc.user_id = ?
+		WHERE cm.role = 'assistant'
+		  AND cm.id > COALESCE(crc.last_read_id, 0)
+		GROUP BY cm.agent`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var agent string
+		var count int
+		if err := rows.Scan(&agent, &count); err != nil {
+			return nil, err
+		}
+		counts[agent] = count
+	}
+	return counts, rows.Err()
 }
 
 // snapshotProcess creates a snapshot from a live process and persists it.
