@@ -14,6 +14,8 @@ type CompanySibling struct {
 type Company struct {
 	ID          string           `yaml:"id" json:"id"`
 	Name        string           `yaml:"name" json:"name"`
+	Description string           `yaml:"description,omitempty" json:"description,omitempty"`
+	Location    string           `yaml:"location,omitempty" json:"location,omitempty"`
 	LogoURL     string           `yaml:"logo_url,omitempty" json:"logo_url,omitempty"`
 	AccentColor string           `yaml:"accent_color,omitempty" json:"accent_color,omitempty"`
 	Siblings    []CompanySibling `yaml:"siblings,omitempty" json:"siblings,omitempty"`

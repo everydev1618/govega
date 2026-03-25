@@ -5,6 +5,15 @@
 
 name: Trevor Fountain Landscaping
 
+company:
+  id: trevorfountain
+  name: Trevor Fountain Landscaping
+  description: >-
+    A full-service landscaping company specializing in residential and commercial
+    landscape design, installation, and maintenance. Manages operations through
+    SynkedUp for estimates, scheduling, invoicing, and customer management.
+  location: Altoona, PA
+
 settings:
   default_model: claude-sonnet-4-20250514
   budget: "$10.00"

@@ -91,7 +91,7 @@ export function Layout() {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Mobile header */}
       <div className="fixed top-0 left-0 right-0 z-40 flex items-center gap-3 px-3 py-2 border-b border-border bg-card md:hidden">
         <button
@@ -259,7 +259,7 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 p-3 pt-14 md:p-6 md:pt-6 overflow-auto">
+      <main className="flex-1 p-3 pt-14 md:p-6 md:pt-6 overflow-auto flex flex-col min-h-0">
         <Outlet />
       </main>
     </div>

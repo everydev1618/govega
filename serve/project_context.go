@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/dsl"
 )
 
 // maxTreeDepth limits how deep we recurse when building the file tree.
@@ -123,10 +124,32 @@ func skipDir(name string) bool {
 	return false
 }
 
-// buildExtraSystem combines memory text and project context into a single
-// extra system prompt string.
-func buildExtraSystem(memText, projectContext string) string {
-	parts := make([]string, 0, 2)
+// buildCompanyContext generates a company identity section for agent system prompts.
+func buildCompanyContext(company *dsl.Company) string {
+	if company == nil || company.Name == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("## Organization\n\n")
+	b.WriteString(fmt.Sprintf("You work for **%s**.", company.Name))
+	if company.Description != "" {
+		b.WriteString(" " + company.Description)
+	}
+	if company.Location != "" {
+		b.WriteString(fmt.Sprintf("\nBased in: %s", company.Location))
+	}
+
+	return b.String()
+}
+
+// buildExtraSystem combines memory text, project context, and company context
+// into a single extra system prompt string.
+func buildExtraSystem(memText, projectContext, companyContext string) string {
+	parts := make([]string, 0, 3)
+	if companyContext != "" {
+		parts = append(parts, companyContext)
+	}
 	if memText != "" {
 		parts = append(parts, memText)
 	}

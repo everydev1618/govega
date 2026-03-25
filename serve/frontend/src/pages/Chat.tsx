@@ -569,7 +569,7 @@ export function Chat() {
   const agentNamesList = useMemo(() => [...agentNames], [agentNames])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-3rem)]">
+    <div className="flex flex-col h-full min-h-0">
       {/* Tab bar + actions */}
       <div className="flex items-end border-b border-border">
         <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">

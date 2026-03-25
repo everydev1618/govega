@@ -371,10 +371,13 @@ func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentNa
 	s.hydrateAgent(proc, agentName)
 
 	userID := "default"
+	var memText string
 	if memories, err := s.store.GetUserMemory(userID, agentName); err == nil && len(memories) > 0 {
-		if memText := formatMemoryForInjection(memories); memText != "" {
-			proc.SetExtraSystem(memText)
-		}
+		memText = formatMemoryForInjection(memories)
+	}
+	companyCtx := buildCompanyContext(s.company)
+	if extra := buildExtraSystem(memText, "", companyCtx); extra != "" {
+		proc.SetExtraSystem(extra)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
