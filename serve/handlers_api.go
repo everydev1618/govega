@@ -122,6 +122,10 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		if name == "mother" {
 			continue
 		}
+		// Hide per-user clones (e.g. "hermes:Etienne") — they're internal.
+		if strings.Contains(name, ":") {
+			continue
+		}
 		model := def.Model
 		if model == "" {
 			model = defaultModel
@@ -186,7 +190,13 @@ func (s *Server) chatAgentName(baseAgent string, r *http.Request) string {
 		return baseAgent
 	}
 
-	name := baseAgent + ":" + user
+	// If the base agent already has this user suffix, don't double-stack.
+	suffix := ":" + user
+	if strings.HasSuffix(baseAgent, suffix) {
+		return baseAgent
+	}
+
+	name := baseAgent + suffix
 
 	// Ensure per-user agent exists (clone from base on first use).
 	if agents := s.interp.Agents(); agents[name] == nil {
