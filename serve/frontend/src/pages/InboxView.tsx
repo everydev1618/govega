@@ -18,6 +18,14 @@ export function InboxView() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Poll for new items
+  useEffect(() => {
+    const id = setInterval(() => {
+      api.getInbox().then(list => setItems(list ?? [])).catch(() => {})
+    }, 10000)
+    return () => clearInterval(id)
+  }, [])
+
   const agentDisplayInfo = useMemo(() => {
     const m = new Map<string, { displayName: string; avatar: string }>()
     for (const a of agents) {
@@ -122,18 +130,8 @@ export function InboxView() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Inbox</h1>
-        {resolved.length > 0 && (
-          <button
-            onClick={clearResolved}
-            className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg border border-border hover:bg-accent/50 transition-colors"
-          >
-            Clear resolved ({resolved.length})
-          </button>
-        )}
-      </div>
+    <div className="max-w-2xl mx-auto">
+      <h1 className="text-2xl font-bold mb-6">Inbox</h1>
 
       {items.length === 0 && (
         <div className="text-center py-16">
@@ -145,31 +143,41 @@ export function InboxView() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Pending */}
-        {pending.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Pending ({pending.length})
-            </h2>
+      {/* Pending */}
+      {items.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            Pending ({pending.length})
+          </h2>
+          {pending.length > 0 ? (
             <div className="space-y-3">
               {pending.map(renderCard)}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-muted-foreground/50 py-4">Nothing pending</p>
+          )}
+        </div>
+      )}
 
-        {/* Resolved */}
-        {resolved.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Resolved ({resolved.length})
+      {/* Done */}
+      {resolved.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Done ({resolved.length})
             </h2>
-            <div className="space-y-3 opacity-70">
-              {resolved.map(renderCard)}
-            </div>
+            <button
+              onClick={clearResolved}
+              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded border border-border hover:bg-accent/50 transition-colors"
+            >
+              Clear
+            </button>
           </div>
-        )}
-      </div>
+          <div className="space-y-3 opacity-60">
+            {resolved.map(renderCard)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
