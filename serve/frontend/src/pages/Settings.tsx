@@ -11,6 +11,8 @@ export function Settings() {
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resetting, setResetting] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   const handleSave = async () => {
     if (!key.trim()) return
@@ -114,6 +116,51 @@ export function Settings() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Nuclear Reset */}
+      <div className="p-4 rounded-lg bg-card border border-red-900/50 space-y-3">
+        <h3 className="font-semibold text-sm text-red-400">Reset Project</h3>
+        <p className="text-sm text-muted-foreground">
+          Wipe all data — agents, chat history, channels, inbox, memory, workspace files — and restore to the YAML-defined state. Settings and MCP servers are preserved.
+        </p>
+        {!confirmReset ? (
+          <button
+            onClick={() => setConfirmReset(true)}
+            className="px-4 py-2 rounded bg-red-900/50 hover:bg-red-900/70 text-red-400 text-sm font-medium transition-colors"
+          >
+            Reset Everything
+          </button>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-red-400 font-medium">Are you sure? This cannot be undone.</span>
+            <button
+              onClick={async () => {
+                setResetting(true)
+                setError(null)
+                try {
+                  await api.resetProject()
+                  setConfirmReset(false)
+                  window.location.href = '/'
+                } catch (err: any) {
+                  setError(err.message || 'Reset failed')
+                } finally {
+                  setResetting(false)
+                }
+              }}
+              disabled={resetting}
+              className="px-4 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {resetting ? 'Resetting...' : 'Yes, nuke it'}
+            </button>
+            <button
+              onClick={() => setConfirmReset(false)}
+              className="px-4 py-2 rounded bg-muted hover:bg-muted/80 text-sm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Settings table */}
