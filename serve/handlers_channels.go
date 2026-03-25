@@ -206,14 +206,12 @@ func (s *Server) handleChannelPost(w http.ResponseWriter, r *http.Request) {
 
 	go s.runChannelAgent(ch, targetAgent, agentMessage, threadID)
 
-	// In social mode, notify all OTHER team members so they respond too.
+	// Notify all OTHER team members so they can decide whether to respond.
 	poster := sender
 	if poster == "" {
 		poster = "a user"
 	}
-	if ch.Mode == "social" {
-		s.notifyChannelTeammates(ch, poster, req.Message, 0, threadID)
-	}
+	s.notifyChannelTeammates(ch, poster, req.Message, 0, threadID)
 
 	writeJSON(w, http.StatusOK, map[string]any{"message_id": msgID, "thread_id": threadID})
 }
@@ -298,14 +296,12 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 		go s.runChannelAgentStreamed(ch, cs, targetAgent, agentMessage, threadID)
 	}
 
-	// In social mode, notify all OTHER team members so they respond too.
+	// Notify all OTHER team members so they can decide whether to respond.
 	poster := sender
 	if poster == "" {
 		poster = "a user"
 	}
-	if ch.Mode == "social" {
-		s.notifyChannelTeammates(ch, poster, req.Message, 0, threadID)
-	}
+	s.notifyChannelTeammates(ch, poster, req.Message, 0, threadID)
 
 	// Relay SSE to this client.
 	s.relayChannelStreamSSE(w, r, name)

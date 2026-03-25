@@ -86,13 +86,19 @@ If this is relevant to your work or needs your input, respond using post_to_chan
 // notifyChannelTeammates notifies all channel team members (except the poster)
 // about a new message. Used to get multiple agents to respond to user messages.
 // triggerMsgID is the message to thread replies under.
+// Notifications are staggered by 2 seconds to avoid overwhelming the LLM API.
 func (s *Server) notifyChannelTeammates(ch *Channel, poster, message string, depth int, triggerMsgID int64) {
 	social := ch.Mode == "social"
-	for _, member := range ch.Team {
-		if member == poster {
-			continue
+	go func() {
+		for i, member := range ch.Team {
+			if member == poster {
+				continue
+			}
+			if i > 0 {
+				time.Sleep(2 * time.Second)
+			}
+			m := member
+			go s.notifyChannelTeammate(ch.Name, m, poster, message, depth, social, triggerMsgID)
 		}
-		m := member
-		go s.notifyChannelTeammate(ch.Name, m, poster, message, depth, social, triggerMsgID)
-	}
+	}()
 }

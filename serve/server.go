@@ -313,19 +313,27 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	// Reactive channel callback — notifies other team members when an agent posts.
+	// Stagger notifications by 2s to avoid overwhelming the LLM API.
 	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int, triggerMsgID int64) {
 		// Look up channel mode for social prompt selection.
 		social := false
 		if ch, err := s.store.GetChannel(channelName); err == nil && ch != nil {
 			social = ch.Mode == "social"
 		}
-		for _, member := range team {
-			if member == poster {
-				continue
+		go func() {
+			first := true
+			for _, member := range team {
+				if member == poster {
+					continue
+				}
+				if !first {
+					time.Sleep(2 * time.Second)
+				}
+				first = false
+				m := member
+				go s.notifyChannelTeammate(channelName, m, poster, message, depth, social, triggerMsgID)
 			}
-			m := member
-			go s.notifyChannelTeammate(channelName, m, poster, message, depth, social, triggerMsgID)
-		}
+		}()
 	}
 
 	// Register channel tools — create_channel and post_to_channel.
