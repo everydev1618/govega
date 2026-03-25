@@ -286,7 +286,21 @@ export function Chat() {
     if (last.type === 'agent.created' || last.type === 'agent.deleted') {
       fetchAgents()
     }
-  }, [events, fetchAgents])
+    // When a dispatched agent completes, Hermes auto-triages and the server
+    // emits chat.update. Refresh history so the user sees the new message.
+    if (last.type === 'chat.update' && last.agent && baseAgentName(last.agent) === baseAgentName(activeAgent) && !sending) {
+      api.chatHistory(activeAgent)
+        .then(history => {
+          if (history?.length) {
+            setMessages(history.map(m => ({
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+            })))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [events, fetchAgents, activeAgent, sending])
 
   useEffect(() => { ensureTab(activeAgent) }, [activeAgent, ensureTab])
 
