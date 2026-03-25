@@ -24,15 +24,24 @@ const adminNav = [
   { to: '/events', label: 'Events' },
   { to: '/spawn-tree', label: 'Spawn Tree' },
   { to: '/connections', label: 'Connections' },
-  { to: '/files', label: 'Files' },
   { to: '/costs', label: 'Costs' },
   { to: '/settings', label: 'Settings' },
 ]
 
-function SectionHeader({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+function SectionHeader({ children, action, collapsed, onToggle }: { children: React.ReactNode; action?: React.ReactNode; collapsed?: boolean; onToggle?: () => void }) {
   return (
     <div className="flex items-center justify-between px-3 pt-3 pb-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">{children}</span>
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+      >
+        {onToggle && (
+          <svg className={`w-2.5 h-2.5 transition-transform ${collapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        )}
+        {children}
+      </button>
       {action}
     </div>
   )
@@ -47,6 +56,8 @@ export function Layout() {
   const [chatUnread, setChatUnread] = useState<Record<string, number>>({})
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [dmCollapsed, setDmCollapsed] = useState(false)
+  const [channelsCollapsed, setChannelsCollapsed] = useState(false)
 
   useEffect(() => {
     api.getAgents().then(list => setAgents(list ?? [])).catch(() => {})
@@ -129,35 +140,39 @@ export function Layout() {
 
         <nav className="flex-1 overflow-y-auto p-1">
           {/* Direct Messages */}
-          <SectionHeader>Direct Messages</SectionHeader>
-          <div className="space-y-0.5">
-            {/* Hermes always first */}
-            {hermesAgent && (
-              <AgentNavItem
-                agent={hermesAgent}
-                to={'/chat'}
-                displayName="Hermes"
-                avatar="n2"
-                unreadCount={chatUnread[hermesAgent.name] || 0}
-              />
-            )}
-            {specialists.length > 0 && hermesAgent && (
-              <div className="mx-3 my-1 border-t border-border/50" />
-            )}
-            {specialists.map(a => (
-              <AgentNavItem
-                key={a.name}
-                agent={a}
-                to={`/chat/${a.name}`}
-                displayName={a.display_name || capitalize(a.name)}
-                avatar={a.avatar}
-                unreadCount={chatUnread[a.name] || 0}
-              />
-            ))}
-          </div>
+          <SectionHeader collapsed={dmCollapsed} onToggle={() => setDmCollapsed(v => !v)}>Direct Messages</SectionHeader>
+          {!dmCollapsed && (
+            <div className="space-y-0.5">
+              {/* Hermes always first */}
+              {hermesAgent && (
+                <AgentNavItem
+                  agent={hermesAgent}
+                  to={'/chat'}
+                  displayName="Hermes"
+                  avatar="n2"
+                  unreadCount={chatUnread[hermesAgent.name] || 0}
+                />
+              )}
+              {specialists.length > 0 && hermesAgent && (
+                <div className="mx-3 my-1 border-t border-border/50" />
+              )}
+              {specialists.map(a => (
+                <AgentNavItem
+                  key={a.name}
+                  agent={a}
+                  to={`/chat/${a.name}`}
+                  displayName={a.display_name || capitalize(a.name)}
+                  avatar={a.avatar}
+                  unreadCount={chatUnread[a.name] || 0}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Channels */}
           <SectionHeader
+            collapsed={channelsCollapsed}
+            onToggle={() => setChannelsCollapsed(v => !v)}
             action={
               <NavLink
                 to="/channels/new"
@@ -172,31 +187,33 @@ export function Layout() {
           >
             Channels
           </SectionHeader>
-          <div className="space-y-0.5">
-            {channels.map(ch => (
-              <NavLink
-                key={ch.name}
-                to={`/channels/${ch.name}`}
-                className={({ isActive }) =>
-                  `flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors ${
-                    isActive
-                      ? 'bg-accent text-accent-foreground font-medium'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                  }`
-                }
-              >
-                <span className="truncate"># {ch.name}</span>
-                {ch.unread_count > 0 && (
-                  <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 font-medium leading-none flex-shrink-0 ml-1">
-                    {ch.unread_count}
-                  </span>
-                )}
-              </NavLink>
-            ))}
-            {channels.length === 0 && (
-              <p className="px-3 py-1 text-xs text-muted-foreground/50">No channels yet</p>
-            )}
-          </div>
+          {!channelsCollapsed && (
+            <div className="space-y-0.5">
+              {channels.map(ch => (
+                <NavLink
+                  key={ch.name}
+                  to={`/channels/${ch.name}`}
+                  className={({ isActive }) =>
+                    `flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors ${
+                      isActive
+                        ? 'bg-accent text-accent-foreground font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    }`
+                  }
+                >
+                  <span className="truncate"># {ch.name}</span>
+                  {ch.unread_count > 0 && (
+                    <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 font-medium leading-none flex-shrink-0 ml-1">
+                      {ch.unread_count}
+                    </span>
+                  )}
+                </NavLink>
+              ))}
+              {channels.length === 0 && (
+                <p className="px-3 py-1 text-xs text-muted-foreground/50">No channels yet</p>
+              )}
+            </div>
+          )}
 
           {/* Inbox */}
           <div className="mt-1">
@@ -221,6 +238,25 @@ export function Layout() {
                   {inboxCount}
                 </span>
               )}
+            </NavLink>
+          </div>
+
+          {/* Files */}
+          <div className="mt-1">
+            <NavLink
+              to="/files"
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                  isActive
+                    ? 'bg-accent text-accent-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                }`
+              }
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+              </svg>
+              <span>Files</span>
             </NavLink>
           </div>
 
