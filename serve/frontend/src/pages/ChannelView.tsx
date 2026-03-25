@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { api } from '../lib/api'
 import { useChannelStream } from '../hooks/useChannelStream'
 import type { AgentResponse, Channel, ChannelMessage } from '../lib/types'
@@ -181,7 +182,7 @@ export function ChannelView() {
                   </div>
                   {msg.content ? (
                     <div className="text-sm prose prose-invert prose-sm max-w-none prose-p:my-1 prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none">
-                      <Markdown>{msg.content}</Markdown>
+                      <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
                     </div>
                   ) : isStreamingMsg ? (
                     <p className="text-xs text-muted-foreground italic">Thinking...</p>
