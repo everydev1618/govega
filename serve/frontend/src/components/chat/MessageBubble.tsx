@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { ChatEventMetrics, ToolCallState } from '../../lib/types'
 import { AgentAvatar, UserAvatar } from './AgentAvatar'
 import { ToolCallBadges } from './ToolCallDisplay'
@@ -192,7 +193,10 @@ export function MessageBubble({
             <p className="text-xs text-muted-foreground italic py-1">Thinking...</p>
           )}
           {msg.content && (
-            <Markdown components={{
+            <Markdown remarkPlugins={[remarkGfm]} components={{
+              a({ href, children }) {
+                return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{children}</a>
+              },
               p({ children }) {
                 return <p>{processChildren(children, onFileClick)}</p>
               },

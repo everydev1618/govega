@@ -4,6 +4,7 @@ import type { ChannelMessage, ChannelEvent, ChatEventMetrics } from '../../lib/t
 import { AgentAvatar, UserAvatar } from './AgentAvatar'
 import { getUserName } from '../UserIdentityPrompt'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface StreamingReply {
   agent: string
@@ -144,7 +145,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
             </p>
             {msg.content ? (
               <div className="text-sm prose prose-invert prose-sm max-w-none prose-p:my-1 prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none">
-                <Markdown>{msg.content}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
               </div>
             ) : streaming ? (
               <p className="text-xs text-muted-foreground italic">Thinking...</p>
