@@ -523,6 +523,12 @@ func (p *Parser) parseCompany(m map[string]any) *Company {
 	if v, ok := m["name"].(string); ok {
 		c.Name = v
 	}
+	if v, ok := m["description"].(string); ok {
+		c.Description = v
+	}
+	if v, ok := m["location"].(string); ok {
+		c.Location = v
+	}
 	if v, ok := m["logo_url"].(string); ok {
 		c.LogoURL = v
 	}

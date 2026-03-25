@@ -278,7 +278,8 @@ func (s *Server) Start(ctx context.Context) error {
 			memText = formatMemoryForInjection(memories)
 		}
 		projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
-		if extra := buildExtraSystem(memText, projectCtx); extra != "" {
+		companyCtx := buildCompanyContext(s.company)
+		if extra := buildExtraSystem(memText, projectCtx, companyCtx); extra != "" {
 			proc.SetExtraSystem(extra)
 		}
 	})
@@ -419,7 +420,7 @@ func (s *Server) Start(ctx context.Context) error {
 		if agentName == "" {
 			agentName = dsl.HermesAgentName // default to Hermes
 		}
-		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store, func(userID, agent, userMsg, response string) {
+		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
 			s.extractMemory(userID, agent, userMsg, response)
 		})
 		if err != nil {

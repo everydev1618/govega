@@ -17,12 +17,13 @@ type TelegramBot struct {
 	interp     *dsl.Interpreter
 	store      Store
 	agentName  string
+	company    *dsl.Company
 	onExchange func(userID, agent, userMsg, response string)
 }
 
 // NewTelegramBot creates a TelegramBot connected to the given token.
 // onExchange is called after each successful exchange for async memory extraction.
-func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Store, onExchange func(userID, agent, userMsg, response string)) (*TelegramBot, error) {
+func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Store, company *dsl.Company, onExchange func(userID, agent, userMsg, response string)) (*TelegramBot, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("telegram bot init: %w", err)
@@ -33,6 +34,7 @@ func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Stor
 		interp:     interp,
 		store:      store,
 		agentName:  agentName,
+		company:    company,
 		onExchange: onExchange,
 	}, nil
 }
@@ -86,10 +88,13 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	// Load and inject memory into the process before sending.
 	proc, err := t.interp.EnsureAgent(name)
 	if err == nil && proc != nil {
+		var memText string
 		if memories, err := t.store.GetUserMemory(userID, t.agentName); err == nil && len(memories) > 0 {
-			if memText := formatMemoryForInjection(memories); memText != "" {
-				proc.SetExtraSystem(memText)
-			}
+			memText = formatMemoryForInjection(memories)
+		}
+		companyCtx := buildCompanyContext(t.company)
+		if extra := buildExtraSystem(memText, "", companyCtx); extra != "" {
+			proc.SetExtraSystem(extra)
 		}
 	}
 

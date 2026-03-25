@@ -243,7 +243,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		memText = formatMemoryForInjection(memories)
 	}
 	projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
-	if extra := buildExtraSystem(memText, projectCtx); extra != "" {
+	companyCtx := buildCompanyContext(s.company)
+	if extra := buildExtraSystem(memText, projectCtx, companyCtx); extra != "" {
 		proc.SetExtraSystem(extra)
 	}
 
@@ -312,7 +313,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		memTextStream = formatMemoryForInjection(memories)
 	}
 	projectCtxStream := buildProjectContext(s.interp.Tools().ActiveProject())
-	if extra := buildExtraSystem(memTextStream, projectCtxStream); extra != "" {
+	companyCtxStream := buildCompanyContext(s.company)
+	if extra := buildExtraSystem(memTextStream, projectCtxStream, companyCtxStream); extra != "" {
 		proc.SetExtraSystem(extra)
 	}
 
