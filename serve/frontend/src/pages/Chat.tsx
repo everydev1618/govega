@@ -1,15 +1,17 @@
-import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Markdown from 'react-markdown'
 import { useSSE } from '../hooks/useSSE'
 import { api, APIError } from '../lib/api'
-import { getAvatar } from '../lib/avatars'
-import type { AgentResponse, ChatEvent, ChatEventMetrics, ToolCallState, FileContentResponse } from '../lib/types'
+import type { AgentResponse, ChatEvent, FileContentResponse } from '../lib/types'
+import { AgentAvatar } from '../components/chat/AgentAvatar'
+import { MessageBubble, type ChatMessage } from '../components/chat/MessageBubble'
+import { ChatInput } from '../components/chat/ChatInput'
+import { FilePreview } from '../components/chat/FilePreview'
+import { ScrollToBottom } from '../components/chat/ScrollToBottom'
 
 const HERMES = 'hermes'
 const META_AGENTS = new Set(['hermes', 'mother'])
 
-// Matches the handoff line Hermes emits: → Handing you to **agent-name** for this conversation.
 const HANDOFF_RE = /→\s+Handing you to \*\*([^*]+)\*\*/
 
 function classifyErrorType(msg: string): 'auth' | 'rate_limit' | 'generic' {
@@ -32,336 +34,6 @@ const starterPrompts = [
   'Create me a research agent that can search the web',
   'Schedule a daily news summary and email it to me',
 ]
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  toolCalls?: ToolCallState[]
-  streaming?: boolean
-  error?: string
-  errorType?: 'auth' | 'rate_limit' | 'generic'
-  metrics?: ChatEventMetrics
-}
-
-function statusDotClass(tc: ToolCallState): string {
-  return tc.status === 'running' ? 'bg-yellow-400 animate-pulse'
-    : tc.status === 'error' ? 'bg-red-400' : 'bg-green-400'
-}
-
-function shortToolName(name: string): string {
-  const idx = name.indexOf('__')
-  return idx >= 0 ? name.slice(idx + 2) : name
-}
-
-const NODE_COLORS = ['#60a5fa', '#a78bfa', '#34d399', '#fbbf24']
-
-function toolNarrative(name: string, args: Record<string, unknown>): string {
-  switch (name) {
-    case 'send_to_agent': return `Traveling to ${args.agent || 'an agent'}...`
-    case 'delegate': return `Delegating to ${args.agent || 'an agent'}...`
-    case 'list_agents': return 'Surveying the universe...'
-    case 'remember': return 'Committing to memory...'
-    case 'recall': return 'Searching memories...'
-    case 'forget': return 'Letting go...'
-    case 'set_project': return `Opening ${args.name || 'project'} workspace...`
-    case 'list_projects': return 'Checking project workspaces...'
-    case 'write_file': return 'Writing a file...'
-    case 'read_file': return 'Reading a file...'
-    case 'list_files': return 'Browsing files...'
-    case 'exec': return 'Running a command...'
-    default: return `Using ${name}...`
-  }
-}
-
-function ActivityConstellation({ tools }: { tools: ToolCallState[] }) {
-  const cx = 20, cy = 20
-  const orbitR = 12
-
-  return (
-    <svg width="40" height="40" viewBox="0 0 40 40" className="block">
-      {/* Central planet */}
-      <circle cx={cx} cy={cy} r={5} fill="#a78bfa" opacity={0.12} className="constellation-core" />
-      <circle cx={cx} cy={cy} r={3} fill="#a78bfa" opacity={0.7} />
-
-      {/* Orbiting tool dots — all orbit while stream is active */}
-      {tools.map((tc, i) => {
-        const color = NODE_COLORS[i % NODE_COLORS.length]
-        const startAngle = (360 * i) / Math.max(tools.length, 1)
-        const dur = 3 + i * 0.7
-
-        return (
-          <g key={tc.id}>
-            <animateTransform
-              attributeName="transform" type="rotate"
-              from={`${startAngle} ${cx} ${cy}`}
-              to={`${startAngle + 360} ${cx} ${cy}`}
-              dur={`${dur}s`}
-              repeatCount="indefinite"
-            />
-            <circle
-              cx={cx + orbitR} cy={cy}
-              r={2.5} fill={color} opacity={0.8}
-            />
-          </g>
-        )
-      })}
-    </svg>
-  )
-}
-
-function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
-  const runningNested = [...tools].reverse().find(t => t.status === 'running' && t.nested_agent)
-  const running = [...tools].reverse().find(t => t.status === 'running')
-  const target = runningNested || running
-
-  let text: string
-  if (target?.nested_agent) {
-    const agent = target.nested_agent.split('/').pop() || target.nested_agent
-    text = `${agent}: ${toolNarrative(target.name, target.arguments || {})}`
-  } else if (target) {
-    text = toolNarrative(target.name, target.arguments || {})
-  } else {
-    text = 'Thinking...'
-  }
-
-  return (
-    <span className="text-xs text-muted-foreground italic ml-1">
-      {text}
-    </span>
-  )
-}
-
-function ErrorBanner({ error, errorType }: { error: string; errorType?: string }) {
-  const isAuth = errorType === 'auth'
-  const isRateLimit = errorType === 'rate_limit'
-
-  return (
-    <div className={`mt-2 rounded-lg border px-3 py-2.5 text-sm ${
-      isAuth
-        ? 'border-red-400/50 bg-red-500/10 text-red-300'
-        : isRateLimit
-          ? 'border-yellow-400/50 bg-yellow-500/10 text-yellow-300'
-          : 'border-red-400/50 bg-red-500/10 text-red-300'
-    }`}>
-      <div className="flex items-start gap-2">
-        <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-        </svg>
-        <div>
-          <p className="font-medium">{error}</p>
-          {isAuth && (
-            <p className="mt-1 text-xs opacity-80">
-              Run <code className="px-1 py-0.5 rounded bg-black/20 font-mono">vega init</code> to configure your API key.
-            </p>
-          )}
-          {isRateLimit && (
-            <p className="mt-1 text-xs opacity-80">
-              Wait a moment, then try your message again.
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// --- Workspace file path detection & card ---
-// Matches absolute paths under ~/.vega/workspace/ or relative paths that look like workspace files
-const WORKSPACE_PATH_RE = /(?:\/[^\s"'<>|&;(){}\[\]\\]*\/\.vega\/workspace\/([^\s"'<>|&;(){}\[\]\\]+))/g
-
-function fileExtIcon(name: string): string {
-  const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : ''
-  switch (ext) {
-    case 'html': case 'htm': return '\u{1F310}'
-    case 'md': case 'markdown': return '\u{1F4DD}'
-    case 'json': return '\u{1F4CB}'
-    case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': case 'webp': return '\u{1F5BC}\uFE0F'
-    case 'pdf': return '\u{1F4C4}'
-    case 'csv': return '\u{1F4CA}'
-    case 'txt': return '\u{1F4C4}'
-    default: return '\u{1F4CE}'
-  }
-}
-
-function FileCard({ relPath, onClick }: { relPath: string; onClick: () => void }) {
-  const name = relPath.split('/').pop() || relPath
-
-  return (
-    <button
-      onClick={onClick}
-      className="inline-flex items-center gap-2 my-1 px-3 py-2 rounded-lg border border-border bg-background/50 hover:border-indigo-500/50 hover:bg-accent/30 transition-all text-sm group"
-    >
-      <span className="text-lg">{fileExtIcon(name)}</span>
-      <span className="font-medium text-foreground group-hover:text-indigo-400 transition-colors truncate max-w-xs">{name}</span>
-      <svg className="w-3.5 h-3.5 text-muted-foreground group-hover:text-indigo-400 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-      </svg>
-    </button>
-  )
-}
-
-/** Splits text content, replacing workspace paths with FileCard components */
-function renderWithFileCards(text: string, onFileClick: (relPath: string) => void): ReactNode[] {
-  const parts: ReactNode[] = []
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-
-  const re = new RegExp(WORKSPACE_PATH_RE.source, 'g')
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index))
-    }
-    const relPath = match[1]
-    parts.push(
-      <FileCard key={match.index} relPath={relPath} onClick={() => onFileClick(relPath)} />
-    )
-    lastIndex = re.lastIndex
-  }
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex))
-  }
-  return parts
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
-
-function baseType(ct: string): string {
-  return ct.split(';')[0].trim()
-}
-
-function isTextContentType(ct: string): boolean {
-  if (ct.startsWith('text/')) return true
-  if (['application/json', 'application/xml', 'application/javascript'].includes(ct)) return true
-  return false
-}
-
-function ChatFilePreview({ file, onClose }: { file: FileContentResponse; onClose: () => void }) {
-  const ct = baseType(file.content_type)
-  const name = file.path.split('/').pop() || file.path
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={onClose}>
-      <div
-        className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="text-lg">{fileExtIcon(name)}</span>
-            <div className="min-w-0">
-              <h3 className="font-semibold truncate">{name}</h3>
-              <p className="text-xs text-muted-foreground">{ct} &middot; {formatSize(file.size)}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-auto p-5">
-          {ct === 'text/html' && (
-            <iframe srcDoc={file.content} sandbox="allow-scripts" className="w-full h-[65vh] rounded-lg border border-border bg-white" title={name} />
-          )}
-          {ct === 'text/markdown' && file.encoding === 'utf-8' && (
-            <div className="prose prose-invert max-w-none text-foreground leading-relaxed">
-              <Markdown>{file.content}</Markdown>
-            </div>
-          )}
-          {ct.startsWith('image/') && ct !== 'image/svg+xml' && file.encoding === 'base64' && (
-            <div className="flex items-center justify-center">
-              <img src={`data:${ct};base64,${file.content}`} alt={name} className="max-w-full max-h-[65vh] object-contain rounded-lg" />
-            </div>
-          )}
-          {ct === 'image/svg+xml' && file.encoding === 'utf-8' && (
-            <div className="flex items-center justify-center" dangerouslySetInnerHTML={{ __html: file.content }} />
-          )}
-          {isTextContentType(ct) && ct !== 'text/markdown' && ct !== 'text/html' && file.encoding === 'utf-8' && (
-            <pre className="text-sm font-mono bg-black/20 rounded-lg p-4 overflow-auto max-h-[65vh] leading-relaxed">
-              {file.content.split('\n').map((line, i) => (
-                <div key={i} className="flex">
-                  <span className="text-muted-foreground/40 select-none w-10 text-right mr-4 flex-shrink-0">{i + 1}</span>
-                  <span className="flex-1 whitespace-pre-wrap break-all">{line}</span>
-                </div>
-              ))}
-            </pre>
-          )}
-          {!isTextContentType(ct) && !ct.startsWith('image/') && (
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="text-4xl mb-3">{fileExtIcon(name)}</p>
-              <p className="font-medium">Binary file</p>
-              <p className="text-sm mt-1">{ct} &middot; {formatSize(file.size)}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** Recursively process React children, replacing workspace paths in text nodes */
-function processChildren(children: ReactNode, onFileClick: (relPath: string) => void): ReactNode {
-  if (typeof children === 'string') {
-    if (WORKSPACE_PATH_RE.test(children)) {
-      WORKSPACE_PATH_RE.lastIndex = 0
-      return renderWithFileCards(children, onFileClick)
-    }
-    return children
-  }
-  if (Array.isArray(children)) {
-    return children.map((child, i) => {
-      if (typeof child === 'string') {
-        if (WORKSPACE_PATH_RE.test(child)) {
-          WORKSPACE_PATH_RE.lastIndex = 0
-          return <span key={i}>{renderWithFileCards(child, onFileClick)}</span>
-        }
-        return child
-      }
-      return child
-    })
-  }
-  return children
-}
-
-function UserAvatar() {
-  return (
-    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-      <svg className="w-3.5 h-3.5 text-muted-foreground" fill="currentColor" viewBox="0 0 20 20">
-        <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z" />
-      </svg>
-    </div>
-  )
-}
-
-const avatarSizeClasses: Record<number, string> = {
-  5: 'w-5 h-5',
-  6: 'w-6 h-6',
-  7: 'w-7 h-7',
-  12: 'w-12 h-12',
-}
-
-function AgentAvatar({ name, displayName, avatar, size = 7 }: { name: string; displayName?: string; avatar?: string; size?: number }) {
-  const sizeClass = avatarSizeClasses[size!] || 'w-7 h-7'
-  const AvatarSvg = getAvatar(avatar)
-  if (AvatarSvg) {
-    return (
-      <div className={`${sizeClass} rounded-full overflow-hidden flex-shrink-0`}>
-        <AvatarSvg className="w-full h-full" />
-      </div>
-    )
-  }
-  const label = displayName || name
-  return (
-    <div className={`${sizeClass} rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 ${size === 12 ? 'text-lg' : 'text-xs'} font-semibold`}>
-      {label[0]?.toUpperCase()}
-    </div>
-  )
-}
-
 
 function AgentPicker({
   agents,
@@ -438,58 +110,6 @@ function AgentPicker({
   )
 }
 
-function MentionDropdown({
-  agents,
-  selectedIndex,
-  onSelect,
-  onHover,
-  displayInfo,
-}: {
-  agents: string[]
-  selectedIndex: number
-  onSelect: (name: string) => void
-  onHover: (index: number) => void
-  displayInfo: Map<string, { displayName: string; title: string; avatar: string }>
-}) {
-  const listRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const item = listRef.current?.children[selectedIndex] as HTMLElement | undefined
-    item?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex])
-
-  if (agents.length === 0) {
-    return (
-      <div className="px-3 py-2 text-xs text-muted-foreground">No matching agents</div>
-    )
-  }
-
-  return (
-    <div ref={listRef} className="max-h-48 overflow-y-auto py-1">
-      {agents.map((name, i) => {
-        const info = displayInfo.get(name)
-        const label = info?.displayName || name
-        return (
-          <button
-            key={name}
-            onMouseDown={e => { e.preventDefault(); onSelect(name) }}
-            onMouseEnter={() => onHover(i)}
-            className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm transition-colors text-left ${
-              i === selectedIndex ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/30'
-            }`}
-          >
-            <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={6} />
-            <div className="flex flex-col min-w-0">
-              <span className="truncate font-medium">{label}</span>
-              {info?.title && <span className="truncate text-xs text-muted-foreground/70">{info.title}</span>}
-            </div>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 function TabBar({
   tabs,
   activeAgent,
@@ -560,13 +180,13 @@ function TabBar({
 function VegaStar() {
   return (
     <pre className="text-xs leading-snug font-mono select-none inline-block text-left" aria-hidden="true">
-      <span className="text-blue-300">{'        ·   '}</span><span className="text-cyan-400">✦</span><span className="text-blue-300">{'   ·'}</span>{'\n'}
-      <span className="text-indigo-400">{'         \\  '}</span><span className="text-cyan-400">│</span><span className="text-indigo-400">{'  /'}</span>{'\n'}
-      <span className="text-indigo-400">{'          \\ '}</span><span className="text-cyan-400">│</span><span className="text-indigo-400">{' /'}</span>{'\n'}
+      <span className="text-blue-300">{'        ·   '}</span><span className="text-cyan-400">{'✦'}</span><span className="text-blue-300">{'   ·'}</span>{'\n'}
+      <span className="text-indigo-400">{'         \\  '}</span><span className="text-cyan-400">{'│'}</span><span className="text-indigo-400">{'  /'}</span>{'\n'}
+      <span className="text-indigo-400">{'          \\ '}</span><span className="text-cyan-400">{'│'}</span><span className="text-indigo-400">{' /'}</span>{'\n'}
       <span className="text-blue-300">{'  · '}</span><span className="text-rose-400">{'✦ ─────'}</span><span className="text-amber-300">{' ★ '}</span><span className="text-purple-400">{'───── ✦'}</span><span className="text-blue-300">{' ·'}</span>{'\n'}
-      <span className="text-orange-400">{'          / '}</span><span className="text-emerald-400">│</span><span className="text-orange-400">{' \\'}</span>{'\n'}
-      <span className="text-orange-400">{'         /  '}</span><span className="text-emerald-400">│</span><span className="text-orange-400">{'  \\'}</span>{'\n'}
-      <span className="text-blue-300">{'        ·   '}</span><span className="text-emerald-400">✦</span><span className="text-blue-300">{'   ·'}</span>
+      <span className="text-orange-400">{'          / '}</span><span className="text-emerald-400">{'│'}</span><span className="text-orange-400">{' \\'}</span>{'\n'}
+      <span className="text-orange-400">{'         /  '}</span><span className="text-emerald-400">{'│'}</span><span className="text-orange-400">{'  \\'}</span>{'\n'}
+      <span className="text-blue-300">{'        ·   '}</span><span className="text-emerald-400">{'✦'}</span><span className="text-blue-300">{'   ·'}</span>
     </pre>
   )
 }
@@ -576,25 +196,19 @@ export function Chat() {
   const navigate = useNavigate()
   const { events } = useSSE()
 
-  // Which agent the chat is currently directed to
   const [activeAgent, setActiveAgent] = useState(agentParam || HERMES)
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [showWelcomeTools, setShowWelcomeTools] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  // Set when Hermes hands off — shows a "connected via Hermes" notice in the new chat
   const [handoffFrom, setHandoffFrom] = useState<string | null>(null)
-  // Specialist agents (excludes hermes + mother)
   const [specialists, setSpecialists] = useState<AgentResponse[]>([])
 
-  // File preview state
   const [previewFile, setPreviewFile] = useState<FileContentResponse | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Tab bar state — persisted to sessionStorage so tabs survive page navigation
   const [openTabs, setOpenTabs] = useState<string[]>(() => {
     try {
       const stored = sessionStorage.getItem('vega-chat-tabs')
@@ -623,22 +237,13 @@ export function Chat() {
       if (idx < 0) return prev
       const next = prev.filter(t => t !== name)
       if (next.length === 0) return [HERMES]
-      // If closing the active tab, switch to adjacent or fallback to Hermes
       if (name === activeAgent) {
         const newActive = next[Math.min(idx, next.length - 1)] || HERMES
-        // Defer the agent switch to avoid state conflicts
         setTimeout(() => switchToAgent(newActive), 0)
       }
       return next
     })
   }, [activeAgent]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // @-mention autocomplete state
-  const [mentionOpen, setMentionOpen] = useState(false)
-  const [mentionQuery, setMentionQuery] = useState('')
-  const [mentionIndex, setMentionIndex] = useState(0)
-  const [mentionStartPos, setMentionStartPos] = useState(0)
-  const mentionRef = useRef<HTMLDivElement>(null)
 
   const openFilePreview = useCallback(async (relPath: string) => {
     setPreviewLoading(true)
@@ -654,12 +259,9 @@ export function Chat() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
-  // Track the event index at stream start so we only look at events fired during this stream
   const streamStartEventCount = useRef(0)
 
-  // Fetch specialist agents (all agents except meta-agents)
   const fetchAgents = useCallback(() => {
     api.getAgents()
       .then(list => {
@@ -670,7 +272,6 @@ export function Chat() {
 
   useEffect(() => { fetchAgents() }, [fetchAgents])
 
-  // Refresh agent list when Mother creates or deletes an agent
   useEffect(() => {
     const last = events[events.length - 1]
     if (!last) return
@@ -679,24 +280,17 @@ export function Chat() {
     }
   }, [events, fetchAgents])
 
-  // Auto-add a tab when activeAgent changes (covers switchToAgent, handoff, URL nav, initial load)
   useEffect(() => { ensureTab(activeAgent) }, [activeAgent, ensureTab])
 
-  // Prune tabs for deleted agents (except hermes/mother which aren't in specialists).
-  // Skip when specialists is empty (fetch hasn't returned yet). Always keep activeAgent.
   useEffect(() => {
     if (specialists.length === 0) return
     const specialistNames = new Set(specialists.map(a => a.name))
     setOpenTabs(prev => prev.filter(t => META_AGENTS.has(t) || specialistNames.has(t) || t === activeAgent))
   }, [specialists, activeAgent])
 
-  // Track reconnection abort controller so we can cancel on unmount/agent switch
   const reconnectAbortRef = useRef<AbortController | null>(null)
 
-  // Load history for the active agent whenever it changes, then check for
-  // an active stream and reconnect to it automatically.
   useEffect(() => {
-    // Cancel any previous reconnection attempt
     if (reconnectAbortRef.current) {
       reconnectAbortRef.current.abort()
       reconnectAbortRef.current = null
@@ -719,12 +313,10 @@ export function Chat() {
       .finally(() => {
         setLoaded(true)
 
-        // After history loads, check if agent has an active stream to reconnect to
         api.chatStatus(activeAgent)
           .then(status => {
             if (!status?.streaming) return
 
-            // Add a placeholder assistant message and reconnect to the stream
             setMessages(prev => [...prev, { role: 'assistant', content: '', toolCalls: [], streaming: true }])
             setSending(true)
 
@@ -732,7 +324,7 @@ export function Chat() {
             reconnectAbortRef.current = abort
 
             let finalContent = ''
-            const wrappedHandler = (event: import('../lib/types').ChatEvent) => {
+            const wrappedHandler = (event: ChatEvent) => {
               if (event.type === 'text_delta') finalContent += event.delta || ''
               handleEvent(event)
             }
@@ -748,16 +340,6 @@ export function Chat() {
           .catch(() => {})
       })
   }, [activeAgent]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-resize textarea
-  const resizeTextarea = useCallback(() => {
-    const ta = textareaRef.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 6 * 24) + 'px'
-  }, [])
-
-  useEffect(() => { resizeTextarea() }, [input, resizeTextarea])
 
   // Smart auto-scroll
   const isNearBottom = useCallback(() => {
@@ -782,18 +364,6 @@ export function Chat() {
     return () => el.removeEventListener('scroll', onScroll)
   }, [activeAgent])
 
-  // Click outside to close mention dropdown
-  useEffect(() => {
-    if (!mentionOpen) return
-    const handler = (e: MouseEvent) => {
-      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
-        setMentionOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [mentionOpen])
-
   const handleEvent = useCallback((event: ChatEvent) => {
     setMessages(prev => {
       const msgs = [...prev]
@@ -807,8 +377,6 @@ export function Chat() {
           updated.content += event.delta || ''
           break
         case 'tool_start':
-          // Ensure a newline break before tool calls so post-tool text
-          // doesn't run into pre-tool text.
           if (updated.content && !updated.content.endsWith('\n')) {
             updated.content += '\n'
           }
@@ -849,7 +417,6 @@ export function Chat() {
     })
   }, [])
 
-  // After a stream ends, check if Hermes emitted a handoff line and auto-switch
   const checkForHandoff = useCallback((finalContent: string) => {
     if (activeAgent !== HERMES) return
     const match = finalContent.match(HANDOFF_RE)
@@ -860,15 +427,13 @@ export function Chat() {
     }
   }, [activeAgent])
 
-  const send = async (text?: string) => {
-    const msg = (text ?? input).trim()
+  const send = async (text: string) => {
+    const msg = text.trim()
     if (!msg || sending) return
-    setInput('')
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setMessages(prev => [...prev, { role: 'assistant', content: '', toolCalls: [], streaming: true }])
     setSending(true)
 
-    // Remember SSE event count so we can detect new agent.created events during this stream
     streamStartEventCount.current = events.length
 
     const abort = new AbortController()
@@ -900,14 +465,12 @@ export function Chat() {
     }
   }
 
-  // Sync activeAgent when navigating to /chat/:agent from another page
   useEffect(() => {
     if (agentParam && agentParam !== activeAgent) {
       setActiveAgent(agentParam)
     }
   }, [agentParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep URL in sync with activeAgent
   useEffect(() => {
     const target = activeAgent === HERMES ? '/chat' : `/chat/${activeAgent}`
     navigate(target, { replace: true })
@@ -926,7 +489,6 @@ export function Chat() {
     setHandoffFrom(null)
     setShowWelcomeTools(false)
     setActiveAgent(name)
-    // History load handled by the activeAgent useEffect
   }
 
   const clearChat = async () => {
@@ -984,88 +546,10 @@ export function Chat() {
     }))
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value
-    setInput(val)
-
-    const cursor = e.target.selectionStart ?? val.length
-    // Walk backwards from cursor to find an unescaped '@'
-    let atPos = -1
-    for (let i = cursor - 1; i >= 0; i--) {
-      if (val[i] === ' ' || val[i] === '\n') break
-      if (val[i] === '@') {
-        // '@' must be at start or preceded by whitespace
-        if (i === 0 || val[i - 1] === ' ' || val[i - 1] === '\n') {
-          atPos = i
-        }
-        break
-      }
-    }
-
-    if (atPos >= 0) {
-      const query = val.slice(atPos + 1, cursor)
-      if (!query.includes(' ')) {
-        setMentionOpen(true)
-        setMentionQuery(query)
-        setMentionStartPos(atPos)
-        setMentionIndex(0)
-        return
-      }
-    }
-    setMentionOpen(false)
-  }
-
-  const selectMention = useCallback((name: string) => {
-    const before = input.slice(0, mentionStartPos)
-    const after = input.slice(mentionStartPos + 1 + mentionQuery.length)
-    const newVal = before + '@' + name + ' ' + after
-    setInput(newVal)
-    setMentionOpen(false)
-
-    const cursorPos = mentionStartPos + 1 + name.length + 1
-    requestAnimationFrame(() => {
-      const ta = textareaRef.current
-      if (ta) {
-        ta.focus()
-        ta.setSelectionRange(cursorPos, cursorPos)
-      }
-    })
-  }, [input, mentionStartPos, mentionQuery])
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mentionOpen && mentionAgents.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setMentionIndex(i => (i + 1) % mentionAgents.length)
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setMentionIndex(i => (i - 1 + mentionAgents.length) % mentionAgents.length)
-        return
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        selectMention(mentionAgents[mentionIndex])
-        return
-      }
-    }
-    if (mentionOpen && e.key === 'Escape') {
-      e.preventDefault()
-      setMentionOpen(false)
-      return
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
-  }
-
   const isHermes = activeAgent === HERMES
   const activeAgentData = specialists.find(a => a.name === activeAgent)
   const agentNames = new Set([HERMES, 'mother', ...specialists.map(a => a.name)])
 
-  // Lookup map: agent name → display info for personable UI labels
   const agentDisplayInfo = useMemo(() => {
     const m = new Map<string, { displayName: string; title: string; avatar: string }>()
     for (const a of specialists) {
@@ -1075,24 +559,12 @@ export function Chat() {
         avatar: a.avatar || '',
       })
     }
-    // Built-in agents get friendly defaults
     m.set(HERMES, { displayName: 'Hermes', title: 'Orchestrator', avatar: 'n2' })
     m.set('mother', { displayName: 'Mother', title: 'Agent Builder', avatar: 'n6' })
     return m
   }, [specialists])
 
-  const mentionAgents = mentionOpen
-    ? [...agentNames]
-        .filter(n => n.toLowerCase().includes(mentionQuery.toLowerCase()))
-        .sort((a, b) => a.localeCompare(b))
-    : []
-
-  // Clamp mention index when filtered results shrink
-  useEffect(() => {
-    if (mentionIndex >= mentionAgents.length) {
-      setMentionIndex(Math.max(0, mentionAgents.length - 1))
-    }
-  }, [mentionAgents.length, mentionIndex])
+  const agentNamesList = useMemo(() => [...agentNames], [agentNames])
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
@@ -1184,187 +656,43 @@ export function Chat() {
           </div>
         )}
 
-        {messages.map((msg, i) => {
-          // Build a map of file basenames → relative workspace paths from tool calls
-          const fileLinks = new Map<string, string>()
-          for (const tc of msg.toolCalls || []) {
-            if ((tc.name === 'write_file' || tc.name === 'read_file') && tc.arguments?.path) {
-              const p = String(tc.arguments.path)
-              const wsIdx = p.indexOf('.vega/workspace/')
-              if (wsIdx >= 0) {
-                const relPath = p.slice(wsIdx + '.vega/workspace/'.length)
-                const basename = relPath.split('/').pop() || relPath
-                fileLinks.set(basename, relPath)
-              } else {
-                // Relative path or bare filename — use as-is for the API
-                const basename = p.split('/').pop() || p
-                fileLinks.set(basename, basename)
-              }
-            }
-          }
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={i}
+            msg={msg}
+            msgIdx={i}
+            agentName={activeAgent}
+            agentDisplayName={agentDisplayInfo.get(activeAgent)?.displayName}
+            agentAvatar={agentDisplayInfo.get(activeAgent)?.avatar}
+            agentNames={agentNames}
+            onToggleToolCall={toggleToolCall}
+            onFileClick={openFilePreview}
+            onSwitchAgent={switchToAgent}
+          />
+        ))}
 
-          return (
-          <div key={i} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && <AgentAvatar name={activeAgent} displayName={agentDisplayInfo.get(activeAgent)?.displayName} avatar={agentDisplayInfo.get(activeAgent)?.avatar} />}
-            {msg.role === 'user' ? (
-              <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
-                {msg.content}
-              </div>
-            ) : (
-              <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
-                {msg.streaming && !msg.content && !(msg.toolCalls?.length) && (
-                  <p className="text-xs text-muted-foreground italic py-1">Thinking...</p>
-                )}
-                {msg.content && (
-                  <Markdown components={{
-                    p({ children }) {
-                      return <p>{processChildren(children, openFilePreview)}</p>
-                    },
-                    li({ children }) {
-                      return <li>{processChildren(children, openFilePreview)}</li>
-                    },
-                    strong({ children }) {
-                      const text = typeof children === 'string' ? children
-                        : Array.isArray(children) ? children.map(c => typeof c === 'string' ? c : '').join('')
-                        : ''
-                      if (text && agentNames.has(text)) {
-                        return (
-                          <strong
-                            className="cursor-pointer text-primary hover:underline decoration-primary/50"
-                            onClick={(e) => { e.stopPropagation(); switchToAgent(text) }}
-                            title={`Switch to ${text}`}
-                            role="button"
-                          >
-                            {children}
-                          </strong>
-                        )
-                      }
-                      return <strong>{children}</strong>
-                    },
-                    code({ children, className }) {
-                      // Fenced code blocks (with language class) render normally
-                      if (className) return <code className={className}>{children}</code>
-                      const text = typeof children === 'string' ? children : ''
-                      if (text && fileLinks.has(text)) {
-                        const relPath = fileLinks.get(text)!
-                        return (
-                          <code
-                            className="cursor-pointer !text-indigo-400 hover:underline decoration-indigo-400/50"
-                            onClick={(e) => { e.stopPropagation(); openFilePreview(relPath) }}
-                            title="Click to preview file"
-                            role="button"
-                          >
-                            {fileExtIcon(text)} {children}
-                          </code>
-                        )
-                      }
-                      return <code>{children}</code>
-                    },
-                  }}>{msg.content}</Markdown>
-                )}
-                {msg.streaming && msg.content && !(msg.toolCalls?.length) && (
-                  <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
-                )}
-                {msg.toolCalls && msg.toolCalls.length > 0 && (
-                  <div className="my-1.5">
-                    {/* Tool badges */}
-                    <div className="flex flex-row flex-wrap gap-1.5">
-                      {msg.toolCalls.map((tc, j) => (
-                        <button key={tc.id} onClick={() => toggleToolCall(i, j)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono
-                            border transition-colors ${!tc.collapsed
-                              ? 'border-indigo-500/50 bg-indigo-500/10 text-foreground'
-                              : 'border-border bg-background/50 text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
-                            }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(tc)}`} />
-                          <span>{shortToolName(tc.name)}</span>
-                          {tc.duration_ms != null && <span className="text-muted-foreground">{tc.duration_ms}ms</span>}
-                        </button>
-                      ))}
-                    </div>
-                    {/* Constellation + narrative — visible while stream is active */}
-                    {msg.streaming && msg.toolCalls.length > 0 && (
-                      <div className="flex items-center gap-1 pt-1.5 constellation-activity">
-                        <ActivityConstellation tools={msg.toolCalls} />
-                        <ActivityNarrative tools={msg.toolCalls} />
-                      </div>
-                    )}
-                    {/* Expanded detail panel for the selected tab */}
-                    {msg.toolCalls.map((tc, j) => !tc.collapsed && (
-                      <div key={tc.id} className="mt-2 rounded-lg border border-border bg-background/50 px-3 py-2 space-y-1.5 text-sm">
-                        {tc.arguments && Object.keys(tc.arguments).length > 0 && (
-                          <div>
-                            <span className="text-xs text-muted-foreground">args</span>
-                            <pre className="mt-0.5 text-xs font-mono bg-background rounded p-2 overflow-x-auto border border-border whitespace-pre-wrap">
-                              {JSON.stringify(tc.arguments, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                        {tc.result != null && (
-                          <div>
-                            <span className="text-xs text-muted-foreground">result</span>
-                            <pre className="mt-0.5 text-xs font-mono bg-background rounded p-2 overflow-x-auto border border-border whitespace-pre-wrap max-h-60">
-                              {tc.result}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {msg.error && <ErrorBanner error={msg.error} errorType={msg.errorType} />}
-                {msg.metrics && !msg.streaming && (
-                  <div className="mt-1.5 text-[11px] text-muted-foreground/60 text-right font-mono">
-                    {msg.metrics.cost_usd >= 0.01
-                      ? `$${msg.metrics.cost_usd.toFixed(2)}`
-                      : `$${msg.metrics.cost_usd.toFixed(4)}`}
-                    {' · '}
-                    {(msg.metrics.input_tokens + msg.metrics.output_tokens).toLocaleString()} tokens
-                    {' · '}
-                    {msg.metrics.duration_ms >= 1000
-                      ? `${(msg.metrics.duration_ms / 1000).toFixed(1)}s`
-                      : `${msg.metrics.duration_ms}ms`}
-                  </div>
-                )}
-              </div>
-            )}
-            {msg.role === 'user' && <UserAvatar />}
-          </div>
-          )
-        })}
-
-        {/* Specialist empty state — welcome card */}
+        {/* Specialist empty state */}
         {!isHermes && messages.length === 0 && loaded && (() => {
           const info = agentDisplayInfo.get(activeAgent)
           const displayName = info?.displayName || activeAgent
           const title = info?.title || ''
-          // Derive description from first sentence(s) of system prompt
           const systemText = activeAgentData?.system || ''
           const descriptionRaw = systemText.replace(/^you are /i, '').split(/\n/)[0]?.trim() || ''
           const description = descriptionRaw.length > 200 ? descriptionRaw.slice(0, 200).replace(/\s+\S*$/, '') + '...' : descriptionRaw
-          // Generate example prompts from tool names
           const examplePrompts: string[] = []
           const tools = activeAgentData?.tools || []
-          // Try to generate natural prompts from tool patterns
           for (const tool of tools) {
             if (examplePrompts.length >= 3) break
             const name = tool.includes('__') ? tool.split('__').pop()! : tool
             const parts = name.split('_')
             const verb = parts[0]
             const noun = parts.slice(1).join(' ')
-            if (verb === 'list' && noun) {
-              examplePrompts.push(`Show me all ${noun}`)
-            } else if (verb === 'get' && noun) {
-              examplePrompts.push(`Look up a specific ${noun.replace(/s$/, '')}`)
-            } else if (verb === 'create' && noun) {
-              examplePrompts.push(`Help me create a new ${noun.replace(/s$/, '')}`)
-            } else if (verb === 'search' && noun) {
-              examplePrompts.push(`Search for ${noun}`)
-            } else if (verb === 'send' && noun) {
-              examplePrompts.push(`Send a ${noun.replace(/s$/, '')}`)
-            }
+            if (verb === 'list' && noun) examplePrompts.push(`Show me all ${noun}`)
+            else if (verb === 'get' && noun) examplePrompts.push(`Look up a specific ${noun.replace(/s$/, '')}`)
+            else if (verb === 'create' && noun) examplePrompts.push(`Help me create a new ${noun.replace(/s$/, '')}`)
+            else if (verb === 'search' && noun) examplePrompts.push(`Search for ${noun}`)
+            else if (verb === 'send' && noun) examplePrompts.push(`Send a ${noun.replace(/s$/, '')}`)
           }
-          // Fallback prompts
           if (examplePrompts.length === 0) {
             examplePrompts.push(`What can you help me with?`)
             if (title) examplePrompts.push(`Tell me about your role as ${title}`)
@@ -1372,34 +700,21 @@ export function Chat() {
           return (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-6 max-w-md px-4">
-              {/* Avatar */}
               <div className="flex justify-center">
                 <AgentAvatar name={activeAgent} displayName={info?.displayName} avatar={info?.avatar} size={16} />
               </div>
-
-              {/* Name & title */}
               <div className="space-y-1">
                 <h2 className="text-xl font-bold text-foreground">{displayName}</h2>
-                {title && (
-                  <p className="text-sm font-medium text-muted-foreground">{title}</p>
-                )}
+                {title && <p className="text-sm font-medium text-muted-foreground">{title}</p>}
               </div>
-
-              {/* Description */}
               {description && (
-                <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
-                  {description}
-                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">{description}</p>
               )}
-
-              {/* Team members */}
               {activeAgentData?.team && activeAgentData.team.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 justify-center">
                   <span className="text-xs text-muted-foreground mr-1">Team:</span>
                   {activeAgentData.team.map(member => (
-                    <button
-                      key={member}
-                      onClick={() => switchToAgent(member)}
+                    <button key={member} onClick={() => switchToAgent(member)}
                       className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
                     >
                       {agentDisplayInfo.get(member)?.displayName || member}
@@ -1407,15 +722,11 @@ export function Chat() {
                   ))}
                 </div>
               )}
-
-              {/* Example prompts */}
               <div className="space-y-2 pt-2">
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Try asking</p>
                 <div className="flex flex-col gap-2 items-center">
-                  {examplePrompts.map((prompt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => send(prompt)}
+                  {examplePrompts.map((prompt, idx) => (
+                    <button key={idx} onClick={() => send(prompt)}
                       className="text-sm px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors max-w-xs"
                     >
                       {prompt}
@@ -1423,12 +734,9 @@ export function Chat() {
                   ))}
                 </div>
               </div>
-
-              {/* Collapsible tools */}
               {tools.length > 0 && (
                 <div className="pt-2">
-                  <button
-                    onClick={() => setShowWelcomeTools(!showWelcomeTools)}
+                  <button onClick={() => setShowWelcomeTools(!showWelcomeTools)}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
                   >
                     <svg className={`w-3 h-3 transition-transform ${showWelcomeTools ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1439,18 +747,15 @@ export function Chat() {
                   {showWelcomeTools && (
                     <div className="flex flex-wrap gap-1.5 justify-center mt-2">
                       {tools.map(tool => (
-                        <span key={tool} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">
-                          {tool}
-                        </span>
+                        <span key={tool} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">{tool}</span>
                       ))}
                     </div>
                   )}
                 </div>
               )}
-
               {handoffFrom && (
                 <p className="text-xs text-muted-foreground">
-                  <span className="text-emerald-400">✦</span> Hermes connected you here
+                  <span className="text-emerald-400">{'✦'}</span> Hermes connected you here
                 </p>
               )}
             </div>
@@ -1461,59 +766,19 @@ export function Chat() {
         <div ref={bottomRef} />
 
         {showScrollBtn && (
-          <button
-            onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
-            className="sticky bottom-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-accent border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors z-10"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </button>
+          <ScrollToBottom onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })} />
         )}
       </div>
 
       {/* Input */}
-      <div className="pt-3 border-t border-border space-y-1.5">
-        <div className="flex gap-2 items-end">
-          <div className="relative flex-1" ref={mentionRef}>
-            {mentionOpen && (
-              <div className="absolute bottom-full mb-1.5 left-0 w-64 rounded-xl border border-border bg-card shadow-lg z-20 overflow-hidden">
-                <div className="px-3 py-2 border-b border-border">
-                  <p className="text-xs text-muted-foreground font-medium">Mention an agent</p>
-                </div>
-                <MentionDropdown
-                  agents={mentionAgents}
-                  selectedIndex={mentionIndex}
-                  onSelect={selectMention}
-                  onHover={setMentionIndex}
-                  displayInfo={agentDisplayInfo}
-                />
-              </div>
-            )}
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={isHermes ? 'Tell Hermes what you need…' : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}…`}
-              disabled={sending}
-              className={`w-full px-4 py-2.5 rounded-xl bg-background border text-sm focus:outline-none disabled:opacity-50 resize-none overflow-y-auto transition-colors ${isHermes ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}`}
-              style={{ maxHeight: '144px' }}
-            />
-          </div>
-          <button
-            onClick={() => send()}
-            disabled={sending || !input.trim()}
-            className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50 flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-            </svg>
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground px-1">Enter to send · Shift+Enter for new line · @ to mention</p>
-      </div>
+      <ChatInput
+        onSend={send}
+        sending={sending}
+        placeholder={isHermes ? 'Tell Hermes what you need...' : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}...`}
+        borderColor={isHermes ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}
+        agentNames={agentNamesList}
+        agentDisplayInfo={agentDisplayInfo}
+      />
 
       {/* File preview modal */}
       {previewLoading && (
@@ -1522,7 +787,7 @@ export function Chat() {
         </div>
       )}
       {previewFile && (
-        <ChatFilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
+        <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
       )}
     </div>
   )

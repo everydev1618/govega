@@ -294,6 +294,69 @@ export interface ScheduledJob {
   enabled: boolean
 }
 
+// --- Channel Types ---
+
+export interface Channel {
+  id: string
+  name: string
+  description: string
+  team: string[]
+  mode: string
+  created_by: string
+  created_at: string
+  message_count: number
+}
+
+export interface ChannelMessage {
+  id: number
+  channel_id: string
+  thread_id?: number
+  agent: string
+  role: string
+  content: string
+  metadata?: string
+  created_at: string
+  reply_count: number
+}
+
+export interface ChannelEvent {
+  type: 'channel.message' | 'channel.thread_reply' | 'channel.typing' | 'channel.text_delta' | 'channel.tool_start' | 'channel.tool_end' | 'channel.error' | 'channel.done'
+  channel: string
+  message_id?: number
+  thread_id?: number
+  agent: string
+  role: string
+  content: string
+  delta?: string
+  tool_call_id?: string
+  tool_name?: string
+  arguments?: Record<string, unknown>
+  result?: string
+  duration_ms?: number
+  error?: string
+  metrics?: ChatEventMetrics
+}
+
+export interface CreateChannelRequest {
+  name: string
+  description?: string
+  team?: string[]
+}
+
+// --- Inbox Types ---
+
+export interface InboxItem {
+  id: number
+  from_agent: string
+  subject: string
+  body: string
+  priority: string
+  status: string
+  resolution: string
+  created_at: string
+  resolved_at?: string
+}
+
 // --- Streaming Chat Types ---
 
 export interface ChatEventMetrics {
