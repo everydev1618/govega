@@ -22,7 +22,11 @@ var (
 // --- Channel CRUD Handlers ---
 
 func (s *Server) handleListChannels(w http.ResponseWriter, r *http.Request) {
-	channels, err := s.store.ListChannels()
+	userID := r.Header.Get("X-Auth-User")
+	if userID == "" {
+		userID = "default"
+	}
+	channels, err := s.store.ListChannels(userID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
