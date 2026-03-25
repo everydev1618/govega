@@ -4,7 +4,7 @@ import { CompanySwitcher } from './CompanySwitcher'
 import { AgentAvatar } from './chat/AgentAvatar'
 import { UserIdentityPrompt, getUserName } from './UserIdentityPrompt'
 import { api } from '../lib/api'
-import type { AgentResponse, Channel, InboxItem } from '../lib/types'
+import type { AgentResponse, Channel, InboxItem, ProcessResponse } from '../lib/types'
 
 const HERMES = 'hermes'
 const META_AGENTS = new Set(['hermes', 'mother'])
@@ -54,26 +54,35 @@ export function Layout() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
   const [chatUnread, setChatUnread] = useState<Record<string, number>>({})
+  const [runningTasks, setRunningTasks] = useState<ProcessResponse[]>([])
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dmCollapsed, setDmCollapsed] = useState(false)
   const [channelsCollapsed, setChannelsCollapsed] = useState(false)
+
+  const fetchRunningTasks = () => {
+    api.getProcesses().then(procs => {
+      setRunningTasks((procs ?? []).filter(p => p.status === 'running' && p.task))
+    }).catch(() => {})
+  }
 
   useEffect(() => {
     api.getAgents().then(list => setAgents(list ?? [])).catch(() => {})
     api.getChannels().then(list => setChannels(list ?? [])).catch(() => {})
     api.getInbox('pending').then(list => setInboxItems(list ?? [])).catch(() => {})
     api.chatUnreadCounts().then(counts => setChatUnread(counts ?? {})).catch(() => {})
+    fetchRunningTasks()
   }, [])
 
-  // Refresh agents, channels, inbox, and unread counts periodically
+  // Refresh agents, channels, inbox, unread counts, and running tasks periodically
   useEffect(() => {
     const id = setInterval(() => {
       api.getAgents().then(list => setAgents(list ?? [])).catch(() => {})
       api.getChannels().then(list => setChannels(list ?? [])).catch(() => {})
       api.getInbox('pending').then(list => setInboxItems(list ?? [])).catch(() => {})
       api.chatUnreadCounts().then(counts => setChatUnread(counts ?? {})).catch(() => {})
-    }, 10000)
+      fetchRunningTasks()
+    }, 5000)
     return () => clearInterval(id)
   }, [])
 
@@ -212,6 +221,40 @@ export function Layout() {
               {channels.length === 0 && (
                 <p className="px-3 py-1 text-xs text-muted-foreground/50">No channels yet</p>
               )}
+            </div>
+          )}
+
+          {/* Activity — running tasks */}
+          {runningTasks.length > 0 && (
+            <div className="mt-2">
+              <SectionHeader>
+                Activity
+              </SectionHeader>
+              <div className="space-y-0.5">
+                {runningTasks.map(proc => {
+                  const agentBase = proc.agent.indexOf(':') >= 0 ? proc.agent.substring(0, proc.agent.indexOf(':')) : proc.agent
+                  const agentData = agents.find(a => a.name === agentBase || a.name === proc.agent)
+                  const displayName = agentData?.display_name || capitalize(agentBase)
+                  const task = proc.task && proc.task.length > 60 ? proc.task.substring(0, 60) + '...' : proc.task
+                  const elapsed = Math.round((Date.now() - new Date(proc.started_at).getTime()) / 1000)
+                  const elapsedStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m`
+                  return (
+                    <div key={proc.id} className="px-3 py-1.5 rounded-md">
+                      <div className="flex items-center gap-1.5">
+                        <span className="relative flex h-2 w-2 flex-shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+                        </span>
+                        <span className="text-xs font-medium text-foreground truncate">{displayName}</span>
+                        <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{elapsedStr}</span>
+                      </div>
+                      {task && (
+                        <p className="text-[11px] text-muted-foreground/70 truncate mt-0.5 ml-3.5">{task}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
