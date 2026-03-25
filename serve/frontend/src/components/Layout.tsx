@@ -55,6 +55,7 @@ export function Layout() {
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
   const [chatUnread, setChatUnread] = useState<Record<string, number>>({})
   const [runningTasks, setRunningTasks] = useState<ProcessResponse[]>([])
+  const [busyAgents, setBusyAgents] = useState<Set<string>>(new Set())
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dmCollapsed, setDmCollapsed] = useState(false)
@@ -62,7 +63,15 @@ export function Layout() {
 
   const fetchRunningTasks = () => {
     api.getProcesses().then(procs => {
-      setRunningTasks((procs ?? []).filter(p => p.status === 'running' && p.task))
+      const running = (procs ?? []).filter(p => p.status === 'running')
+      setRunningTasks(running.filter(p => p.task))
+      // Build busy set from ALL running processes, not just ones with task descriptions.
+      const busy = new Set<string>()
+      for (const p of running) {
+        const base = p.agent.indexOf(':') >= 0 ? p.agent.substring(0, p.agent.indexOf(':')) : p.agent
+        busy.add(base)
+      }
+      setBusyAgents(busy)
     }).catch(() => {})
   }
 
@@ -160,6 +169,7 @@ export function Layout() {
                   displayName="Hermes"
                   avatar="n2"
                   unreadCount={chatUnread[hermesAgent.name] || 0}
+                  busy={busyAgents.has('hermes')}
                 />
               )}
               {specialists.length > 0 && hermesAgent && (
@@ -173,6 +183,7 @@ export function Layout() {
                   displayName={a.display_name || capitalize(a.name)}
                   avatar={a.avatar}
                   unreadCount={chatUnread[a.name] || 0}
+                  busy={busyAgents.has(a.name)}
                 />
               ))}
             </div>
@@ -351,15 +362,15 @@ function AgentNavItem({
   displayName,
   avatar,
   unreadCount = 0,
+  busy = false,
 }: {
   agent: AgentResponse
   to: string
   displayName: string
   avatar?: string
   unreadCount?: number
+  busy?: boolean
 }) {
-  const isRunning = agent.process_status === 'running'
-
   return (
     <NavLink
       to={to}
@@ -372,11 +383,17 @@ function AgentNavItem({
         }`
       }
     >
-      <div className="relative flex-shrink-0">
+      <div className="relative flex-shrink-0 flex items-center justify-center" style={{ width: 24, height: 24 }}>
         <AgentAvatar name={agent.name} displayName={displayName} avatar={avatar} size={5} />
-        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-card ${
-          isRunning ? 'bg-green-400' : 'bg-muted-foreground/30'
-        }`} />
+        {busy ? (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="agent-orbit-dot absolute w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.6)]" />
+          </div>
+        ) : (
+          <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-card ${
+            agent.process_status === 'running' ? 'bg-green-400' : 'bg-muted-foreground/30'
+          }`} />
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <span className="block truncate">{displayName}</span>
