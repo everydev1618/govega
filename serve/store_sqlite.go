@@ -905,7 +905,7 @@ func (s *SQLiteStore) GetChannelByName(name string) (*dsl.ChannelInfo, error) {
 
 // ListChannelsForAgent returns channels where the agent is a team member.
 func (s *SQLiteStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, error) {
-	channels, err := s.ListChannels()
+	channels, err := s.ListChannels("default")
 	if err != nil {
 		return nil, err
 	}
@@ -921,15 +921,18 @@ func (s *SQLiteStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, err
 	return result, nil
 }
 
-// ListChannels returns all channels with unread counts for the default user.
-func (s *SQLiteStore) ListChannels() ([]Channel, error) {
+// ListChannels returns all channels with unread counts for the given user.
+func (s *SQLiteStore) ListChannels(userID string) ([]Channel, error) {
+	if userID == "" {
+		userID = "default"
+	}
 	rows, err := s.db.Query(`
 		SELECT c.id, c.name, c.description, c.team, c.mode, c.created_by, c.created_at,
 		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL), 0),
 		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL
-		                 AND id > COALESCE((SELECT last_read_id FROM channel_read_cursors WHERE channel_id = c.id AND user_id = 'default'), 0)), 0)
+		                 AND id > COALESCE((SELECT last_read_id FROM channel_read_cursors WHERE channel_id = c.id AND user_id = ?), 0)), 0)
 		FROM channels c
-		ORDER BY c.created_at ASC`,
+		ORDER BY c.created_at ASC`, userID,
 	)
 	if err != nil {
 		return nil, err
@@ -1097,14 +1100,14 @@ func (s *SQLiteStore) RecentChannelMessages(channelID string, limit int) ([]dsl.
 	return msgs, rows.Err()
 }
 
-// ListThreadMessages returns all replies in a thread.
+// ListThreadMessages returns the original message and all replies in a thread.
 func (s *SQLiteStore) ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error) {
 	rows, err := s.db.Query(
 		`SELECT id, channel_id, thread_id, agent, sender, role, content, metadata, created_at
 		 FROM channel_messages
-		 WHERE channel_id = ? AND thread_id = ?
+		 WHERE channel_id = ? AND (id = ? OR thread_id = ?)
 		 ORDER BY created_at ASC`,
-		channelID, threadID,
+		channelID, threadID, threadID,
 	)
 	if err != nil {
 		return nil, err

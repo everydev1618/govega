@@ -116,8 +116,8 @@ type Store interface {
 	// ListChannelsForAgent returns channels where the agent is a team member.
 	ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, error)
 
-	// ListChannels returns all channels.
-	ListChannels() ([]Channel, error)
+	// ListChannels returns all channels with unread counts for the given user.
+	ListChannels(userID string) ([]Channel, error)
 
 	// DeleteChannel removes a channel by name.
 	DeleteChannel(name string) error
