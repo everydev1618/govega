@@ -82,6 +82,10 @@ type Tools struct {
 	// into dynamic tool template interpolation.
 	settings map[string]string
 
+	// services tracks long-running background processes (dev servers, etc.)
+	services   map[string]*backgroundService
+	servicesMu sync.Mutex
+
 	// OnFileWrite is called after a successful write_file or append_file operation.
 	// Parameters: ctx, relative path, operation ("write"/"append"), description.
 	OnFileWrite func(ctx context.Context, path, operation, description string)

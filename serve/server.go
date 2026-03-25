@@ -176,6 +176,9 @@ func (s *Server) Start(ctx context.Context) error {
 	// Resolve company identity.
 	s.company = s.resolveCompany()
 
+	// Tell the interpreter our base URL so agents can construct workspace URLs.
+	s.interp.SetServerBaseURL(fmt.Sprintf("http://localhost%s", s.cfg.Addr))
+
 	// Load settings into tools collection.
 	s.refreshToolSettings()
 
@@ -577,6 +580,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// SSE
 	mux.HandleFunc("GET /api/events", s.handleSSE)
+
+	// Workspace static files — serves raw files from ~/.vega/workspace/ so
+	// agents can provide direct URLs (e.g. /workspace/mysite/index.html).
+	mux.Handle("/workspace/", http.StripPrefix("/workspace/", http.HandlerFunc(s.handleWorkspaceStatic)))
 
 	// Frontend SPA
 	mux.Handle("/", frontendHandler())

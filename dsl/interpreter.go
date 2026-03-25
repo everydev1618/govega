@@ -48,8 +48,15 @@ type Interpreter struct {
 	memoryInjector    func(proc *vega.Process, agentName string) // injects memory into agent before send
 	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
 	onDispatchComplete func(agentName string) // fires when a dispatched agent finishes
+	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
 	mu                sync.RWMutex
+}
+
+// SetServerBaseURL sets the base URL of the Vega server so agents can construct
+// workspace URLs for deliverables.
+func (i *Interpreter) SetServerBaseURL(url string) {
+	i.serverBaseURL = url
 }
 
 // SetDelegationObserver registers a callback that fires after each delegation.
@@ -255,8 +262,12 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	// Universal brevity directive — applies to ALL agents.
 	systemStr += "\n\n## Communication style\nBe direct and concise. Lead with the answer, not the reasoning. 1-3 sentences for simple responses. Use bullet points only when listing concrete items — never for padding. No filler phrases, no restating the question, no sign-offs. The user's time is sacred."
 
-	// Inject workspace path so agents know where relative paths resolve.
+	// Inject workspace path and deliverable URL so agents know where files go and how to serve them.
 	systemStr += "\nYour working directory is " + vega.WorkspacePath()
+	if i.serverBaseURL != "" {
+		systemStr += fmt.Sprintf("\n\n## Delivering work product\nFiles you write to your working directory are served at %s/workspace/. For example, if you write a website to `%s/mysite/index.html`, it will be accessible at `%s/workspace/mysite/index.html`. When you produce deliverables (websites, documents, images), ALWAYS report the full URL so the user can view them immediately.", i.serverBaseURL, vega.WorkspacePath(), i.serverBaseURL)
+		systemStr += "\n\nFor dynamic applications (Node.js, Python, etc.), use `start_service` to run dev servers in the background. The service keeps running until stopped with `stop_service`. Use `service_logs` to check output and `list_services` to see what's running. Always report the URL where the service is accessible."
+	}
 
 	// Build base system prompt
 	var systemPrompt vega.SystemPrompt = vega.StaticPrompt(systemStr)
