@@ -2192,7 +2192,23 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	// 5. Clear active project.
 	s.interp.Tools().SetActiveProject("")
 
-	slog.Info("reset: complete")
+	// 6. Re-initialize from YAML config — reconnect MCP servers and recreate
+	// YAML-defined channels so the project returns to its factory state.
+	ctx := r.Context()
+	s.autoConnectBuiltinServers(ctx)
+	s.autoConnectPersistedServers(ctx)
+
+	if doc := s.interp.Document(); doc != nil && doc.Channels != nil {
+		for name, chDef := range doc.Channels {
+			id := "ch_" + name
+			mode := chDef.Mode
+			if err := s.store.CreateChannel(id, name, chDef.Description, "yaml", chDef.Team, mode); err != nil {
+				slog.Warn("reset: failed to recreate YAML channel", "name", name, "error", err)
+			}
+		}
+	}
+
+	slog.Info("reset: complete — project restored to YAML-defined state")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }
 

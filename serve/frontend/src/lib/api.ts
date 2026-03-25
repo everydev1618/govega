@@ -290,6 +290,10 @@ export const api = {
   clearResolvedInbox: () =>
     fetchAPI<{ deleted: number }>('/api/inbox/resolved', { method: 'DELETE' }),
 
+  // Nuclear reset — wipes all data and restores to YAML-defined state
+  resetProject: () =>
+    fetchAPI<{ status: string }>('/api/reset', { method: 'POST' }),
+
   // Streaming chat
   chatStream: (
     agent: string,
