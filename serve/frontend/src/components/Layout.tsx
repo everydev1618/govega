@@ -76,12 +76,46 @@ export function Layout() {
   // Auto-expand More when on an admin page
   const showMore = moreOpen || isAdminPage
 
+  // Close sidebar on navigation (mobile)
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
+
   return (
     <div className="flex min-h-screen">
+      {/* Mobile header */}
+      <div className="fixed top-0 left-0 right-0 z-40 flex items-center gap-3 px-3 py-2 border-b border-border bg-card md:hidden">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+        </button>
+        <CompanySwitcher />
+      </div>
+
+      {/* Sidebar backdrop (mobile) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-56 border-r border-border bg-card flex flex-col">
-        <div className="p-3 border-b border-border">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-56 border-r border-border bg-card flex flex-col transform transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-3 border-b border-border flex items-center justify-between">
           <CompanySwitcher />
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground md:hidden"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-1">
@@ -214,7 +248,7 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 p-6 overflow-auto">
+      <main className="flex-1 p-3 pt-14 md:p-6 md:pt-6 overflow-auto">
         <Outlet />
       </main>
     </div>

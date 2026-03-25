@@ -109,7 +109,7 @@ export function ChannelView() {
   const teamAvatars = channel?.team || []
 
   return (
-    <div className="flex h-[calc(100vh-3rem)]">
+    <div className="flex h-[calc(100vh-5rem)] md:h-[calc(100vh-3rem)]">
       {/* Main channel area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}

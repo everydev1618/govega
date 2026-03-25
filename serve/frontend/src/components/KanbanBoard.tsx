@@ -71,13 +71,13 @@ export function KanbanBoard({ processes, selectedId, onSelect }: KanbanBoardProp
   const groups = groupByStatus(processes)
 
   return (
-    <div className="flex gap-3 min-h-[60vh]">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-h-[60vh]">
       {columns.map(col => {
         const items = groups[col.key]
         return (
           <div
             key={col.key}
-            className={`flex-1 min-w-0 rounded-lg border p-3 flex flex-col ${columnBg[col.key]}`}
+            className={`min-w-0 rounded-lg border p-3 flex flex-col ${columnBg[col.key]}`}
           >
             {/* Column header */}
             <div className="flex items-center justify-between mb-3">

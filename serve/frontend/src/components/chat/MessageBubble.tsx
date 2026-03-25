@@ -180,11 +180,11 @@ export function MessageBubble({
     <div className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {msg.role === 'assistant' && <AgentAvatar name={agentName} displayName={agentDisplayName} avatar={agentAvatar} />}
       {msg.role === 'user' ? (
-        <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
+        <div className="max-w-[85%] md:max-w-[75%] rounded-2xl shadow-sm px-3 py-2 md:px-4 md:py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
           {msg.content}
         </div>
       ) : (
-        <div className="max-w-[75%] rounded-2xl shadow-sm px-4 py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
+        <div className="max-w-[85%] md:max-w-[75%] rounded-2xl shadow-sm px-3 py-2 md:px-4 md:py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
           {showAgentLabel && msg.agent && (
             <p className="text-xs font-semibold text-primary mb-1">{agentDisplayName || agentName}</p>
           )}

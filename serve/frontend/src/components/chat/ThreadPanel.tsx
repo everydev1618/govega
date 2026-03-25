@@ -155,7 +155,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
   }
 
   return (
-    <div className="w-[350px] border-l border-border bg-card flex flex-col h-full">
+    <div className="fixed inset-0 z-40 md:static md:z-auto w-full md:w-[350px] border-l border-border bg-card flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h3 className="text-sm font-semibold">Thread in #{channelName}</h3>

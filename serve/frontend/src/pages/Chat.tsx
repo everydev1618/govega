@@ -567,7 +567,7 @@ export function Chat() {
   const agentNamesList = useMemo(() => [...agentNames], [agentNames])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)]">
+    <div className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-3rem)]">
       {/* Tab bar + actions */}
       <div className="flex items-end border-b border-border">
         <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
@@ -590,7 +590,7 @@ export function Chat() {
             }, { cost: 0, tokens: 0 })
             if (totals.tokens === 0) return null
             return (
-              <span className="text-[11px] text-muted-foreground/60 font-mono pr-2">
+              <span className="text-[11px] text-muted-foreground/60 font-mono pr-2 hidden sm:inline">
                 {totals.cost >= 0.01 ? `$${totals.cost.toFixed(2)}` : `$${totals.cost.toFixed(4)}`}
                 {' · '}
                 {totals.tokens >= 1000 ? `${(totals.tokens / 1000).toFixed(1)}k` : totals.tokens} tokens

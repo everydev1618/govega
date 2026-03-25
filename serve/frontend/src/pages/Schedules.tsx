@@ -45,8 +45,8 @@ export function Schedules() {
       {!schedules || schedules.length === 0 ? (
         <p className="text-muted-foreground text-sm">No scheduled jobs. Use Mother to create schedules via chat.</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-lg border border-border overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
                 <th className="text-left px-4 py-2 font-medium">Name</th>
