@@ -195,6 +195,7 @@ type ChannelMessage struct {
 	ChannelID  string    `json:"channel_id"`
 	ThreadID   *int64    `json:"thread_id,omitempty"`
 	Agent      string    `json:"agent,omitempty"`
+	Sender     string    `json:"sender,omitempty"`
 	Role       string    `json:"role"`
 	Content    string    `json:"content"`
 	Metadata   string    `json:"metadata,omitempty"`
@@ -223,6 +224,7 @@ type ChannelEvent struct {
 	MessageID int64  `json:"message_id,omitempty"`
 	ThreadID  *int64 `json:"thread_id,omitempty"`
 	Agent     string `json:"agent,omitempty"`
+	Sender    string `json:"sender,omitempty"`
 	Role      string `json:"role,omitempty"`
 	Content   string `json:"content,omitempty"`
 	Delta     string `json:"delta,omitempty"`

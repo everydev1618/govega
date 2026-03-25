@@ -346,6 +346,19 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wire channel backend so DispatchToAgent can post completion summaries.
 	s.interp.SetChannelBackend(s.store, channelPostCb)
 
+	// When a dispatched agent finishes, immediately poke Hermes to triage
+	// the inbox instead of waiting for the 15-minute heartbeat.
+	s.interp.SetDispatchCompleteCallback(func(agentName string) {
+		slog.Info("dispatch complete, poking hermes to triage inbox", "agent", agentName)
+		go func() {
+			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", agentName)
+			_, err := s.interp.SendToAgent(context.Background(), "hermes", msg)
+			if err != nil {
+				slog.Error("failed to poke hermes after dispatch", "agent", agentName, "error", err)
+			}
+		}()
+	})
+
 	// Wire delegation observer so agent-to-agent messages appear in channels.
 	s.interp.SetDelegationObserver(func(ctx context.Context, from, to, message, response string) {
 		chID, chName, err := s.store.FindChannelForAgents(from, to)
@@ -354,7 +367,7 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 
 		// Insert delegation message as a top-level message from the delegator.
-		msgID, err := s.store.InsertChannelMessage(chID, from, "assistant", message, nil, `{"type":"delegation"}`)
+		msgID, err := s.store.InsertChannelMessage(chID, from, "assistant", message, nil, `{"type":"delegation"}`, from)
 		if err != nil {
 			slog.Error("delegation observer: insert message", "error", err)
 			return
@@ -363,7 +376,7 @@ func (s *Server) Start(ctx context.Context) error {
 		// Insert response as a thread reply from the delegatee.
 		var replyID int64
 		if response != "" && msgID > 0 {
-			replyID, _ = s.store.InsertChannelMessage(chID, to, "assistant", response, &msgID, `{"type":"delegation_response"}`)
+			replyID, _ = s.store.InsertChannelMessage(chID, to, "assistant", response, &msgID, `{"type":"delegation_response"}`, to)
 		}
 
 		// Publish SSE events so connected clients see it in real time.

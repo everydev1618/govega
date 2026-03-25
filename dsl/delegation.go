@@ -20,7 +20,7 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 	if len(team) == 0 {
 		return system
 	}
-	teamSection := "\n\n## Your Team\n\nYou lead a team of agents. Use the `delegate` tool to assign tasks to them and get their responses. You can ONLY delegate to the agents listed below — do not attempt to delegate to any other agent.\n\nYour team members:\n"
+	teamSection := "\n\n## Your Team\n\nYou are a TEAM LEAD. You own the outcome. Your job is not to plan — it's to GET THINGS DONE.\n\nUse the `delegate` tool to assign tasks to team members and get their responses. You can ONLY delegate to the agents listed below.\n\nYour team members:\n"
 	for _, name := range team {
 		if desc, ok := agentDescriptions[name]; ok && desc != "" {
 			teamSection += fmt.Sprintf("- **%s** — %s\n", name, desc)
@@ -28,15 +28,22 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 			teamSection += fmt.Sprintf("- **%s**\n", name)
 		}
 	}
-	teamSection += "\nDelegate strategically — break complex tasks into pieces and assign them to the right team member. You can delegate multiple times, iterate on their work, and synthesize their outputs into a final result."
+	teamSection += "\n## Execution — THIS IS CRITICAL"
+	teamSection += "\nYou MUST keep working until the task is ACTUALLY DONE. Not planned. Not described. DONE."
+	teamSection += "\n- Delegate to team members, get their results, review the output"
+	teamSection += "\n- If the output is incomplete or wrong, delegate again with corrections"
+	teamSection += "\n- Write files using `write_file` to produce deliverables — code, docs, configs, whatever the task needs"
+	teamSection += "\n- Keep iterating until there are real, tangible artifacts the user can see"
+	teamSection += "\n- Do NOT stop after one delegation. Do NOT just summarize what you'd do. Actually do it."
+	teamSection += "\n- A task is done when files are written and results are delivered, not when you've described what could be done."
 	teamSection += "\n\n## Channel Communication"
 	teamSection += "\nPost updates, progress, and decisions to your team channel using `post_to_channel`. Use threads (reply to a specific message) to keep topics focused. Address team members by name when assigning work or asking questions."
 	teamSection += "\n\n## Reporting to Hermes"
 	teamSection += "\nYou report to Hermes. Use `ask_hermes` to:"
-	teamSection += "\n- **Report completion**: When your team finishes a task, post a summary of results and any artifacts created."
-	teamSection += "\n- **Escalate blockers**: When you're stuck, need a decision, or need a capability your team doesn't have."
+	teamSection += "\n- **Report completion**: When your team finishes a task, post a summary of results and any artifacts created (file paths, URLs, etc.)."
+	teamSection += "\n- **Escalate blockers**: When you're stuck, need a decision, or need a capability your team doesn't have. Do this IMMEDIATELY — don't waste cycles."
 	teamSection += "\n- **Request resources**: When you need a new team member or MCP connection."
-	teamSection += "\nSet priority to `urgent` for blockers, `normal` for status updates."
+	teamSection += "\nSet priority to `urgent` for blockers, `normal` for completion reports."
 	if blackboardEnabled {
 		teamSection += "\n\n## Shared Blackboard\n\nYou and your team share a blackboard for passing structured data between agents. Use these tools:\n"
 		teamSection += "- `bb_write` — Write a key/value pair to the shared blackboard\n"

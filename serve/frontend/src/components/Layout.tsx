@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { CompanySwitcher } from './CompanySwitcher'
 import { AgentAvatar } from './chat/AgentAvatar'
+import { UserIdentityPrompt, getUserName } from './UserIdentityPrompt'
 import { api } from '../lib/api'
 import type { AgentResponse, Channel, InboxItem } from '../lib/types'
 
@@ -39,6 +40,7 @@ function SectionHeader({ children, action }: { children: React.ReactNode; action
 
 export function Layout() {
   const location = useLocation()
+  const [userName, setUserNameState] = useState<string | null>(getUserName())
   const [agents, setAgents] = useState<AgentResponse[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
@@ -83,6 +85,10 @@ export function Layout() {
   useEffect(() => {
     setSidebarOpen(false)
   }, [location.pathname])
+
+  if (!userName) {
+    return <UserIdentityPrompt onComplete={setUserNameState} />
+  }
 
   return (
     <div className="flex min-h-screen">

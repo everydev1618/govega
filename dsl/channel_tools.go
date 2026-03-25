@@ -47,6 +47,7 @@ type ChannelInfo struct {
 // ChannelMessage holds a single message returned by RecentChannelMessages.
 type ChannelMessage struct {
 	Agent   string
+	Sender  string
 	Content string
 }
 
@@ -57,7 +58,7 @@ type ChannelBackend interface {
 	GetChannelByName(name string) (*ChannelInfo, error)
 	ListChannelsForAgent(agent string) ([]ChannelInfo, error)
 	FindChannelForAgents(agent1, agent2 string) (channelID string, channelName string, err error)
-	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error)
+	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string) (int64, error)
 	RecentChannelMessages(channelID string, limit int) ([]ChannelMessage, error)
 }
 
@@ -99,7 +100,7 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				return "", fmt.Errorf("channel #%s not found", channelName)
 			}
 
-			msgID, err := backend.InsertChannelMessage(ch.ID, agent, "assistant", message, threadID, "")
+			msgID, err := backend.InsertChannelMessage(ch.ID, agent, "assistant", message, threadID, "", agent)
 			if err != nil {
 				return "", fmt.Errorf("post to channel: %w", err)
 			}

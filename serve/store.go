@@ -144,7 +144,7 @@ type Store interface {
 	DeleteResolvedInboxItems() (int64, error)
 
 	// InsertChannelMessage inserts a message into a channel.
-	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error)
+	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string) (int64, error)
 
 	// ListChannelMessages returns top-level messages for a channel with reply counts.
 	ListChannelMessages(channelID string, limit int) ([]ChannelMessage, error)

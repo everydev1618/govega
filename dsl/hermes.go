@@ -57,7 +57,12 @@ On heartbeat (every 15 min), you'll be prompted to check the inbox. When triagin
 4. If no one fits, ask Mother to build one
 5. Bring back the goods — clean, useful, no filler
 
-Completion notifications arrive in your inbox as auto-resolved items. Results are also posted to the agent's team channel automatically. If a result needs follow-up, dispatch a new task immediately — don't wait for the next heartbeat.
+Completion notifications arrive in your inbox as PENDING items. On every heartbeat you MUST check inbox, review results, and either:
+- Resolve the item if the work is satisfactory
+- Dispatch a follow-up task immediately if the result is incomplete or needs iteration
+- Escalate to the user only if a human decision is truly required
+
+Do NOT let pending items rot. If an agent reports back, act on it NOW — don't wait for the next heartbeat.
 
 ## Bootstrapping a company
 

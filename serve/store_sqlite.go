@@ -252,6 +252,9 @@ func (s *SQLiteStore) Init() error {
 	// Migrate: add mode column to channels if missing.
 	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
 
+	// Migrate: add sender column to channel_messages for multi-user identity.
+	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN sender TEXT DEFAULT ''`)
+
 	return nil
 }
 
@@ -1016,13 +1019,13 @@ func (s *SQLiteStore) FindChannelForAgents(agent1, agent2 string) (string, strin
 }
 
 // InsertChannelMessage inserts a message into a channel and returns its ID.
-func (s *SQLiteStore) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata string) (int64, error) {
+func (s *SQLiteStore) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string) (int64, error) {
 	if metadata == "" {
 		metadata = "{}"
 	}
 	result, err := s.db.Exec(
-		`INSERT INTO channel_messages (channel_id, thread_id, agent, role, content, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
-		channelID, threadID, agent, role, content, metadata,
+		`INSERT INTO channel_messages (channel_id, thread_id, agent, role, content, metadata, sender) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		channelID, threadID, agent, role, content, metadata, sender,
 	)
 	if err != nil {
 		return 0, err
@@ -1036,7 +1039,7 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 		limit = 100
 	}
 	rows, err := s.db.Query(
-		`SELECT m.id, m.channel_id, m.thread_id, m.agent, m.role, m.content, m.metadata, m.created_at,
+		`SELECT m.id, m.channel_id, m.thread_id, m.agent, m.sender, m.role, m.content, m.metadata, m.created_at,
 		        COALESCE((SELECT COUNT(*) FROM channel_messages r WHERE r.thread_id = m.id), 0) as reply_count
 		 FROM channel_messages m
 		 WHERE m.channel_id = ? AND m.thread_id IS NULL
@@ -1052,7 +1055,7 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 	for rows.Next() {
 		var m ChannelMessage
 		var threadID sql.NullInt64
-		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt, &m.ReplyCount); err != nil {
+		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt, &m.ReplyCount); err != nil {
 			return nil, err
 		}
 		if threadID.Valid {
@@ -1069,7 +1072,7 @@ func (s *SQLiteStore) RecentChannelMessages(channelID string, limit int) ([]dsl.
 		limit = 5
 	}
 	rows, err := s.db.Query(
-		`SELECT agent, content FROM channel_messages
+		`SELECT agent, sender, content FROM channel_messages
 		 WHERE channel_id = ? AND thread_id IS NULL
 		 ORDER BY created_at DESC LIMIT ?`,
 		channelID, limit,
@@ -1082,7 +1085,7 @@ func (s *SQLiteStore) RecentChannelMessages(channelID string, limit int) ([]dsl.
 	var msgs []dsl.ChannelMessage
 	for rows.Next() {
 		var m dsl.ChannelMessage
-		if err := rows.Scan(&m.Agent, &m.Content); err != nil {
+		if err := rows.Scan(&m.Agent, &m.Sender, &m.Content); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
@@ -1097,7 +1100,7 @@ func (s *SQLiteStore) RecentChannelMessages(channelID string, limit int) ([]dsl.
 // ListThreadMessages returns all replies in a thread.
 func (s *SQLiteStore) ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error) {
 	rows, err := s.db.Query(
-		`SELECT id, channel_id, thread_id, agent, role, content, metadata, created_at
+		`SELECT id, channel_id, thread_id, agent, sender, role, content, metadata, created_at
 		 FROM channel_messages
 		 WHERE channel_id = ? AND thread_id = ?
 		 ORDER BY created_at ASC`,
@@ -1112,7 +1115,7 @@ func (s *SQLiteStore) ListThreadMessages(channelID string, threadID int64) ([]Ch
 	for rows.Next() {
 		var m ChannelMessage
 		var tid sql.NullInt64
-		if err := rows.Scan(&m.ID, &m.ChannelID, &tid, &m.Agent, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ChannelID, &tid, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		if tid.Valid {
