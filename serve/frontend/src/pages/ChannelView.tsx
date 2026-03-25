@@ -13,6 +13,12 @@ import { getUserName } from '../components/UserIdentityPrompt'
 
 const META_AGENTS = new Set(['hermes', 'mother'])
 
+// Strip per-user clone suffix (e.g. "hermes:Etienne" → "hermes").
+function baseAgentName(name: string): string {
+  const i = name.indexOf(':')
+  return i >= 0 ? name.substring(0, i) : name
+}
+
 export function ChannelView() {
   const { name } = useParams<{ name: string }>()
   const channelName = name || ''
@@ -151,7 +157,8 @@ export function ChannelView() {
 
           {messages.map((msg, i) => {
             const isUser = msg.role === 'user'
-            const agentName = msg.agent || ''
+            const agentNameRaw = msg.agent || ''
+            const agentName = baseAgentName(agentNameRaw)
             const info = agentDisplayInfo.get(agentName)
             const isStreamingMsg = 'streaming' in msg && msg.streaming
             const replyCount = 'reply_count' in msg ? (msg as ChannelMessage).reply_count : 0

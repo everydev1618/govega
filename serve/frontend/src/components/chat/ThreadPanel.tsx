@@ -122,7 +122,8 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
 
   const renderMessage = (msg: ChannelMessage | StreamingReply, idx: number) => {
     const isUser = msg.role === 'user'
-    const agentName = msg.agent || 'unknown'
+    const agentNameRaw = msg.agent || 'unknown'
+    const agentName = agentNameRaw.indexOf(':') >= 0 ? agentNameRaw.substring(0, agentNameRaw.indexOf(':')) : agentNameRaw
     const info = agentDisplayInfo.get(agentName)
     const streaming = 'streaming' in msg && msg.streaming
     const sender = 'sender' in msg ? (msg as ChannelMessage).sender : undefined
