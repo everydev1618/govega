@@ -91,7 +91,7 @@ export function ProcessExplorer() {
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col md:flex-row gap-4">
         {/* Main content area */}
         <div className="flex-1 min-w-0">
           {viewMode === 'kanban' ? (
@@ -123,7 +123,7 @@ export function ProcessExplorer() {
 
         {/* Detail panel */}
         {selectedId && detail && (
-          <div className="w-96 shrink-0 border border-border rounded-lg bg-card p-4 space-y-4 max-h-[80vh] overflow-auto">
+          <div className="w-full md:w-96 md:shrink-0 border border-border rounded-lg bg-card p-4 space-y-4 max-h-[80vh] overflow-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold">Process {detail.id}</h3>
               <button onClick={() => setSelectedId(null)} className="text-muted-foreground hover:text-foreground">&times;</button>

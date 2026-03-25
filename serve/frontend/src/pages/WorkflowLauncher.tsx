@@ -46,9 +46,9 @@ export function WorkflowLauncher() {
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">Workflow Launcher</h2>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Workflow list */}
-        <div className="w-64 space-y-2">
+        <div className="w-full md:w-64 space-y-2">
           {workflows?.map(wf => (
             <button key={wf.name} onClick={() => selectWorkflow(wf)}
               className={`w-full text-left p-3 rounded-lg border transition-colors ${

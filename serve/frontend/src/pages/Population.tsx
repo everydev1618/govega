@@ -167,9 +167,9 @@ export function Population() {
       </div>
 
       {/* Two-column layout */}
-      <div className="flex gap-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Left: item list */}
-        <div className="w-80 space-y-2 flex-shrink-0">
+        <div className="w-full md:w-80 space-y-2 md:flex-shrink-0">
           {loading ? (
             <div className="space-y-2">
               {[1, 2, 3].map(i => (
