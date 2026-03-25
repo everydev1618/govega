@@ -535,6 +535,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/prompt-history/search", s.handleSearchPromptHistory)
 	mux.HandleFunc("DELETE /api/prompt-history/{id}", s.handleDeletePromptHistory)
 
+	// Config
+	mux.HandleFunc("GET /api/config", s.handleGetConfig)
+	mux.HandleFunc("POST /api/config/upload", s.handleConfigUpload)
+
 	// Reset
 	mux.HandleFunc("POST /api/reset", s.handleReset)
 
