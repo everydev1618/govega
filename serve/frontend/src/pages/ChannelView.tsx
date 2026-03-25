@@ -8,6 +8,7 @@ import { AgentAvatar, UserAvatar } from '../components/chat/AgentAvatar'
 import { ThreadPanel } from '../components/chat/ThreadPanel'
 import { ScrollToBottom } from '../components/chat/ScrollToBottom'
 import { ToolCallBadges, statusDotClass, shortToolName, ActivityConstellation, ActivityNarrative } from '../components/chat/ToolCallDisplay'
+import { getUserName } from '../components/UserIdentityPrompt'
 
 const META_AGENTS = new Set(['hermes', 'mother'])
 
@@ -154,18 +155,23 @@ export function ChannelView() {
             const isStreamingMsg = 'streaming' in msg && msg.streaming
             const replyCount = 'reply_count' in msg ? (msg as ChannelMessage).reply_count : 0
             const msgId = 'id' in msg ? msg.id : undefined
+            const sender = 'sender' in msg ? msg.sender : undefined
+            const currentUser = getUserName()
+            const displayName = isUser
+              ? (sender && sender !== currentUser ? sender : (sender || 'You'))
+              : (info?.displayName || agentName)
 
             return (
               <div key={i} className="flex gap-2.5">
                 {isUser ? (
-                  <UserAvatar />
+                  <UserAvatar name={sender || undefined} />
                 ) : (
                   <AgentAvatar name={agentName} displayName={info?.displayName} avatar={info?.avatar} />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
                     <span className="text-sm font-semibold text-foreground">
-                      {isUser ? 'You' : (info?.displayName || agentName)}
+                      {displayName}
                     </span>
                     {'created_at' in msg && msg.created_at && (
                       <span className="text-[11px] text-muted-foreground/60">

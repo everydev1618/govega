@@ -46,8 +46,9 @@ type Interpreter struct {
 	inboxBackend      InboxBackend   // for async dispatch completion notifications
 	channelBackend    ChannelBackend // for posting completion summaries to channels
 	memoryInjector    func(proc *vega.Process, agentName string) // injects memory into agent before send
-	channelPostCb     func(channelName, agent, content string, msgID int64, threadID *int64)
-	yamlAgents        map[string]bool // original YAML-defined agent names (survives reset)
+	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
+	onDispatchComplete func(agentName string) // fires when a dispatched agent finishes
+	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
 	mu                sync.RWMutex
 }
 
@@ -1340,8 +1341,8 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		// Use a fresh background context — the caller's ctx/stream will be closed.
 		resp, err := i.SendToAgent(context.Background(), agentName, message)
 
-		// Post completion notification to inbox as pending so Hermes triages it
-		// on his next heartbeat. Failed tasks are marked urgent.
+		// Post completion notification to inbox as pending so Hermes triages it.
+		// Failed tasks are marked urgent.
 		if i.inboxBackend != nil {
 			if err != nil {
 				i.inboxBackend.InsertInboxItem(
@@ -1370,7 +1371,7 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 					if ch.Name == "general" || ch.Name == "random" {
 						continue
 					}
-					msgID, postErr := i.channelBackend.InsertChannelMessage(ch.ID, agentName, "assistant", summary, nil, "")
+					msgID, postErr := i.channelBackend.InsertChannelMessage(ch.ID, agentName, "assistant", summary, nil, "", agentName)
 					if postErr == nil && i.channelPostCb != nil {
 						i.channelPostCb(ch.Name, agentName, summary, msgID, nil)
 					}
@@ -1378,9 +1379,22 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 				}
 			}
 		}
+
+		// Immediately poke Hermes to triage the inbox — don't wait for the
+		// 15-minute heartbeat. This closes the loop so work keeps flowing.
+		if i.onDispatchComplete != nil {
+			i.onDispatchComplete(agentName)
+		}
 	}()
 
 	return fmt.Sprintf("Dispatched to **%s**. Watch their channel for progress.", agentName), nil
+}
+
+// SetDispatchCompleteCallback registers a callback that fires when a dispatched
+// agent finishes. The serve layer uses this to immediately send Hermes an inbox
+// triage prompt so the loop keeps moving without waiting for the heartbeat.
+func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName string)) {
+	i.onDispatchComplete = fn
 }
 
 // truncateStr truncates a string to max characters, appending "..." if truncated.

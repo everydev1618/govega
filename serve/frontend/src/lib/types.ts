@@ -313,6 +313,7 @@ export interface ChannelMessage {
   channel_id: string
   thread_id?: number
   agent: string
+  sender?: string
   role: string
   content: string
   metadata?: string
@@ -326,6 +327,7 @@ export interface ChannelEvent {
   message_id?: number
   thread_id?: number
   agent: string
+  sender?: string
   role: string
   content: string
   delta?: string

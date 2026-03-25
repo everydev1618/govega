@@ -26,9 +26,17 @@ export function AgentAvatar({ name, displayName, avatar, size = 7 }: { name: str
   )
 }
 
-export function UserAvatar() {
+export function UserAvatar({ name, size = 7 }: { name?: string; size?: number } = {}) {
+  const sizeClass = avatarSizeClasses[size] || 'w-7 h-7'
+  if (name) {
+    return (
+      <div className={`${sizeClass} rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-xs font-semibold text-muted-foreground`}>
+        {name[0]?.toUpperCase()}
+      </div>
+    )
+  }
   return (
-    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+    <div className={`${sizeClass} rounded-full bg-muted flex items-center justify-center flex-shrink-0`}>
       <svg className="w-3.5 h-3.5 text-muted-foreground" fill="currentColor" viewBox="0 0 20 20">
         <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z" />
       </svg>

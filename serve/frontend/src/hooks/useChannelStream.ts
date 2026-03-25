@@ -1,10 +1,12 @@
 import { useState, useRef, useCallback } from 'react'
 import { api } from '../lib/api'
 import type { ChannelEvent, ChannelMessage, ChatEventMetrics } from '../lib/types'
+import { getUserName } from '../components/UserIdentityPrompt'
 
 interface StreamingMessage {
   id?: number
   agent: string
+  sender?: string
   role: string
   content: string
   streaming: boolean
@@ -30,6 +32,7 @@ export function useChannelStream(channelName: string) {
     // Optimistic user message
     const userMsg: StreamingMessage = {
       agent: '',
+      sender: getUserName() || '',
       role: 'user',
       content: text,
       streaming: false,

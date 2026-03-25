@@ -168,8 +168,10 @@ func (s *Server) handleChannelPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sender := r.Header.Get("X-Auth-User")
+
 	// Insert user message (top-level or into thread).
-	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}")
+	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}", sender)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -192,11 +194,21 @@ func (s *Server) handleChannelPost(w http.ResponseWriter, r *http.Request) {
 		threadID = *req.ThreadID
 	}
 
-	go s.runChannelAgent(ch, targetAgent, req.Message, threadID)
+	// Prefix message with sender name so agents know who's talking.
+	agentMessage := req.Message
+	if sender != "" {
+		agentMessage = fmt.Sprintf("[%s]: %s", sender, req.Message)
+	}
+
+	go s.runChannelAgent(ch, targetAgent, agentMessage, threadID)
 
 	// In social mode, notify all OTHER team members so they respond too.
+	poster := sender
+	if poster == "" {
+		poster = "a user"
+	}
 	if ch.Mode == "social" {
-		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0, threadID)
+		s.notifyChannelTeammates(ch, poster, req.Message, 0, threadID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"message_id": msgID, "thread_id": threadID})
@@ -225,8 +237,10 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sender := r.Header.Get("X-Auth-User")
+
 	// Insert user message.
-	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}")
+	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}", sender)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -256,6 +270,7 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 			MessageID: msgID,
 			ThreadID:  req.ThreadID,
 			Role:      "user",
+			Sender:    sender,
 			Content:   req.Message,
 		})
 	} else {
@@ -264,17 +279,28 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 			Channel:   name,
 			MessageID: msgID,
 			Role:      "user",
+			Sender:    sender,
 			Content:   req.Message,
 		})
 	}
 
+	// Prefix message with sender name so agents know who's talking.
+	agentMessage := req.Message
+	if sender != "" {
+		agentMessage = fmt.Sprintf("[%s]: %s", sender, req.Message)
+	}
+
 	if targetAgent != "" {
-		go s.runChannelAgentStreamed(ch, cs, targetAgent, req.Message, threadID)
+		go s.runChannelAgentStreamed(ch, cs, targetAgent, agentMessage, threadID)
 	}
 
 	// In social mode, notify all OTHER team members so they respond too.
+	poster := sender
+	if poster == "" {
+		poster = "a user"
+	}
 	if ch.Mode == "social" {
-		s.notifyChannelTeammates(ch, targetAgent, req.Message, 0, threadID)
+		s.notifyChannelTeammates(ch, poster, req.Message, 0, threadID)
 	}
 
 	// Relay SSE to this client.
@@ -327,7 +353,7 @@ func (s *Server) runChannelAgent(ch *Channel, agentName, message string, threadI
 	response := stream.Response()
 	if response != "" {
 		tid := threadID
-		s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}")
+		s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}", agentName)
 	}
 }
 
@@ -440,7 +466,7 @@ func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentNa
 	// Persist the agent response.
 	var replyMsgID int64
 	if response != "" {
-		replyMsgID, _ = s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}")
+		replyMsgID, _ = s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}", agentName)
 	}
 
 	// Publish the complete thread reply event.

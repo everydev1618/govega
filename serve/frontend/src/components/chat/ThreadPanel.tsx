@@ -2,10 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../../lib/api'
 import type { ChannelMessage, ChannelEvent, ChatEventMetrics } from '../../lib/types'
 import { AgentAvatar, UserAvatar } from './AgentAvatar'
+import { getUserName } from '../UserIdentityPrompt'
 import Markdown from 'react-markdown'
 
 interface StreamingReply {
   agent: string
+  sender?: string
   role: string
   content: string
   streaming: boolean
@@ -57,7 +59,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
     if (!msg || sending) return
     setInput('')
 
-    const userReply: StreamingReply = { agent: '', role: 'user', content: msg, streaming: false }
+    const userReply: StreamingReply = { agent: '', sender: getUserName() || '', role: 'user', content: msg, streaming: false }
     setReplies(prev => [...prev, userReply])
 
     const assistantReply: StreamingReply = { agent: '', role: 'assistant', content: '', streaming: true }
@@ -122,18 +124,23 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
     const agentName = msg.agent || 'unknown'
     const info = agentDisplayInfo.get(agentName)
     const streaming = 'streaming' in msg && msg.streaming
+    const sender = 'sender' in msg ? (msg as ChannelMessage).sender : undefined
+    const currentUser = getUserName()
+    const displayName = isUser
+      ? (sender && sender !== currentUser ? sender : (sender || 'You'))
+      : (info?.displayName || agentName)
 
     return (
       <div key={idx} className="px-4 py-2">
         <div className="flex gap-2">
           {isUser ? (
-            <UserAvatar />
+            <UserAvatar name={sender || undefined} size={6} />
           ) : (
             <AgentAvatar name={agentName} displayName={info?.displayName} avatar={info?.avatar} size={6} />
           )}
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-foreground">
-              {isUser ? 'You' : (info?.displayName || agentName)}
+              {displayName}
             </p>
             {msg.content ? (
               <div className="text-sm prose prose-invert prose-sm max-w-none prose-p:my-1 prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none">
