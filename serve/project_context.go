@@ -132,7 +132,7 @@ func buildCompanyContext(company *dsl.Company) string {
 
 	var b strings.Builder
 	b.WriteString("## Organization\n\n")
-	b.WriteString(fmt.Sprintf("You work for **%s**.", company.Name))
+	b.WriteString(fmt.Sprintf("You work for **%s**. This is the company/organization name — do NOT assume the person chatting with you is the company owner or namesake.", company.Name))
 	if company.Description != "" {
 		b.WriteString(" " + company.Description)
 	}
