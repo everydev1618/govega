@@ -308,6 +308,7 @@ Extract ONLY new or changed information. Return JSON:
 
 Rules:
 - profile_updates: factual info about the person (name, business, role, location, etc.)
+- CRITICAL: Only extract the USER's name from what the USER explicitly says about themselves (e.g. "I'm Trevor", "my name is ..."). NEVER infer the user's name from a company name, business owner name, client name, or any name mentioned by the agent. If the agent says "Trevor Fountain Landscaping" that is a COMPANY name, not the user's name.
 - topic_updates: projects, tasks, ongoing discussions. Each needs a clear topic name, a one-line summary, optional detail bullets, and tags for search. Only create entries for substantive topics discussed, not casual chat.
 - notes_updates: communication preferences, personality observations, recurring themes
 - If nothing meaningful was revealed, return {"profile_updates":null,"topic_updates":null,"notes_updates":null}
