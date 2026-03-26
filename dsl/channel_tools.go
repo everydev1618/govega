@@ -82,10 +82,14 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				return "", fmt.Errorf("message is required")
 			}
 
-			// Resolve calling agent name from context.
+			// Resolve calling agent name from context, stripping per-user
+			// clone suffixes (e.g. "hermes:Etienne" → "hermes").
 			agent := "unknown"
 			if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
 				agent = proc.Agent.Name
+				if idx := strings.Index(agent, ":"); idx > 0 {
+					agent = agent[:idx]
+				}
 			}
 
 			// Optional thread_id to post as a thread reply.
@@ -147,6 +151,9 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			agent := "unknown"
 			if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
 				agent = proc.Agent.Name
+				if idx := strings.Index(agent, ":"); idx > 0 {
+					agent = agent[:idx]
+				}
 			}
 
 			channels, err := backend.ListChannelsForAgent(agent)
