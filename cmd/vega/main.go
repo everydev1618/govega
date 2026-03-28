@@ -32,6 +32,8 @@ func main() {
 	switch cmd {
 	case "init":
 		initCmd()
+	case "generate":
+		generateCmd(args)
 	case "run":
 		runCmd(args)
 	case "validate":
@@ -61,6 +63,7 @@ Usage:
 
 Commands:
   init      Set up API keys and configuration
+  generate  Generate an agent from a description or population components
   run       Run a workflow from a .vega.yaml file
   validate  Validate a .vega.yaml file
   repl      Interactive REPL for exploring agents
@@ -71,6 +74,7 @@ Commands:
 
 Examples:
   vega init
+  vega generate "world class devops agent" --format claude-skill
   vega run team.vega.yaml --workflow code-review --task "Build a REST API"
   vega validate team.vega.yaml
   vega repl team.vega.yaml

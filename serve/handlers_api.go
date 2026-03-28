@@ -2195,6 +2195,10 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	entries, err := os.ReadDir(workspace)
 	if err == nil {
 		for _, e := range entries {
+			// Preserve blueprints directory across resets (matches CLI behavior).
+			if e.Name() == "blueprints" {
+				continue
+			}
 			p := filepath.Join(workspace, e.Name())
 			if err := os.RemoveAll(p); err != nil {
 				slog.Warn("reset: failed to remove workspace entry", "path", p, "error", err)
