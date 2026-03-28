@@ -48,6 +48,10 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
+		// Skip blueprints directory at root level — internal to Mother.
+		if relPath == "" && e.Name() == "blueprints" {
+			continue
+		}
 		fi, err := e.Info()
 		if err != nil {
 			continue
