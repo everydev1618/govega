@@ -1,3 +1,4 @@
+// Package serve provides the HTTP server, REST API, and embedded React frontend.
 package serve
 
 import (
