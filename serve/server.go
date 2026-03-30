@@ -217,6 +217,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// names that don't yet exist, leaving agents without their MCP tools.
 	s.autoConnectBuiltinServers(ctx)
 	s.autoConnectPersistedServers(ctx)
+	s.persistYAMLMCPServers()
 
 	// Restore composed agents from persistence (after MCP servers are connected).
 	if s.popClient != nil {
@@ -863,6 +864,44 @@ func (s *Server) autoConnectPersistedServers(ctx context.Context) {
 			}
 			slog.Info("auto-connected persisted custom MCP server", "server", req.Name, "tools", n)
 		}
+	}
+}
+
+// persistYAMLMCPServers ensures YAML-configured MCP servers are persisted to
+// SQLite so the Connections page can display and edit them.
+func (s *Server) persistYAMLMCPServers() {
+	sqlStore, ok := s.store.(*SQLiteStore)
+	if !ok {
+		return
+	}
+	doc := s.interp.Document()
+	if doc == nil || doc.Settings == nil || doc.Settings.MCP == nil {
+		return
+	}
+	for _, serverDef := range doc.Settings.MCP.Servers {
+		if serverDef.Name == "" {
+			continue
+		}
+		// Build a ConnectMCPRequest from the YAML definition.
+		req := ConnectMCPRequest{
+			Name:      serverDef.Name,
+			Transport: serverDef.Transport,
+			Command:   serverDef.Command,
+			Args:      serverDef.Args,
+			URL:       serverDef.URL,
+			Headers:   serverDef.Headers,
+			Env:       serverDef.Env,
+		}
+		configJSON, err := json.Marshal(req)
+		if err != nil {
+			slog.Warn("failed to marshal YAML MCP server config", "server", serverDef.Name, "error", err)
+			continue
+		}
+		if err := sqlStore.UpsertMCPServer(serverDef.Name, string(configJSON)); err != nil {
+			slog.Warn("failed to persist YAML MCP server config", "server", serverDef.Name, "error", err)
+			continue
+		}
+		slog.Info("persisted YAML MCP server config", "server", serverDef.Name)
 	}
 }
 
