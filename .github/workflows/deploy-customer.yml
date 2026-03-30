@@ -177,8 +177,10 @@ jobs:
           $SCP deploy/customers/${{ matrix.customer }}/config.vega.yaml ubuntu@$IP:/tmp/config.vega.yaml
           $SCP env_file ubuntu@$IP:/tmp/vega-env
 
-          # Move into place and restart
-          $SSH "sudo systemctl stop vega 2>&1 || true && sudo pkill -f /usr/local/bin/vega 2>/dev/null || true && sleep 2 && sudo pkill -9 -f /usr/local/bin/vega 2>/dev/null || true && sleep 1 && sudo mv /tmp/vega /usr/local/bin/vega && sudo chmod +x /usr/local/bin/vega && sudo mv /tmp/config.vega.yaml /home/vega/.vega/config.vega.yaml && sudo mv /tmp/vega-env /home/vega/.vega/env && sudo chown vega:vega /home/vega/.vega/config.vega.yaml /home/vega/.vega/env && sudo chmod 600 /home/vega/.vega/env && sudo systemctl daemon-reload && sudo systemctl start vega && sleep 2 && sudo systemctl is-active vega"
+          # Create restart script, upload, and execute
+          printf '%s\n' '#!/bin/bash' 'set -e' 'sudo systemctl stop vega 2>&1 || true' 'sudo pkill -f /usr/local/bin/vega 2>/dev/null || true' 'sleep 2' 'sudo pkill -9 -f /usr/local/bin/vega 2>/dev/null || true' 'sleep 1' 'sudo mv /tmp/vega /usr/local/bin/vega' 'sudo chmod +x /usr/local/bin/vega' 'sudo mv /tmp/config.vega.yaml /home/vega/.vega/config.vega.yaml' 'sudo mv /tmp/vega-env /home/vega/.vega/env' 'sudo chown vega:vega /home/vega/.vega/config.vega.yaml /home/vega/.vega/env' 'sudo chmod 600 /home/vega/.vega/env' 'sudo systemctl daemon-reload' 'sudo systemctl start vega' 'sleep 2' 'sudo systemctl is-active vega' 'echo Deploy complete' > /tmp/restart-vega.sh
+          $SCP /tmp/restart-vega.sh ubuntu@$IP:/tmp/restart-vega.sh
+          $SSH 'chmod +x /tmp/restart-vega.sh && /tmp/restart-vega.sh'
 
       - name: Close SSH
         if: always()
