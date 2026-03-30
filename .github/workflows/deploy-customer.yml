@@ -179,14 +179,25 @@ jobs:
 
           # Move into place and restart
           $SSH << 'EOF'
-          sudo systemctl stop vega || true
+          sudo systemctl stop vega 2>&1 || true
+          # Force kill if systemctl stop didn't work
+          sudo pkill -f '/usr/local/bin/vega' 2>/dev/null || true
+          sleep 2
+          # Verify the process is actually dead
+          if pgrep -f '/usr/local/bin/vega' > /dev/null 2>&1; then
+            sudo pkill -9 -f '/usr/local/bin/vega' 2>/dev/null || true
+            sleep 1
+          fi
           sudo mv /tmp/vega /usr/local/bin/vega
           sudo chmod +x /usr/local/bin/vega
           sudo mv /tmp/config.vega.yaml /home/vega/.vega/config.vega.yaml
           sudo mv /tmp/vega-env /home/vega/.vega/env
           sudo chown vega:vega /home/vega/.vega/config.vega.yaml /home/vega/.vega/env
           sudo chmod 600 /home/vega/.vega/env
+          sudo systemctl daemon-reload
           sudo systemctl start vega
+          sleep 2
+          sudo systemctl is-active vega
           EOF
 
       - name: Close SSH
