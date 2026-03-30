@@ -3,6 +3,7 @@ name: Deploy Customers
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: deploy
@@ -22,12 +23,18 @@ jobs:
       - name: Detect changes
         id: detect
         run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD)
-
-          # Check if core vega code changed (binary needs rebuild + deploy to all)
-          CORE_CHANGED=false
-          if echo "$CHANGED" | grep -qE '^(cmd/|dsl/|llm/|tools/|serve/|mcp/|memory/|go\.(mod|sum)|Makefile|\.goreleaser)'; then
+          # Manual dispatch always deploys to all customers
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             CORE_CHANGED=true
+            CHANGED=""
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD)
+
+            # Check if core vega code changed (binary needs rebuild + deploy to all)
+            CORE_CHANGED=false
+            if echo "$CHANGED" | grep -qE '^(cmd/|dsl/|llm/|tools/|serve/|mcp/|memory/|go\.(mod|sum)|Makefile|\.goreleaser)'; then
+              CORE_CHANGED=true
+            fi
           fi
 
           # Find which customer configs changed
