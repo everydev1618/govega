@@ -140,8 +140,11 @@ func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 	return func() {
 		slog.Info("scheduler: firing job", "name", job.Name, "agent", job.AgentName)
 		ctx := context.Background()
-		if _, err := s.interp.DispatchToAgent(ctx, job.AgentName, job.Message); err != nil {
-			slog.Warn("scheduler: agent dispatch failed", "name", job.Name, "agent", job.AgentName, "error", err)
+		// Use SendToAgent (synchronous, no inbox item) instead of
+		// DispatchToAgent to avoid spamming the inbox with no-op
+		// heartbeat results like "inbox empty."
+		if _, err := s.interp.SendToAgent(ctx, job.AgentName, job.Message); err != nil {
+			slog.Warn("scheduler: agent send failed", "name", job.Name, "agent", job.AgentName, "error", err)
 		}
 	}
 }
