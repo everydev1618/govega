@@ -41,6 +41,7 @@ export interface AgentResponse {
   team?: string[]
   process_id?: string
   process_status?: string
+  streaming?: boolean
   source?: string
 }
 

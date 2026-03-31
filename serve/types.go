@@ -53,6 +53,7 @@ type AgentResponse struct {
 	Team          []string `json:"team,omitempty"`
 	ProcessID     string   `json:"process_id,omitempty"`
 	ProcessStatus string   `json:"process_status,omitempty"`
+	Streaming     bool     `json:"streaming,omitempty"`
 	Source        string   `json:"source,omitempty"`
 }
 
