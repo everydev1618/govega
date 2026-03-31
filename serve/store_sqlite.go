@@ -903,6 +903,19 @@ func (s *SQLiteStore) GetChannelByName(name string) (*dsl.ChannelInfo, error) {
 	return &dsl.ChannelInfo{ID: ch.ID, Name: ch.Name, Team: ch.Team}, nil
 }
 
+// ListAllChannels returns all channels as ChannelInfo (for the dsl.ChannelBackend interface).
+func (s *SQLiteStore) ListAllChannels() ([]dsl.ChannelInfo, error) {
+	channels, err := s.ListChannels("default")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]dsl.ChannelInfo, len(channels))
+	for i, ch := range channels {
+		result[i] = dsl.ChannelInfo{ID: ch.ID, Name: ch.Name, Team: ch.Team}
+	}
+	return result, nil
+}
+
 // ListChannelsForAgent returns channels where the agent is a team member.
 func (s *SQLiteStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, error) {
 	channels, err := s.ListChannels("default")

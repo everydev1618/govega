@@ -56,6 +56,7 @@ type ChannelMessage struct {
 type ChannelBackend interface {
 	CreateChannel(id, name, description, createdBy string, team []string, mode string) error
 	GetChannelByName(name string) (*ChannelInfo, error)
+	ListAllChannels() ([]ChannelInfo, error)
 	ListChannelsForAgent(agent string) ([]ChannelInfo, error)
 	FindChannelForAgents(agent1, agent2 string) (channelID string, channelName string, err error)
 	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string) (int64, error)
@@ -146,7 +147,7 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 	})
 
 	t.Register("list_my_channels", tools.ToolDef{
-		Description: "List the channels you belong to. Returns channel names and team members.",
+		Description: "List all channels in the system with their team members. Channels you belong to are marked.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			agent := "unknown"
 			if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
@@ -156,17 +157,28 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				}
 			}
 
-			channels, err := backend.ListChannelsForAgent(agent)
+			channels, err := backend.ListAllChannels()
 			if err != nil {
 				return "", fmt.Errorf("list channels: %w", err)
 			}
 			if len(channels) == 0 {
-				return "You are not in any channels.", nil
+				return "No channels exist yet. Use create_channel to set one up.", nil
 			}
 
 			var result string
 			for _, ch := range channels {
-				result += fmt.Sprintf("- #%s (team: %v)\n", ch.Name, ch.Team)
+				isMember := false
+				for _, member := range ch.Team {
+					if member == agent {
+						isMember = true
+						break
+					}
+				}
+				if isMember {
+					result += fmt.Sprintf("- #%s (team: %v) ← you are here\n", ch.Name, ch.Team)
+				} else {
+					result += fmt.Sprintf("- #%s (team: %v)\n", ch.Name, ch.Team)
+				}
 			}
 			return result, nil
 		}),

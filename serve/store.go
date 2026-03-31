@@ -113,6 +113,9 @@ type Store interface {
 	// GetChannelByName returns minimal channel info for the dsl.ChannelBackend interface.
 	GetChannelByName(name string) (*dsl.ChannelInfo, error)
 
+	// ListAllChannels returns all channels as ChannelInfo.
+	ListAllChannels() ([]dsl.ChannelInfo, error)
+
 	// ListChannelsForAgent returns channels where the agent is a team member.
 	ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, error)
 
