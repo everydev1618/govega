@@ -115,7 +115,7 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Description: "SynkedUp landscape business management (customers, projects, calendar, items, users)",
 		Command:     "synkedup-vega-mcp",
 		RequiredEnv: []string{"SYNKEDUP_API_URL", "SYNKEDUP_USERNAME", "SYNKEDUP_PASSWORD"},
-		GitHubRepo:  "etiennesu/synkedup-vega-mcp",
+		GitHubRepo:  "etdebruin/synkedup-vega-mcp",
 	},
 }
 
