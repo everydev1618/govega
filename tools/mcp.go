@@ -366,7 +366,10 @@ func (t *Tools) MCPServerStatuses() []MCPServerStatus {
 	clients := t.mcpClients
 	t.mu.RUnlock()
 
-	statuses := make([]MCPServerStatus, 0, len(clients))
+	// Deduplicate by name — prefer the connected entry when duplicates exist
+	// (e.g. YAML config + persisted DB credentials for the same server).
+	byName := make(map[string]MCPServerStatus, len(clients))
+	order := make([]string, 0, len(clients))
 	for _, entry := range clients {
 		s := MCPServerStatus{
 			Name:      entry.config.Name,
@@ -378,7 +381,18 @@ func (t *Tools) MCPServerStatuses() []MCPServerStatus {
 		for _, mcpTool := range entry.client.Tools() {
 			s.Tools = append(s.Tools, mcpTool.Name)
 		}
-		statuses = append(statuses, s)
+		existing, seen := byName[s.Name]
+		if !seen {
+			order = append(order, s.Name)
+			byName[s.Name] = s
+		} else if s.Connected && !existing.Connected {
+			byName[s.Name] = s
+		}
+	}
+
+	statuses := make([]MCPServerStatus, 0, len(order))
+	for _, name := range order {
+		statuses = append(statuses, byName[name])
 	}
 	return statuses
 }
