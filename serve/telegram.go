@@ -105,6 +105,9 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 
 	// Add memory context so tools can access the store.
 	ctx = ContextWithMemory(ctx, t.store, userID, t.agentName)
+	if ss, ok := t.store.(*SQLiteStore); ok {
+		ctx = ContextWithDomainStore(ctx, ss)
+	}
 
 	response, err := t.interp.SendToAgent(ctx, name, text)
 	if err != nil {

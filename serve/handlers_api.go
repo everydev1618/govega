@@ -143,6 +143,21 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			ar.ProcessID = proc.ID
 			ar.ProcessStatus = string(proc.Status())
 		}
+		// Check whether this agent (or any per-user clone) has an active stream.
+		s.streamsMu.Lock()
+		for sname, as := range s.streams {
+			if sname == name || strings.HasPrefix(sname, name+":") {
+				select {
+				case <-as.done:
+				default:
+					ar.Streaming = true
+				}
+				if ar.Streaming {
+					break
+				}
+			}
+		}
+		s.streamsMu.Unlock()
 		if ca, ok := composedMap[name]; ok {
 			ar.Source = "composed"
 			ar.Team = ca.Team
@@ -263,6 +278,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 	defer cancel()
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
+	ctx = ContextWithDomainStore(ctx, s.sqliteStore)
 
 	response, err := s.interp.SendToAgent(ctx, name, req.Message)
 	if err != nil {
@@ -333,6 +349,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	// Bootstrap flows can run 30+ min (Mother builds team, Hermes dispatches to each agent serially).
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
+	ctx = ContextWithDomainStore(ctx, s.sqliteStore)
 
 	// Snapshot baseline metrics before the stream so we can compute per-response delta.
 	baseMetrics := proc.Metrics()
