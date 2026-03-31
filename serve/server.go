@@ -369,7 +369,13 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// When a dispatched agent finishes, immediately poke Hermes to triage
 	// the inbox instead of waiting for the 15-minute heartbeat.
+	// Skip when Hermes itself completes — otherwise we get an infinite loop
+	// (Hermes triages → dispatches → completes → pokes Hermes → repeat).
 	s.interp.SetDispatchCompleteCallback(func(agentName string) {
+		if agentName == dsl.HermesAgentName || strings.HasPrefix(agentName, dsl.HermesAgentName+":") {
+			slog.Debug("skipping hermes poke — completing agent is hermes itself", "agent", agentName)
+			return
+		}
 		slog.Info("dispatch complete, poking hermes to triage inbox", "agent", agentName)
 		go func() {
 			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", agentName)
