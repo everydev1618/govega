@@ -55,7 +55,6 @@ export function Layout() {
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
   const [chatUnread, setChatUnread] = useState<Record<string, number>>({})
   const [runningTasks, setRunningTasks] = useState<ProcessResponse[]>([])
-  const [busyAgents, setBusyAgents] = useState<Set<string>>(new Set())
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dmCollapsed, setDmCollapsed] = useState(false)
@@ -65,13 +64,6 @@ export function Layout() {
     api.getProcesses().then(procs => {
       const running = (procs ?? []).filter(p => p.status === 'running')
       setRunningTasks(running.filter(p => p.task))
-      // Build busy set from ALL running processes, not just ones with task descriptions.
-      const busy = new Set<string>()
-      for (const p of running) {
-        const base = p.agent.indexOf(':') >= 0 ? p.agent.substring(0, p.agent.indexOf(':')) : p.agent
-        busy.add(base)
-      }
-      setBusyAgents(busy)
     }).catch(() => {})
   }
 
@@ -169,7 +161,7 @@ export function Layout() {
                   displayName="Hermes"
                   avatar="n2"
                   unreadCount={chatUnread[hermesAgent.name] || 0}
-                  busy={busyAgents.has('hermes')}
+                  busy={hermesAgent.streaming}
                 />
               )}
               {specialists.length > 0 && hermesAgent && (
@@ -183,7 +175,7 @@ export function Layout() {
                   displayName={a.display_name || capitalize(a.name)}
                   avatar={a.avatar}
                   unreadCount={chatUnread[a.name] || 0}
-                  busy={busyAgents.has(a.name)}
+                  busy={a.streaming}
                 />
               ))}
             </div>
