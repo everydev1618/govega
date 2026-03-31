@@ -171,7 +171,9 @@ func extractTarGz(archive, command, dest string) error {
 		}
 
 		// Match by base name — GoReleaser puts the binary at the root of the archive.
-		if filepath.Base(hdr.Name) == command && hdr.Typeflag == tar.TypeReg {
+		// Also match names with OS/arch suffixes (e.g. "cmd_darwin_arm64" for "cmd").
+		base := filepath.Base(hdr.Name)
+		if hdr.Typeflag == tar.TypeReg && (base == command || strings.HasPrefix(base, command+"_")) {
 			return writeFile(tr, dest)
 		}
 	}
@@ -188,7 +190,8 @@ func extractZip(archive, command, dest string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
-		if filepath.Base(f.Name) == command {
+		base := filepath.Base(f.Name)
+		if base == command || strings.HasPrefix(base, command+"_") {
 			rc, err := f.Open()
 			if err != nil {
 				return err
