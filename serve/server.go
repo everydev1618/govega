@@ -102,9 +102,10 @@ type Config struct {
 
 // Server is the HTTP server for the Vega dashboard and REST API.
 type Server struct {
-	interp    *dsl.Interpreter
-	broker    *EventBroker
-	store     Store
+	interp      *dsl.Interpreter
+	broker      *EventBroker
+	store       Store
+	sqliteStore *SQLiteStore // typed reference for domain tools
 	popClient *population.Client
 	telegram  *TelegramBot
 	scheduler *Scheduler
@@ -169,8 +170,12 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("open database: %w", err)
 	}
 	s.store = store
+	s.sqliteStore = store
 	if err := store.Init(); err != nil {
 		return fmt.Errorf("init database: %w", err)
+	}
+	if err := store.InitDomainTables(); err != nil {
+		return fmt.Errorf("init domain tables: %w", err)
 	}
 
 	// Resolve company identity.
@@ -226,6 +231,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Register memory tools before injecting meta-agents so they can use them.
 	RegisterMemoryTools(s.interp)
+
+	// Register domain tools (job tracking, follow-ups, production rates).
+	RegisterDomainTools(s.interp)
 
 	// Inject Mother — the built-in meta-agent for creating agents via chat.
 	s.injectMother()

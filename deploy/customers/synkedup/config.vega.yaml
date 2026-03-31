@@ -116,6 +116,10 @@ agents:
       - synkedup__list_cost_codes
       - synkedup__list_divisions
       - synkedup__list_division_groups
+      - list_jobs
+      - get_job
+      - cost_job
+      - get_production_rates
 
   # --- Walt — Estimating Lead ---
   walt:
@@ -166,6 +170,11 @@ agents:
       - synkedup__restore_estimate
       - synkedup__list_cost_codes
       - synkedup__list_divisions
+      - track_job
+      - list_jobs
+      - get_job
+      - record_production_rate
+      - get_production_rates
 
   # --- Hank — Operations Manager ---
   hank:
@@ -217,6 +226,9 @@ agents:
       - synkedup__get_customer
       - synkedup__list_properties
       - synkedup__get_property
+      - track_job
+      - list_jobs
+      - get_job
 
   # --- June — Scheduling Coordinator ---
   june:
@@ -267,6 +279,9 @@ agents:
       - synkedup__get_customer
       - synkedup__list_properties
       - synkedup__create_update_consultation
+      - track_job
+      - list_jobs
+      - get_job
 
   # --- Devin — Invoicing Specialist ---
   devin:
@@ -310,6 +325,12 @@ agents:
       - synkedup__get_customer
       - synkedup__list_properties
       - synkedup__get_property
+      - track_job
+      - list_jobs
+      - get_job
+      - add_follow_up
+      - list_follow_ups
+      - complete_follow_up
 
   # --- Mara — Sales Lead ---
   mara:
@@ -360,3 +381,9 @@ agents:
       - synkedup__delete_property
       - synkedup__create_update_consultation
       - synkedup__list_active_users
+      - track_job
+      - list_jobs
+      - get_job
+      - add_follow_up
+      - list_follow_ups
+      - complete_follow_up
