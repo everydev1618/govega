@@ -47,6 +47,7 @@ type Interpreter struct {
 	channelBackend    ChannelBackend // for posting completion summaries to channels
 	memoryInjector    func(proc *vega.Process, agentName string) // injects memory into agent before send
 	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
+	onDispatchStart    func(agentName string) // fires when a dispatched agent begins working
 	onDispatchComplete func(agentName string) // fires when a dispatched agent finishes
 	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
@@ -1349,6 +1350,9 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 	}
 
 	go func() {
+		if i.onDispatchStart != nil {
+			i.onDispatchStart(agentName)
+		}
 		// Use a fresh background context — the caller's ctx/stream will be closed.
 		resp, err := i.SendToAgent(context.Background(), agentName, message)
 
@@ -1399,6 +1403,12 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 	}()
 
 	return fmt.Sprintf("Dispatched to **%s**. Watch their channel for progress.", agentName), nil
+}
+
+// SetDispatchStartCallback registers a callback that fires when a dispatched
+// agent begins working. The serve layer uses this to show a busy indicator.
+func (i *Interpreter) SetDispatchStartCallback(fn func(agentName string)) {
+	i.onDispatchStart = fn
 }
 
 // SetDispatchCompleteCallback registers a callback that fires when a dispatched

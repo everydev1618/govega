@@ -367,11 +367,42 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wire channel backend so DispatchToAgent can post completion summaries.
 	s.interp.SetChannelBackend(s.store, channelPostCb)
 
+	// Register a synthetic active stream when an agent is dispatched so the
+	// UI shows a busy spinner on the agent's avatar.
+	s.interp.SetDispatchStartCallback(func(agentName string) {
+		as := &activeStream{
+			agentName: agentName,
+			done:      make(chan struct{}),
+		}
+		s.streamsMu.Lock()
+		s.streams[agentName] = as
+		s.streamsMu.Unlock()
+
+		// Notify frontends so the agent list refreshes with busy state.
+		s.broker.Publish(BrokerEvent{
+			Type:      "process.started",
+			Agent:     agentName,
+			Timestamp: time.Now(),
+		})
+	})
+
 	// When a dispatched agent finishes, immediately poke Hermes to triage
 	// the inbox instead of waiting for the 15-minute heartbeat.
 	// Skip when Hermes itself completes — otherwise we get an infinite loop
 	// (Hermes triages → dispatches → completes → pokes Hermes → repeat).
 	s.interp.SetDispatchCompleteCallback(func(agentName string) {
+		// Clear the synthetic active stream so the busy spinner stops.
+		s.streamsMu.Lock()
+		if as, ok := s.streams[agentName]; ok {
+			select {
+			case <-as.done:
+			default:
+				close(as.done)
+			}
+			delete(s.streams, agentName)
+		}
+		s.streamsMu.Unlock()
+
 		if agentName == dsl.HermesAgentName || strings.HasPrefix(agentName, dsl.HermesAgentName+":") {
 			slog.Debug("skipping hermes poke — completing agent is hermes itself", "agent", agentName)
 			return
