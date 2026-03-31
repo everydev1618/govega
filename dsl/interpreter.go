@@ -270,6 +270,21 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		systemStr += "\n\nFor dynamic applications (Node.js, Python, etc.), use `start_service` to run dev servers in the background. The service keeps running until stopped with `stop_service`. Use `service_logs` to check output and `list_services` to see what's running. Always report the URL where the service is accessible."
 	}
 
+	// Inject connected MCP tool summary so agents know what external data
+	// sources are available. Group by server for readability.
+	mcpServers := make(map[string][]string)
+	for _, schema := range i.tools.Schema() {
+		if parts := strings.SplitN(schema.Name, "__", 2); len(parts) == 2 {
+			mcpServers[parts[0]] = append(mcpServers[parts[0]], parts[1])
+		}
+	}
+	if len(mcpServers) > 0 {
+		systemStr += "\n\n## Connected data sources\nYou have access to external tools via connected services. ALWAYS use these tools to answer questions about real data — never say you don't have access or tell the user to check manually.\n"
+		for server, toolNames := range mcpServers {
+			systemStr += fmt.Sprintf("- **%s**: %s\n", server, strings.Join(toolNames, ", "))
+		}
+	}
+
 	// Build base system prompt
 	var systemPrompt vega.SystemPrompt = vega.StaticPrompt(systemStr)
 
