@@ -163,9 +163,16 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > deploy_key
           chmod 600 deploy_key
 
+      - name: Get desired FQDN
+        id: fqdn
+        run: |
+          FQDN=$(grep '^fqdn' deploy/customers/${{ matrix.customer }}/terraform.tfvars | sed 's/.*= *"\(.*\)"/\1/')
+          echo "desired=$FQDN" >> $GITHUB_OUTPUT
+
       - name: Deploy binary, config, and env
         env:
           IP: ${{ steps.tf.outputs.ip }}
+          FQDN: ${{ steps.fqdn.outputs.desired }}
         run: |
           SSH="ssh -o StrictHostKeyChecking=no -i deploy_key ubuntu@$IP"
           SCP="scp -o StrictHostKeyChecking=no -i deploy_key"
@@ -177,10 +184,48 @@ jobs:
           $SCP deploy/customers/${{ matrix.customer }}/config.vega.yaml ubuntu@$IP:/tmp/config.vega.yaml
           $SCP env_file ubuntu@$IP:/tmp/vega-env
 
-          # Create restart script, upload, and execute
-          printf '%s\n' '#!/bin/bash' 'set -e' 'sudo systemctl stop vega 2>&1 || true' 'sudo pkill -f /usr/local/bin/vega 2>/dev/null || true' 'sleep 2' 'sudo pkill -9 -f /usr/local/bin/vega 2>/dev/null || true' 'sleep 1' 'sudo mv /tmp/vega /usr/local/bin/vega' 'sudo chmod +x /usr/local/bin/vega' 'sudo mv /tmp/config.vega.yaml /home/vega/.vega/config.vega.yaml' 'sudo mv /tmp/vega-env /home/vega/.vega/env' 'sudo chown vega:vega /home/vega/.vega/config.vega.yaml /home/vega/.vega/env' 'sudo chmod 600 /home/vega/.vega/env' 'sudo systemctl daemon-reload' 'sudo systemctl start vega' 'sleep 2' 'sudo systemctl is-active vega' 'echo Deploy complete' > /tmp/restart-vega.sh
+          # Create restart script with FQDN migration support
+          cat > /tmp/restart-vega.sh <<'SCRIPT'
+          #!/bin/bash
+          set -e
+          DESIRED_FQDN="$1"
+
+          # Stop vega
+          sudo systemctl stop vega 2>&1 || true
+          sudo pkill -f /usr/local/bin/vega 2>/dev/null || true
+          sleep 2
+          sudo pkill -9 -f /usr/local/bin/vega 2>/dev/null || true
+          sleep 1
+
+          # Deploy binary and config
+          sudo mv /tmp/vega /usr/local/bin/vega
+          sudo chmod +x /usr/local/bin/vega
+          sudo mv /tmp/config.vega.yaml /home/vega/.vega/config.vega.yaml
+          sudo mv /tmp/vega-env /home/vega/.vega/env
+          sudo chown vega:vega /home/vega/.vega/config.vega.yaml /home/vega/.vega/env
+          sudo chmod 600 /home/vega/.vega/env
+
+          # Migrate FQDN if nginx server_name doesn't match
+          if [ -n "$DESIRED_FQDN" ]; then
+            CURRENT_FQDN=$(grep -oP 'server_name \K[^;]+' /etc/nginx/sites-available/vega 2>/dev/null | head -1)
+            if [ "$CURRENT_FQDN" != "$DESIRED_FQDN" ] && [ -n "$CURRENT_FQDN" ]; then
+              echo "Migrating FQDN: $CURRENT_FQDN -> $DESIRED_FQDN"
+              sudo sed -i "s/server_name $CURRENT_FQDN/server_name $DESIRED_FQDN/g" /etc/nginx/sites-available/vega
+              sudo nginx -t && sudo systemctl reload nginx
+              sudo certbot --nginx --non-interactive --agree-tos -m admin@v3ga.dev -d "$DESIRED_FQDN" || echo "::warning::certbot failed for $DESIRED_FQDN"
+            fi
+          fi
+
+          # Start vega
+          sudo systemctl daemon-reload
+          sudo systemctl start vega
+          sleep 2
+          sudo systemctl is-active vega
+          echo "Deploy complete"
+          SCRIPT
+
           $SCP /tmp/restart-vega.sh ubuntu@$IP:/tmp/restart-vega.sh
-          $SSH 'chmod +x /tmp/restart-vega.sh && /tmp/restart-vega.sh'
+          $SSH "chmod +x /tmp/restart-vega.sh && /tmp/restart-vega.sh '$FQDN'"
 
       - name: Close SSH
         if: always()
@@ -196,7 +241,7 @@ jobs:
 
       - name: Health check
         run: |
-          FQDN=$(cd deploy/terraform && terraform output -raw fqdn)
+          FQDN=$(grep '^fqdn' deploy/customers/${{ matrix.customer }}/terraform.tfvars | sed 's/.*= *"\(.*\)"/\1/')
           echo "Checking https://$FQDN ..."
           for i in $(seq 1 12); do
             if curl -sf --max-time 5 "https://$FQDN/api/agents" > /dev/null 2>&1; then
