@@ -271,17 +271,32 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	}
 
 	// Inject connected MCP tool summary so agents know what external data
-	// sources are available. Group by server for readability.
-	mcpServers := make(map[string][]string)
+	// sources are available. Group by server with descriptions.
+	type mcpTool struct {
+		name string
+		desc string
+	}
+	mcpServers := make(map[string][]mcpTool)
 	for _, schema := range i.tools.Schema() {
 		if parts := strings.SplitN(schema.Name, "__", 2); len(parts) == 2 {
-			mcpServers[parts[0]] = append(mcpServers[parts[0]], parts[1])
+			desc := schema.Description
+			if len(desc) > 80 {
+				desc = desc[:80] + "..."
+			}
+			mcpServers[parts[0]] = append(mcpServers[parts[0]], mcpTool{parts[1], desc})
 		}
 	}
 	if len(mcpServers) > 0 {
-		systemStr += "\n\n## Connected data sources\nYou have access to external tools via connected services. ALWAYS use these tools to answer questions about real data — never say you don't have access or tell the user to check manually.\n"
-		for server, toolNames := range mcpServers {
-			systemStr += fmt.Sprintf("- **%s**: %s\n", server, strings.Join(toolNames, ", "))
+		systemStr += "\n\n## Connected data sources\nYou have live access to external systems. When asked about real data, you MUST call these tools — do not say you lack access or tell the user to check manually.\n"
+		for server, tools := range mcpServers {
+			systemStr += fmt.Sprintf("\n**%s** (%d tools):\n", server, len(tools))
+			for _, t := range tools {
+				if t.desc != "" {
+					systemStr += fmt.Sprintf("  - %s — %s\n", t.name, t.desc)
+				} else {
+					systemStr += fmt.Sprintf("  - %s\n", t.name)
+				}
+			}
 		}
 	}
 
