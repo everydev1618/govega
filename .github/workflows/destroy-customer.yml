@@ -13,11 +13,12 @@ on:
         type: string
 
 concurrency:
-  group: provision-${{ inputs.customer }}
+  group: destroy-${{ github.event.inputs.customer || 'none' }}
   cancel-in-progress: false
 
 jobs:
   destroy:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     steps:
