@@ -257,6 +257,7 @@ func (s *Server) Start(ctx context.Context) error {
 			return s.store.DeleteScheduledJob(name)
 		},
 	)
+	s.scheduler.inbox = store
 	if storedJobs, err := s.store.ListScheduledJobs(); err != nil {
 		slog.Warn("scheduler: failed to load persisted jobs", "error", err)
 	} else {

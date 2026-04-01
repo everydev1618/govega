@@ -1157,6 +1157,13 @@ func (s *SQLiteStore) InsertInboxItem(fromAgent, subject, body, priority string)
 }
 
 // ListInboxItems returns inbox items filtered by status.
+// PendingInboxCount returns the number of pending inbox items (cheap query, no LLM needed).
+func (s *SQLiteStore) PendingInboxCount() (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM inbox_items WHERE status = 'pending'`).Scan(&count)
+	return count, err
+}
+
 func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, error) {
 	if limit <= 0 {
 		limit = 50
