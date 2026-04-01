@@ -10,11 +10,17 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+// inboxChecker is a minimal interface for checking pending inbox items.
+type inboxChecker interface {
+	PendingInboxCount() (int, error)
+}
+
 // Scheduler runs cron jobs that send messages to agents.
 // It implements dsl.SchedulerBackend.
 type Scheduler struct {
 	c       *cron.Cron
 	interp  *dsl.Interpreter
+	inbox   inboxChecker // optional — used to skip no-op heartbeats
 	persist func(job dsl.ScheduledJob) error
 	remove  func(name string) error
 
@@ -138,6 +144,16 @@ func (s *Scheduler) ListJobs() []dsl.ScheduledJob {
 // makeFunc returns the cron callback for a job.
 func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 	return func() {
+		// For heartbeat jobs, skip the LLM call entirely if the inbox
+		// is empty — saves tokens when the system is idle.
+		if s.inbox != nil && job.Name == "hermes-heartbeat" {
+			count, err := s.inbox.PendingInboxCount()
+			if err == nil && count == 0 {
+				slog.Debug("scheduler: skipping heartbeat — inbox empty", "name", job.Name)
+				return
+			}
+		}
+
 		slog.Info("scheduler: firing job", "name", job.Name, "agent", job.AgentName)
 		ctx := context.Background()
 		// Use SendToAgent (synchronous, no inbox item) instead of
