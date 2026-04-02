@@ -177,6 +177,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if err := store.InitDomainTables(); err != nil {
 		return fmt.Errorf("init domain tables: %w", err)
 	}
+	if err := store.InitDomainTablesV2(); err != nil {
+		return fmt.Errorf("init domain tables v2: %w", err)
+	}
 
 	// Resolve company identity.
 	s.company = s.resolveCompany()
