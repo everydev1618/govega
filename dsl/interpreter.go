@@ -1410,7 +1410,7 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		if err == nil && i.channelBackend != nil {
 			channels, chErr := i.channelBackend.ListChannelsForAgent(agentName)
 			if chErr == nil {
-				summary := fmt.Sprintf("[Task complete] %s", truncateStr(resp, 500))
+				summary := truncateStr(resp, 500)
 				for _, ch := range channels {
 					// Skip general/random — post to team channels only.
 					if ch.Name == "general" || ch.Name == "random" {
