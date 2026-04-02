@@ -153,6 +153,8 @@ agents:
       - update_property
       - list_items
       - get_item
+      - create_item
+      - update_item
       - create_estimate
       - get_estimate
       - update_estimate
