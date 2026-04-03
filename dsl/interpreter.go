@@ -1383,8 +1383,9 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		if i.onDispatchStart != nil {
 			i.onDispatchStart(agentName)
 		}
-		// Use a fresh background context — the caller's ctx/stream will be closed.
-		resp, err := i.SendToAgent(context.Background(), agentName, message)
+		// Detach from the caller's deadline/cancel (it will be closed) but
+		// preserve context values so domain-store, memory, etc. propagate.
+		resp, err := i.SendToAgent(context.WithoutCancel(ctx), agentName, message)
 
 		// Post completion notification to inbox as pending so Hermes triages it.
 		// Failed tasks are marked urgent.
