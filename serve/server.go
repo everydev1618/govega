@@ -261,6 +261,7 @@ func (s *Server) Start(ctx context.Context) error {
 		},
 	)
 	s.scheduler.inbox = store
+	s.scheduler.store = store
 	if storedJobs, err := s.store.ListScheduledJobs(); err != nil {
 		slog.Warn("scheduler: failed to load persisted jobs", "error", err)
 	} else {
@@ -414,7 +415,8 @@ func (s *Server) Start(ctx context.Context) error {
 		slog.Info("dispatch complete, poking hermes to triage inbox", "agent", agentName)
 		go func() {
 			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", agentName)
-			resp, err := s.interp.SendToAgent(context.Background(), "hermes", msg)
+			ctx := ContextWithDomainStore(context.Background(), s.sqliteStore)
+			resp, err := s.interp.SendToAgent(ctx, "hermes", msg)
 			if err != nil {
 				slog.Error("failed to poke hermes after dispatch", "agent", agentName, "error", err)
 				return

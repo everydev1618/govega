@@ -23,6 +23,7 @@ type Scheduler struct {
 	inbox   inboxChecker // optional — used to skip no-op heartbeats
 	persist func(job dsl.ScheduledJob) error
 	remove  func(name string) error
+	store   *SQLiteStore // domain store for tool context
 
 	mu      sync.Mutex
 	jobs    []dsl.ScheduledJob
@@ -156,6 +157,9 @@ func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 
 		slog.Info("scheduler: firing job", "name", job.Name, "agent", job.AgentName)
 		ctx := context.Background()
+		if s.store != nil {
+			ctx = ContextWithDomainStore(ctx, s.store)
+		}
 		// Use SendToAgent (synchronous, no inbox item) instead of
 		// DispatchToAgent to avoid spamming the inbox with no-op
 		// heartbeat results like "inbox empty."
