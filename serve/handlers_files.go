@@ -48,7 +48,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		// Skip blueprints directory at root level — internal to Mother.
+		// Skip blueprints directory at root level — internal to Hera.
 		if relPath == "" && e.Name() == "blueprints" {
 			continue
 		}

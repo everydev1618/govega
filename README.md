@@ -18,7 +18,7 @@ vega serve team.vega.yaml
 # Open http://localhost:3001 → pick an agent → start chatting
 ```
 
-No YAML file? `vega serve` starts with Mother and Hermes ready to go.
+No YAML file? `vega serve` starts with Hera and Iris ready to go.
 
 ### Streaming API
 
@@ -821,53 +821,53 @@ Historical process data, events, and workflow runs persist across restarts via S
 
 `vega serve` injects two meta-agents automatically — no YAML required.
 
-#### Mother
+#### Hera
 
-Mother is the agent architect. Talk to her to create, update, or delete agents through conversation. She knows all available tools, skills, and MCP servers, and designs teams rather than solo agents. She can also set up recurring schedules — cron-driven triggers that send a message to any agent automatically.
+Hera is the agent architect. Talk to her to create, update, or delete agents through conversation. She knows all available tools, skills, and MCP servers, and designs teams rather than solo agents. She can also set up recurring schedules — cron-driven triggers that send a message to any agent automatically.
 
 ```
 You: I need an agent that researches competitors
-Mother: I'll create a researcher with web tools and a lead agent to synthesize...
+Hera: I'll create a researcher with web tools and a lead agent to synthesize...
 
-You: Every morning at 9am, have hermes check Hacker News and email me a summary
-Mother: [calls create_schedule with cron "0 9 * * *", agent "hermes", message "..."]
+You: Every morning at 9am, have iris check Hacker News and email me a summary
+Hera: [calls create_schedule with cron "0 9 * * *", agent "iris", message "..."]
 ```
 
-Mother is always available in the sidebar or via `POST /api/agents/mother/chat`.
+Hera is always available in the sidebar or via `POST /api/agents/hera/chat`.
 
-#### Hermes
+#### Iris
 
-Hermes is the cosmic orchestrator — a boy traveling the Vega universe with unlimited reach. Give him any goal and he figures out which agents to involve, routes work across the whole population, calls on Mother when new agents are needed, and synthesizes everything into a result.
+Iris is the cosmic orchestrator — a messenger traversing the Vega universe with unlimited reach. Give her any goal and she figures out which agents to involve, routes work across the whole population, calls on Hera when new agents are needed, and synthesizes everything into a result.
 
 ```
-You → Hermes: "Do a competitive analysis of our top 3 competitors and write it up"
+You → Iris: "Do a competitive analysis of our top 3 competitors and write it up"
 
-Hermes → list_agents           (surveys who's available)
-Hermes → send_to_agent(mother, "create a web researcher agent")
-Hermes → send_to_agent(researcher, "research competitor A...")
-Hermes → send_to_agent(researcher, "research competitor B...")
-Hermes → send_to_agent(writer,     "write up the analysis...")
-Hermes → You: polished result
+Iris → list_agents           (surveys who's available)
+Iris → send_to_agent(hera, "create a web researcher agent")
+Iris → send_to_agent(researcher, "research competitor A...")
+Iris → send_to_agent(researcher, "research competitor B...")
+Iris → send_to_agent(writer,     "write up the analysis...")
+Iris → You: polished result
 ```
 
-Hermes has two tools:
+Iris has two tools:
 - `list_agents` — see all agents with their purpose summaries
-- `send_to_agent` — route a task to any agent by name, including Mother
+- `send_to_agent` — route a task to any agent by name, including Hera
 
-The mythological fit is intentional: Hermes's mother in Greek mythology was Maia.
+The mythological fit is intentional: Iris is the goddess of the rainbow and messenger of the gods in Greek mythology, serving Hera as her personal herald.
 
 ### Scheduler
 
 Trigger agents on a cron schedule — no external cron job needed. The scheduler runs inside `vega serve` and persists jobs to SQLite so they survive restarts.
 
-Set up a schedule by asking Mother:
+Set up a schedule by asking Hera:
 
 ```
-You: Every day at 9am, send a message to hermes saying "check hacker news for AI news and email me a summary"
-Mother: Done! Schedule "morning-news" created: '0 9 * * *' → hermes
+You: Every day at 9am, send a message to iris saying "check hacker news for AI news and email me a summary"
+Hera: Done! Schedule "morning-news" created: '0 9 * * *' → iris
 ```
 
-Or use Mother's scheduler tools directly:
+Or use Hera's scheduler tools directly:
 
 - `create_schedule(name, cron, agent, message)` — add a job
 - `update_schedule(name, cron?, agent?, message?, enabled?)` — modify a job
@@ -889,17 +889,17 @@ Chat with your Vega agents from Telegram — no public URL or port forwarding ne
 
 ```bash
 TELEGRAM_BOT_TOKEN=your-token-here
-# Optional: override which agent handles messages (defaults to hermes)
+# Optional: override which agent handles messages (defaults to iris)
 # TELEGRAM_AGENT=assistant
 ```
 
-3. Run `vega serve` — you'll see `telegram bot started agent=hermes` in the logs
+3. Run `vega serve` — you'll see `telegram bot started agent=iris` in the logs
 4. Open Telegram, find your bot, and start chatting
 
-By default every message goes to **Hermes**, so you can describe any goal and he'll route it across your full agent population. Each Telegram user gets their own isolated agent clone — conversation history is stored per-user and accessible via the REST API:
+By default every message goes to **Iris**, so you can describe any goal and she'll route it across your full agent population. Each Telegram user gets their own isolated agent clone — conversation history is stored per-user and accessible via the REST API:
 
 ```bash
-curl localhost:3001/api/agents/hermes:<telegram-user-id>/chat
+curl localhost:3001/api/agents/iris:<telegram-user-id>/chat
 ```
 
 The env file at `~/.vega/env` is loaded automatically on startup — no shell export needed.
@@ -1247,8 +1247,8 @@ Built-in web dashboard with SSE streaming, process explorer, spawn tree visualiz
 | Non-programmer friendly | ❌ | ❌ | ✅ YAML DSL |
 | Parallel execution | Complex | Complex | ✅ `parallel:` |
 | Config-driven | ❌ | Limited | ✅ Full YAML |
-| Agent creation via chat | ❌ | ❌ | ✅ Mother (built-in) |
-| Cross-agent orchestration | Manual | ❌ | ✅ Hermes (built-in) |
+| Agent creation via chat | ❌ | ❌ | ✅ Hera (built-in) |
+| Cross-agent orchestration | Manual | ❌ | ✅ Iris (built-in) |
 | Telegram channel | ❌ | ❌ | ✅ Built-in (long polling) |
 | Scheduled triggers | Manual | ❌ | ✅ Built-in cron scheduler |
 | Email delivery | Manual | ❌ | ✅ `send_email` built-in |
@@ -1303,9 +1303,9 @@ vega/
 │   ├── types.go           # AST types
 │   ├── parser.go          # YAML parser
 │   ├── interpreter.go     # Workflow execution
-│   ├── mother.go          # Mother meta-agent (creates/manages agents)
-│   ├── scheduler_tools.go # SchedulerBackend interface + Mother scheduler tools
-│   └── hermes.go          # Hermes meta-agent (orchestrates across all agents)
+│   ├── hera.go            # Hera meta-agent (creates/manages agents)
+│   ├── scheduler_tools.go # SchedulerBackend interface + Hera scheduler tools
+│   └── iris.go            # Iris meta-agent (orchestrates across all agents)
 ├── cmd/vega/
 │   ├── main.go        # CLI entry point
 │   └── serve.go       # serve command

@@ -118,11 +118,11 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]AgentResponse, 0, len(doc.Agents))
 	for name, def := range doc.Agents {
-		// Hide Mother from the API — she's internal, accessed only via Hermes.
-		if name == "mother" {
+		// Hide Hera from the API — she's internal, accessed only via Iris.
+		if name == "hera" {
 			continue
 		}
-		// Hide per-user clones (e.g. "hermes:Etienne") — they're internal.
+		// Hide per-user clones (e.g. "iris:Etienne") — they're internal.
 		if strings.Contains(name, ":") {
 			continue
 		}
@@ -268,8 +268,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to persist user chat message", "agent", name, "error", err)
 	}
 
-	// Record original prompt to hermes in prompt history (survives reset).
-	if baseAgent == "hermes" {
+	// Record original prompt to iris in prompt history (survives reset).
+	if baseAgent == "iris" {
 		if _, err := s.store.InsertPromptHistory(req.Message); err != nil {
 			slog.Error("failed to persist prompt history", "error", err)
 		}
@@ -338,15 +338,15 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to persist user chat message", "agent", name, "error", err)
 	}
 
-	// Record original prompt to hermes in prompt history (survives reset).
-	if baseAgent == "hermes" {
+	// Record original prompt to iris in prompt history (survives reset).
+	if baseAgent == "iris" {
 		if _, err := s.store.InsertPromptHistory(req.Message); err != nil {
 			slog.Error("failed to persist prompt history", "error", err)
 		}
 	}
 
 	// Use a detached context so the LLM stream survives client disconnect.
-	// Bootstrap flows can run 30+ min (Mother builds team, Hermes dispatches to each agent serially).
+	// Bootstrap flows can run 30+ min (Hera builds team, Iris dispatches to each agent serially).
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
 	ctx = ContextWithDomainStore(ctx, s.sqliteStore)

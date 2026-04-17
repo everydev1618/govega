@@ -17,7 +17,7 @@ POST /api/agents/{name}/chat
 ```
 
 ```bash
-curl -X POST https://synkedup.v3ga.dev/api/agents/hermes/chat \
+curl -X POST https://synkedup.v3ga.dev/api/agents/iris/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "What can you help me with?"}'
 ```
@@ -41,7 +41,7 @@ POST /api/agents/{name}/chat/stream
 Returns a Server-Sent Events stream. Each event has a `type` and JSON `data`.
 
 ```bash
-curl -N -X POST https://synkedup.v3ga.dev/api/agents/hermes/chat/stream \
+curl -N -X POST https://synkedup.v3ga.dev/api/agents/iris/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "Build me a landing page"}'
 ```
@@ -115,8 +115,8 @@ curl https://synkedup.v3ga.dev/api/agents
 ```json
 [
   {
-    "name": "hermes",
-    "display_name": "Hermes",
+    "name": "iris",
+    "display_name": "Iris",
     "model": "claude-sonnet-4-20250514",
     "tools": ["remember", "recall", "delegate"],
     "process_id": "proc_abc123",
@@ -555,7 +555,7 @@ Body: `{"enabled": true}`
 
 ## Inbox
 
-Agent-posted messages to Hermes's inbox.
+Agent-posted messages to Iris's inbox.
 
 ### List inbox items
 
@@ -607,7 +607,7 @@ DELETE /api/settings/{key}
 
 ## Prompt History
 
-Prompts sent to Hermes, preserved across resets.
+Prompts sent to Iris, preserved across resets.
 
 ### List prompt history
 

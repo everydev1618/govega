@@ -9,8 +9,8 @@ import { ChatInput } from '../components/chat/ChatInput'
 import { FilePreview } from '../components/chat/FilePreview'
 import { ScrollToBottom } from '../components/chat/ScrollToBottom'
 
-const HERMES = 'hermes'
-const META_AGENTS = new Set(['hermes', 'mother'])
+const IRIS = 'iris'
+const META_AGENTS = new Set(['iris', 'hera'])
 
 const HANDOFF_RE = /→\s+Handing you to \*\*([^*]+)\*\*/
 
@@ -127,13 +127,13 @@ function TabBar({
     <div className="flex">
       {tabs.map((name, idx) => {
         const active = name === activeAgent
-        const isHermes = name === HERMES
+        const isIris = name === IRIS
         const info = displayInfo.get(name)
         const label = info?.displayName || name
         const borderColor = active
-          ? isHermes ? 'border-primary' : 'border-emerald-500'
+          ? isIris ? 'border-primary' : 'border-emerald-500'
           : 'border-transparent'
-        const showDivider = isHermes && tabs.length > 1
+        const showDivider = isIris && tabs.length > 1
         return (
           <div key={name} className="flex items-stretch">
             <button
@@ -152,7 +152,7 @@ function TabBar({
                   <span className="truncate max-w-[8rem] text-[10px] font-normal text-muted-foreground leading-tight">{info.title}</span>
                 )}
               </div>
-              {!isHermes && (
+              {!isIris && (
                 <span
                   onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClose(name) }}
                   className={`ml-0.5 p-0.5 rounded hover:bg-accent transition-colors ${
@@ -191,7 +191,7 @@ function VegaStar() {
   )
 }
 
-// Strip per-user clone suffix (e.g. "hermes:Etienne" → "hermes").
+// Strip per-user clone suffix (e.g. "iris:Etienne" → "iris").
 function baseAgentName(name: string): string {
   const i = name.indexOf(':')
   return i >= 0 ? name.substring(0, i) : name
@@ -202,7 +202,7 @@ export function Chat() {
   const navigate = useNavigate()
   const { events } = useSSE()
 
-  const [activeAgent, setActiveAgent] = useState(baseAgentName(agentParam || HERMES))
+  const [activeAgent, setActiveAgent] = useState(baseAgentName(agentParam || IRIS))
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -223,11 +223,11 @@ export function Chat() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Strip any per-user clone suffixes from stored tabs.
           const cleaned = [...new Set(parsed.map(baseAgentName))]
-          return cleaned.includes(HERMES) ? cleaned : [HERMES, ...cleaned]
+          return cleaned.includes(IRIS) ? cleaned : [IRIS, ...cleaned]
         }
       }
     } catch { /* ignore */ }
-    return [HERMES]
+    return [IRIS]
   })
 
   useEffect(() => {
@@ -239,14 +239,14 @@ export function Chat() {
   }, [])
 
   const closeTab = useCallback((name: string) => {
-    if (name === HERMES) return
+    if (name === IRIS) return
     setOpenTabs(prev => {
       const idx = prev.indexOf(name)
       if (idx < 0) return prev
       const next = prev.filter(t => t !== name)
-      if (next.length === 0) return [HERMES]
+      if (next.length === 0) return [IRIS]
       if (name === activeAgent) {
-        const newActive = next[Math.min(idx, next.length - 1)] || HERMES
+        const newActive = next[Math.min(idx, next.length - 1)] || IRIS
         setTimeout(() => switchToAgent(newActive), 0)
       }
       return next
@@ -286,7 +286,7 @@ export function Chat() {
     if (last.type === 'agent.created' || last.type === 'agent.deleted') {
       fetchAgents()
     }
-    // When a dispatched agent completes, Hermes auto-triages and the server
+    // When a dispatched agent completes, Iris auto-triages and the server
     // emits chat.update. Refresh history so the user sees the new message.
     if (last.type === 'chat.update' && last.agent && baseAgentName(last.agent) === baseAgentName(activeAgent) && !sending) {
       api.chatHistory(activeAgent)
@@ -308,7 +308,7 @@ export function Chat() {
     const specialistNames = new Set(specialists.map(a => a.name))
     setOpenTabs(prev => {
       const filtered = prev.filter(t => META_AGENTS.has(t) || specialistNames.has(t))
-      return filtered.length > 0 ? filtered : [HERMES]
+      return filtered.length > 0 ? filtered : [IRIS]
     })
   }, [specialists])
 
@@ -444,11 +444,11 @@ export function Chat() {
   }, [])
 
   const checkForHandoff = useCallback((finalContent: string) => {
-    if (activeAgent !== HERMES) return
+    if (activeAgent !== IRIS) return
     const match = finalContent.match(HANDOFF_RE)
     if (match) {
       const target = match[1].trim()
-      setHandoffFrom(HERMES)
+      setHandoffFrom(IRIS)
       setActiveAgent(target)
     }
   }, [activeAgent])
@@ -492,14 +492,14 @@ export function Chat() {
   }
 
   useEffect(() => {
-    const base = baseAgentName(agentParam || HERMES)
+    const base = baseAgentName(agentParam || IRIS)
     if (base !== activeAgent) {
       setActiveAgent(base)
     }
   }, [agentParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const target = activeAgent === HERMES ? '/chat' : `/chat/${activeAgent}`
+    const target = activeAgent === IRIS ? '/chat' : `/chat/${activeAgent}`
     navigate(target, { replace: true })
   }, [activeAgent, navigate])
 
@@ -573,9 +573,9 @@ export function Chat() {
     }))
   }
 
-  const isHermes = activeAgent === HERMES
+  const isIris = activeAgent === IRIS
   const activeAgentData = specialists.find(a => a.name === activeAgent)
-  const agentNames = new Set([HERMES, 'mother', ...specialists.map(a => a.name)])
+  const agentNames = new Set([IRIS, 'hera', ...specialists.map(a => a.name)])
 
   const agentDisplayInfo = useMemo(() => {
     const m = new Map<string, { displayName: string; title: string; avatar: string }>()
@@ -586,8 +586,8 @@ export function Chat() {
         avatar: a.avatar || '',
       })
     }
-    m.set(HERMES, { displayName: 'Hermes', title: 'Orchestrator', avatar: 'n2' })
-    m.set('mother', { displayName: 'Mother', title: 'Agent Builder', avatar: 'n6' })
+    m.set(IRIS, { displayName: 'Iris', title: 'Orchestrator', avatar: 'n2' })
+    m.set('hera', { displayName: 'Hera', title: 'Agent Builder', avatar: 'n6' })
     return m
   }, [specialists])
 
@@ -658,14 +658,14 @@ export function Chat() {
 
       {/* Messages */}
       <div ref={messagesRef} className="flex-1 overflow-auto space-y-5 pb-4 relative">
-        {loaded && messages.length === 0 && isHermes && (
+        {loaded && messages.length === 0 && isIris && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-4 max-w-md">
               <VegaStar />
               <div>
                 <h3 className="text-lg font-semibold text-foreground">What do you need?</h3>
                 <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                  Hermes routes your goals across all agents — or calls on Mother to build new ones.
+                  Iris routes your goals across all agents — or calls on Hera to build new ones.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center pt-2">
@@ -699,7 +699,7 @@ export function Chat() {
         ))}
 
         {/* Specialist empty state */}
-        {!isHermes && messages.length === 0 && loaded && (() => {
+        {!isIris && messages.length === 0 && loaded && (() => {
           const info = agentDisplayInfo.get(activeAgent)
           const displayName = info?.displayName || activeAgent
           const title = info?.title || ''
@@ -782,7 +782,7 @@ export function Chat() {
               )}
               {handoffFrom && (
                 <p className="text-xs text-muted-foreground">
-                  <span className="text-emerald-400">{'✦'}</span> Hermes connected you here
+                  <span className="text-emerald-400">{'✦'}</span> Iris connected you here
                 </p>
               )}
             </div>
@@ -801,8 +801,8 @@ export function Chat() {
       <ChatInput
         onSend={send}
         sending={sending}
-        placeholder={isHermes ? 'Tell Hermes what you need...' : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}...`}
-        borderColor={isHermes ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}
+        placeholder={isIris ? 'Tell Iris what you need...' : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}...`}
+        borderColor={isIris ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}
         agentNames={agentNamesList}
         agentDisplayInfo={agentDisplayInfo}
       />

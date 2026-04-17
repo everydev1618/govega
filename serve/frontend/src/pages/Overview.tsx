@@ -12,7 +12,7 @@ export function Overview() {
 
   if (loading) return <PageSkeleton />
 
-  const hasAgents = agents && agents.length > 2 // more than just mother + hermes
+  const hasAgents = agents && agents.length > 2 // more than just hera + iris
   const hasWorkflows = workflows && workflows.length > 0
 
   return (
@@ -29,21 +29,21 @@ export function Overview() {
         <div className="p-5 rounded-lg border border-border bg-card space-y-5">
           <h3 className="text-lg font-semibold">Get Started</h3>
           <p className="text-sm text-muted-foreground">
-            Just talk to Hermes — he'll route your goals across agents, ask Mother to build new ones, and set up schedules. Or go deeper:
+            Just talk to Iris — she'll route your goals across agents, ask Hera to build new ones, and set up schedules. Or go deeper:
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <StepCard
               step={1}
-              title="Chat with Hermes"
-              description="Describe what you need. Hermes orchestrates across all agents, calls Mother to create new ones, and sets up schedules."
+              title="Chat with Iris"
+              description="Describe what you need. Iris orchestrates across all agents, calls Hera to create new ones, and sets up schedules."
               to="/"
               cta="Open Chat"
             />
             <StepCard
               step={2}
               title="Browse the Population"
-              description="Explore the library of agent personas and skill packs. Install them and ask Hermes to put them to work."
+              description="Explore the library of agent personas and skill packs. Install them and ask Iris to put them to work."
               to="/population"
               cta="Open Population"
             />

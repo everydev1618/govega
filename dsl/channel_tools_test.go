@@ -127,9 +127,9 @@ func TestListMyChannels_AgentNotMember(t *testing.T) {
 		},
 	}
 
-	result := callListMyChannels(t, backend, "hermes")
+	result := callListMyChannels(t, backend, "iris")
 
-	// Should still show all channels even though hermes isn't in any.
+	// Should still show all channels even though iris isn't in any.
 	if !strings.Contains(result, "#finance") {
 		t.Errorf("expected #finance in result, got:\n%s", result)
 	}
@@ -139,14 +139,14 @@ func TestListMyChannels_AgentNotMember(t *testing.T) {
 
 	// No membership markers.
 	if strings.Contains(result, "you are here") {
-		t.Errorf("expected no membership markers for hermes, got:\n%s", result)
+		t.Errorf("expected no membership markers for iris, got:\n%s", result)
 	}
 }
 
 func TestListMyChannels_NoChannels(t *testing.T) {
 	backend := &mockChannelBackend{channels: nil}
 
-	result := callListMyChannels(t, backend, "hermes")
+	result := callListMyChannels(t, backend, "iris")
 
 	if !strings.Contains(result, "No channels exist") {
 		t.Errorf("expected 'No channels exist' message, got:\n%s", result)

@@ -1243,7 +1243,7 @@ func (i *Interpreter) ResetAgent(name string) error {
 }
 
 // RemoveComposedAgents kills and removes all agents that were NOT defined in
-// the original YAML file and are not meta-agents (hermes, mother). This
+// the original YAML file and are not meta-agents (iris, hera). This
 // restores the interpreter to its YAML-defined state after a reset.
 func (i *Interpreter) RemoveComposedAgents() {
 	i.mu.Lock()
@@ -1252,7 +1252,7 @@ func (i *Interpreter) RemoveComposedAgents() {
 		if i.yamlAgents[name] {
 			continue // YAML-defined, keep it
 		}
-		if name == motherAgentName || name == hermesAgentName {
+		if name == heraAgentName || name == irisAgentName {
 			continue // meta-agents, keep them
 		}
 		toRemove = append(toRemove, name)
@@ -1371,7 +1371,7 @@ func (i *Interpreter) SetChannelBackend(b ChannelBackend, onPost func(channelNam
 
 // DispatchToAgent is a non-blocking variant of SendToAgent. It validates the
 // agent exists, then spawns a goroutine that calls SendToAgent. On completion
-// (or error), it posts an inbox item so Hermes knows the work finished.
+// (or error), it posts an inbox item so Iris knows the work finished.
 // Returns immediately with a confirmation message.
 func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, message string) (string, error) {
 	// Validate agent exists synchronously so callers get immediate errors.
@@ -1387,7 +1387,7 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		// preserve context values so domain-store, memory, etc. propagate.
 		resp, err := i.SendToAgent(context.WithoutCancel(ctx), agentName, message)
 
-		// Post completion notification to inbox as pending so Hermes triages it.
+		// Post completion notification to inbox as pending so Iris triages it.
 		// Failed tasks are marked urgent.
 		if i.inboxBackend != nil {
 			if err != nil {
@@ -1426,7 +1426,7 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 			}
 		}
 
-		// Immediately poke Hermes to triage the inbox — don't wait for the
+		// Immediately poke Iris to triage the inbox — don't wait for the
 		// 15-minute heartbeat. This closes the loop so work keeps flowing.
 		if i.onDispatchComplete != nil {
 			i.onDispatchComplete(agentName)
@@ -1443,7 +1443,7 @@ func (i *Interpreter) SetDispatchStartCallback(fn func(agentName string)) {
 }
 
 // SetDispatchCompleteCallback registers a callback that fires when a dispatched
-// agent finishes. The serve layer uses this to immediately send Hermes an inbox
+// agent finishes. The serve layer uses this to immediately send Iris an inbox
 // triage prompt so the loop keeps moving without waiting for the heartbeat.
 func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName string)) {
 	i.onDispatchComplete = fn

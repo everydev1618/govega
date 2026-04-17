@@ -6,8 +6,8 @@ import { UserIdentityPrompt, getUserName } from './UserIdentityPrompt'
 import { api } from '../lib/api'
 import type { AgentResponse, Channel, InboxItem, ProcessResponse } from '../lib/types'
 
-const HERMES = 'hermes'
-const META_AGENTS = new Set(['hermes', 'mother'])
+const IRIS = 'iris'
+const META_AGENTS = new Set(['iris', 'hera'])
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
@@ -87,7 +87,7 @@ export function Layout() {
     return () => clearInterval(id)
   }, [])
 
-  const hermesAgent = agents.find(a => a.name === HERMES)
+  const irisAgent = agents.find(a => a.name === IRIS)
   const specialists = useMemo(() =>
     agents
       .filter(a => !META_AGENTS.has(a.name))
@@ -153,18 +153,18 @@ export function Layout() {
           <SectionHeader collapsed={dmCollapsed} onToggle={() => setDmCollapsed(v => !v)}>Direct Messages</SectionHeader>
           {!dmCollapsed && (
             <div className="space-y-0.5">
-              {/* Hermes always first */}
-              {hermesAgent && (
+              {/* Iris always first */}
+              {irisAgent && (
                 <AgentNavItem
-                  agent={hermesAgent}
+                  agent={irisAgent}
                   to={'/chat'}
-                  displayName="Hermes"
+                  displayName="Iris"
                   avatar="n2"
-                  unreadCount={chatUnread[hermesAgent.name] || 0}
-                  busy={hermesAgent.streaming}
+                  unreadCount={chatUnread[irisAgent.name] || 0}
+                  busy={irisAgent.streaming}
                 />
               )}
-              {specialists.length > 0 && hermesAgent && (
+              {specialists.length > 0 && irisAgent && (
                 <div className="mx-3 my-1 border-t border-border/50" />
               )}
               {specialists.map(a => (

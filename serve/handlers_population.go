@@ -239,8 +239,8 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
-	if name == "mother" {
-		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Mother cannot be updated"})
+	if name == "hera" {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Hera cannot be updated"})
 		return
 	}
 
@@ -350,8 +350,8 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
-	if name == "mother" {
-		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Mother cannot be deleted"})
+	if name == "hera" {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Hera cannot be deleted"})
 		return
 	}
 
@@ -463,10 +463,10 @@ func (s *Server) restoreComposedAgents() {
 		return
 	}
 
-	// metaTool returns true for tools that belong exclusively to Mother or Hermes
+	// metaTool returns true for tools that belong exclusively to Hera or Iris
 	// and must never be handed to arbitrary composed agents.
 	metaTool := func(name string) bool {
-		return dsl.IsMotherTool(name) || dsl.IsHermesTool(name)
+		return dsl.IsHeraTool(name) || dsl.IsIrisTool(name)
 	}
 
 	ctx := context.Background()
@@ -523,7 +523,7 @@ func (s *Server) restoreComposedAgents() {
 		}
 
 		// If no explicit tool list, the agent would get every registered tool.
-		// Exclude meta-tools (Mother/Hermes) which must never leak to arbitrary agents.
+		// Exclude meta-tools (Hera/Iris) which must never leak to arbitrary agents.
 		if len(toolNames) == 0 {
 			for _, ts := range s.interp.Tools().Schema() {
 				if !metaTool(ts.Name) {

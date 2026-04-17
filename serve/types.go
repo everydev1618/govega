@@ -232,7 +232,7 @@ type ChannelEvent struct {
 	Metrics   any    `json:"metrics,omitempty"`
 }
 
-// InboxItem is a message posted to Hermes's inbox by an agent.
+// InboxItem is a message posted to Iris's inbox by an agent.
 type InboxItem struct {
 	ID         int64      `json:"id"`
 	FromAgent  string     `json:"from_agent"`

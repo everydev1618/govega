@@ -84,7 +84,7 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			}
 
 			// Resolve calling agent name from context, stripping per-user
-			// clone suffixes (e.g. "hermes:Etienne" → "hermes").
+			// clone suffixes (e.g. "iris:Etienne" → "iris").
 			agent := "unknown"
 			if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
 				agent = proc.Agent.Name
@@ -201,7 +201,7 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			if len(team) == 0 && (name == "general" || name == "random") {
 				interp.mu.RLock()
 				for n := range interp.Document().Agents {
-					if n != motherAgentName && n != hermesAgentName {
+					if n != heraAgentName && n != irisAgentName {
 						team = append(team, n)
 					}
 				}
@@ -218,7 +218,7 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			}
 
 			id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
-			if err := backend.CreateChannel(id, name, description, "mother", team, mode); err != nil {
+			if err := backend.CreateChannel(id, name, description, "hera", team, mode); err != nil {
 				return "", fmt.Errorf("create channel: %w", err)
 			}
 			modeMsg := ""

@@ -147,7 +147,7 @@ func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 	return func() {
 		// For heartbeat jobs, skip the LLM call entirely if the inbox
 		// is empty — saves tokens when the system is idle.
-		if s.inbox != nil && job.Name == "hermes-heartbeat" {
+		if s.inbox != nil && job.Name == "iris-heartbeat" {
 			count, err := s.inbox.PendingInboxCount()
 			if err == nil && count == 0 {
 				slog.Debug("scheduler: skipping heartbeat — inbox empty", "name", job.Name)

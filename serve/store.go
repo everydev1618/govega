@@ -171,7 +171,7 @@ type Store interface {
 	// but preserves settings and prompt history.
 	ResetData() error
 
-	// InsertPromptHistory records an original user prompt to hermes.
+	// InsertPromptHistory records an original user prompt to iris.
 	InsertPromptHistory(prompt string) (int64, error)
 
 	// ListPromptHistory returns prompt history entries, newest first.
@@ -285,7 +285,7 @@ type Setting struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// PromptHistoryItem is a persisted original prompt sent to hermes.
+// PromptHistoryItem is a persisted original prompt sent to iris.
 type PromptHistoryItem struct {
 	ID        int64     `json:"id"`
 	Prompt    string    `json:"prompt"`

@@ -15,7 +15,7 @@ import (
 )
 
 // defaultDocument returns a minimal Document for when no YAML file is provided.
-// Mother and Hermes are always injected by the server, so no starter agents
+// Hera and Iris are always injected by the server, so no starter agents
 // are needed here.
 func defaultDocument() *dsl.Document {
 	return &dsl.Document{

@@ -1258,7 +1258,7 @@ func (s *SQLiteStore) DeleteResolvedInboxItems() (int64, error) {
 
 // --- Prompt History Methods ---
 
-// InsertPromptHistory records an original user prompt to hermes.
+// InsertPromptHistory records an original user prompt to iris.
 func (s *SQLiteStore) InsertPromptHistory(prompt string) (int64, error) {
 	result, err := s.db.Exec(
 		`INSERT INTO prompt_history (prompt) VALUES (?)`, prompt,
