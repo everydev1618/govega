@@ -29,7 +29,7 @@ Every spawned process must be completed (`proc.Complete()`) or failed (`proc.Fai
 | Package | Role |
 |---------|------|
 | root (`vega`) | Core types: Agent, Process, Orchestrator, Supervisor, ProcessGroup, EventBus |
-| `dsl/` | YAML parser (`parser.go`) → AST (`types.go`) → Interpreter (`interpreter.go`). Also hosts meta-agents Mother and Hermes |
+| `dsl/` | YAML parser (`parser.go`) → AST (`types.go`) → Interpreter (`interpreter.go`). Also hosts meta-agents Hera and Iris |
 | `llm/` | LLM interface + Anthropic backend with streaming. `types.go` defines the interface, `anthropic.go` implements it |
 | `tools/` | Tool registry (`tools.go`), built-ins (`builtin.go`), MCP integration (`mcp.go`), dynamic YAML tools (`dynamic.go`) |
 | `serve/` | HTTP server, REST API, SSE streaming, SQLite persistence, Telegram bot, cron scheduler, memory system, embedded React frontend |
@@ -39,8 +39,8 @@ Every spawned process must be completed (`proc.Complete()`) or failed (`proc.Fai
 
 ### Meta-agents (in `dsl/`)
 
-- **Mother** (`mother.go`): Creates/updates/deletes agents at runtime via chat. Accepts extra tools via `InjectMother(interp, callbacks, extraTools...)`.
-- **Hermes** (`hermes.go`): Cross-agent orchestrator that routes goals to the right agent. Accepts extra tools via `InjectHermes(interp, extraTools...)`. Has memory tools (`remember`, `recall`, `forget`).
+- **Hera** (`hera.go`): Creates/updates/deletes agents at runtime via chat. Accepts extra tools via `InjectHera(interp, callbacks, extraTools...)`.
+- **Iris** (`iris.go`): Cross-agent orchestrator that routes goals to the right agent. Accepts extra tools via `InjectIris(interp, extraTools...)`. Has memory tools (`remember`, `recall`, `forget`).
 
 ### Tool registration pattern
 
@@ -56,7 +56,7 @@ Memory is injected into agent system prompts via `formatMemoryForInjection()`. T
 
 ### Serve package flow
 
-`server.go:Start()` → init SQLite → restore composed agents → register memory tools → inject Mother → inject Hermes → start scheduler → start Telegram bot → wire orchestrator callbacks → HTTP server.
+`server.go:Start()` → init SQLite → restore composed agents → register memory tools → inject Hera → inject Iris → start scheduler → start Telegram bot → wire orchestrator callbacks → HTTP server.
 
 Chat handlers (`handlers_api.go`) load memory, inject it via `proc.SetExtraSystem()`, add `ContextWithMemory` to ctx, then call `SendToAgent`/`StreamToAgent`. After response, async memory extraction runs.
 

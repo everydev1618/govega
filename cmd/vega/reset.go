@@ -23,7 +23,7 @@ func resetCmd(args []string) {
 Reset Vega to a fresh state by deleting all data.
 
 This will delete:
-  - All composed agents (Mother and Hermes are built-in and unaffected)
+  - All composed agents (Hera and Iris are built-in and unaffected)
   - All chat history
   - All agent memory
   - All process events and snapshots

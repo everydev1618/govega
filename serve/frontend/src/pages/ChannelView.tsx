@@ -11,9 +11,9 @@ import { ScrollToBottom } from '../components/chat/ScrollToBottom'
 import { ToolCallBadges, statusDotClass, shortToolName, ActivityConstellation, ActivityNarrative } from '../components/chat/ToolCallDisplay'
 import { getUserName } from '../components/UserIdentityPrompt'
 
-const META_AGENTS = new Set(['hermes', 'mother'])
+const META_AGENTS = new Set(['iris', 'hera'])
 
-// Strip per-user clone suffix (e.g. "hermes:Etienne" → "hermes").
+// Strip per-user clone suffix (e.g. "iris:Etienne" → "iris").
 function baseAgentName(name: string): string {
   const i = name.indexOf(':')
   return i >= 0 ? name.substring(0, i) : name
@@ -52,8 +52,8 @@ export function ChannelView() {
         avatar: a.avatar || '',
       })
     }
-    m.set('hermes', { displayName: 'Hermes', title: 'Orchestrator', avatar: 'n2' })
-    m.set('mother', { displayName: 'Mother', title: 'Agent Builder', avatar: 'n6' })
+    m.set('iris', { displayName: 'Iris', title: 'Orchestrator', avatar: 'n2' })
+    m.set('hera', { displayName: 'Hera', title: 'Agent Builder', avatar: 'n6' })
     return m
   }, [agents])
 

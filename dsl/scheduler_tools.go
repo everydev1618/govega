@@ -26,8 +26,8 @@ type ScheduledJob struct {
 }
 
 // RegisterSchedulerTools registers the four schedule-management tools on
-// Mother's interpreter. Call this after InjectMother so the tools exist before
-// Mother's tool list is finalised.
+// Hera's interpreter. Call this after InjectHera so the tools exist before
+// Hera's tool list is finalised.
 func RegisterSchedulerTools(interp *Interpreter, backend SchedulerBackend) {
 	t := interp.Tools()
 

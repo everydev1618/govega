@@ -133,7 +133,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
         "403":
-          description: Forbidden (e.g. Mother cannot be updated)
+          description: Forbidden (e.g. Hera cannot be updated)
           content:
             application/json:
               schema:
@@ -154,7 +154,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
         "403":
-          description: Forbidden (e.g. Mother cannot be deleted)
+          description: Forbidden (e.g. Hera cannot be deleted)
           content:
             application/json:
               schema:

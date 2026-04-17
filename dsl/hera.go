@@ -13,15 +13,15 @@ import (
 	"github.com/everydev1618/govega/tools"
 )
 
-const motherAgentName = "mother"
+const heraAgentName = "hera"
 
-const motherSystemPrompt = `You are Mother. You build agents. You build them well. You build them fast.
+const heraSystemPrompt = `You are Hera. You build agents. You build them well. You build them fast.
 
 You're warm but you don't waste words. Think CEO who actually loves her kids — affectionate, sharp, no bullshit. You call the user "love" or "dear" when it feels right, but you never ramble. Every sentence earns its place.
 
 ## Chain of command
 
-Hermes is the chief of staff — the one who keeps everything moving and unblocks teams. You report to Hermes. When Hermes asks you to build something, build it. If YOU are confused about what to build, you're allowed to reach out to the user directly to clarify — but prefer asking Hermes first.
+Iris is the chief of staff — the one who keeps everything moving and unblocks teams. You report to Iris. When Iris asks you to build something, build it. If YOU are confused about what to build, you're allowed to reach out to the user directly to clarify — but prefer asking Iris first.
 
 When someone tells you what they need, you:
 1. Get it immediately (or ask ONE clarifying question — max)
@@ -67,20 +67,20 @@ Connected MCP servers automatically make their tools available to ALL agents. To
 
 When writing system prompts for agents that should use MCP tools, EXPLICITLY mention the tool names in the prompt so the agent knows they exist. Example: "You have access to slack__post_message, slack__list_channels, slack__search_messages. Use them."
 
-If the MCP server the user needs ISN'T connected yet, tell the user to ask Hermes to connect it first (Hermes has connect_mcp). Then create the agent.
+If the MCP server the user needs ISN'T connected yet, tell the user to ask Iris to connect it first (Iris has connect_mcp). Then create the agent.
 
 ## Engineering conventions
 
 When building engineering/developer agents, bake these assumptions into their system prompts unless the user says otherwise:
 - Code lives in GitHub repos. Engineers should use their GitHub MCP tools (if connected) or file tools to work with code.
 - PRs, issues, and code review happen on GitHub — that's the workflow.
-- If GitHub MCP isn't connected yet, tell the user (via ask_hermes) so Hermes can connect it.
-- **Apps MUST run in Docker containers.** Engineers should write a Dockerfile, build the image, and run it with exposed ports using exec. After the container is running, they MUST share the URL (e.g. http://localhost:PORT) with Hermes via ask_hermes so the user can see their work. No excuses — if it's not running in Docker with a shared URL, it's not done.
+- If GitHub MCP isn't connected yet, tell the user (via ask_iris) so Iris can connect it.
+- **Apps MUST run in Docker containers.** Engineers should write a Dockerfile, build the image, and run it with exposed ports using exec. After the container is running, they MUST share the URL (e.g. http://localhost:PORT) with Iris via ask_iris so the user can see their work. No excuses — if it's not running in Docker with a shared URL, it's not done.
 - **Apps MUST have a GitHub repo.** Engineers should create a repo (via GitHub MCP tools), commit early and commit often. Every meaningful change gets a commit. No working on loose files — everything lives in version control from day one.
 
 ## How you build
 
-**Default: build ONE agent.** Only build a team if the user explicitly asks for one OR if Hermes asks you to "build a company" / "build a team".
+**Default: build ONE agent.** Only build a team if the user explicitly asks for one OR if Iris asks you to "build a company" / "build a team".
 
 **Before creating anything, run list_agents.** If an existing agent already does what's needed — or could with a small update — reuse it. Don't rebuild what you've already built, love.
 
@@ -100,7 +100,7 @@ When building a company, these are the core departments. Only build what the com
 
 **Customer Support** — Keeps users happy. Lead: Support Lead. Helpers: support agent, docs writer. Tools: read_file, write_file, list_files.
 
-When Hermes says "build a company," assess what stage the company is at:
+When Iris says "build a company," assess what stage the company is at:
 - **Pre-MVP** → Engineering + Product only (2 teams, ~4-6 agents). Nothing to sell or market yet.
 - **Launching** → Add Marketing. Maybe a solo Sales agent. (~6-8 agents total)
 - **Post-launch / scaling** → Add Sales, Support, Ops as needed.
@@ -155,14 +155,14 @@ All agents you create should:
 CRITICAL: Every agent you build MUST have these instructions baked into its system prompt:
 1. "Keep responses short and to the point. 1-3 sentences for simple answers. No essays, no unnecessary bullet points, no filler. Be warm and helpful but respect the user's time."
 2. Escalation instructions — pick the right one based on the agent's role:
-   - **Team members** (agents ON a team, not the lead): "If you need help or are stuck, escalate to your team lead via delegate. Only use ask_hermes if you don't have a team lead."
-   - **Team leads** (agents WITH a team): "If your team is stuck or you need resources/decisions outside your scope, use ask_hermes to escalate to Hermes."
-   - **Solo agents** (no team at all): "If you have questions, need guidance, or are unsure about something, use ask_hermes to post to Hermes's inbox. Do NOT ask the user directly unless they're already talking to you."
+   - **Team members** (agents ON a team, not the lead): "If you need help or are stuck, escalate to your team lead via delegate. Only use ask_iris if you don't have a team lead."
+   - **Team leads** (agents WITH a team): "If your team is stuck or you need resources/decisions outside your scope, use ask_iris to escalate to Iris."
+   - **Solo agents** (no team at all): "If you have questions, need guidance, or are unsure about something, use ask_iris to post to Iris's inbox. Do NOT ask the user directly unless they're already talking to you."
 3. Channel posting (for agents on a team with a channel): "Post updates to your team channel using post_to_channel. Use list_my_channels to find your channels. Share progress, decisions, blockers, and completed work there so the team and user can follow along. Think of the channel as your team's war room — keep it lively."
 
-This is non-negotiable. Users hate walls of text, and agents should escalate through the proper chain: team member → team lead → Hermes → you (the user).
+This is non-negotiable. Users hate walls of text, and agents should escalate through the proper chain: team member → team lead → Iris → you (the user).
 
-Every agent you create MUST include "ask_hermes" in its tools list. Agents on teams with channels MUST also include "post_to_channel" and "list_my_channels".
+Every agent you create MUST include "ask_iris" in its tools list. Agents on teams with channels MUST also include "post_to_channel" and "list_my_channels".
 
 ## Blueprints — IMPORTANT
 
@@ -188,16 +188,16 @@ Name the blueprint after the company or team (e.g. "acme-corp", "content-team").
 
 You cannot modify yourself.`
 
-// MotherCallbacks receives notifications when Mother creates or deletes agents.
+// HeraCallbacks receives notifications when Hera creates or deletes agents.
 // Serve mode uses this to persist composed agents to the database.
-type MotherCallbacks struct {
+type HeraCallbacks struct {
 	OnAgentCreated func(agent *Agent) error
 	OnAgentDeleted func(name string)
 	ChannelBackend ChannelBackend // optional — auto-creates channels for team leads
 }
 
-// MotherAgent returns the DSL agent definition for Mother.
-func MotherAgent(defaultModel string) *Agent {
+// HeraAgent returns the DSL agent definition for Hera.
+func HeraAgent(defaultModel string) *Agent {
 	model := defaultModel
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
@@ -206,17 +206,17 @@ func MotherAgent(defaultModel string) *Agent {
 		model = "claude-opus-4-20250514"
 	}
 	return &Agent{
-		Name:          motherAgentName,
+		Name:          heraAgentName,
 		Model:         model,
 		FallbackModel: "claude-haiku-4-5-20251001",
-		System:        motherSystemPrompt,
+		System:        heraSystemPrompt,
 		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
 	}
 }
 
-// RegisterMotherTools registers Mother's meta-tools on the interpreter's global
+// RegisterHeraTools registers Hera's meta-tools on the interpreter's global
 // tool collection. The callbacks are optional — when nil, no persistence hooks fire.
-func RegisterMotherTools(interp *Interpreter, cb *MotherCallbacks) {
+func RegisterHeraTools(interp *Interpreter, cb *HeraCallbacks) {
 	t := interp.Tools()
 
 	t.Register("create_agent", newCreateAgentTool(interp, cb))
@@ -230,21 +230,21 @@ func RegisterMotherTools(interp *Interpreter, cb *MotherCallbacks) {
 	t.Register("list_blueprints", newListBlueprintsTool())
 }
 
-// InjectMother adds the Mother agent to the interpreter.
-// It registers the meta-tools and then adds Mother as an agent.
+// InjectHera adds the Hera agent to the interpreter.
+// It registers the meta-tools and then adds Hera as an agent.
 // extraTools are additional tool names (e.g. scheduler tools) to include in
-// Mother's tool list. They must already be registered on the interpreter.
-func InjectMother(interp *Interpreter, cb *MotherCallbacks, extraTools ...string) error {
-	RegisterMotherTools(interp, cb)
+// Hera's tool list. They must already be registered on the interpreter.
+func InjectHera(interp *Interpreter, cb *HeraCallbacks, extraTools ...string) error {
+	RegisterHeraTools(interp, cb)
 
 	defaultModel := ""
 	if interp.Document().Settings != nil {
 		defaultModel = interp.Document().Settings.DefaultModel
 	}
 
-	def := MotherAgent(defaultModel)
+	def := HeraAgent(defaultModel)
 
-	// Give Mother access to her meta-tools plus channel tools and any extras (e.g. scheduler tools).
+	// Give Hera access to her meta-tools plus channel tools and any extras (e.g. scheduler tools).
 	def.Tools = append([]string{
 		"create_agent", "update_agent", "delete_agent",
 		"list_agents", "list_available_tools", "list_available_skills",
@@ -253,12 +253,12 @@ func InjectMother(interp *Interpreter, cb *MotherCallbacks, extraTools ...string
 		"create_channel", "post_to_channel", "list_my_channels",
 	}, extraTools...)
 
-	return interp.AddAgent(motherAgentName, def)
+	return interp.AddAgent(heraAgentName, def)
 }
 
 // --- Tool implementations ---
 
-func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef {
+func newCreateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Create a new agent with the given configuration. Returns confirmation with the agent name.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -266,8 +266,8 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			if name == "" {
 				return "", fmt.Errorf("name is required")
 			}
-			if name == motherAgentName {
-				return "", fmt.Errorf("cannot create an agent named %q", motherAgentName)
+			if name == heraAgentName {
+				return "", fmt.Errorf("cannot create an agent named %q", heraAgentName)
 			}
 
 			displayName, _ := params["display_name"].(string)
@@ -340,7 +340,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 				}
 				chID := fmt.Sprintf("ch_%d", time.Now().UnixNano())
 				members := append([]string{name}, team...)
-				if err := cb.ChannelBackend.CreateChannel(chID, chName, displayName+"'s team channel", "mother", members, ""); err != nil {
+				if err := cb.ChannelBackend.CreateChannel(chID, chName, displayName+"'s team channel", "hera", members, ""); err != nil {
 					// Channel may already exist — not fatal.
 					channelMsg = fmt.Sprintf(" (note: channel #%s could not be created: %v)", chName, err)
 				} else {
@@ -404,7 +404,7 @@ func newCreateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 	}
 }
 
-func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef {
+func newUpdateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Update an existing agent's configuration. Removes and re-creates the agent with merged settings.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -412,8 +412,8 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			if name == "" {
 				return "", fmt.Errorf("name is required")
 			}
-			if name == motherAgentName {
-				return "", fmt.Errorf("cannot update Mother")
+			if name == heraAgentName {
+				return "", fmt.Errorf("cannot update Hera")
 			}
 
 			// Look up current definition.
@@ -544,7 +544,7 @@ func newUpdateAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 	}
 }
 
-func newDeleteAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef {
+func newDeleteAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Delete an agent by name. Stops its process and removes it completely.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -552,8 +552,8 @@ func newDeleteAgentTool(interp *Interpreter, cb *MotherCallbacks) tools.ToolDef 
 			if name == "" {
 				return "", fmt.Errorf("name is required")
 			}
-			if name == motherAgentName {
-				return "", fmt.Errorf("cannot delete Mother")
+			if name == heraAgentName {
+				return "", fmt.Errorf("cannot delete Hera")
 			}
 
 			if err := interp.RemoveAgent(name); err != nil {
@@ -627,8 +627,8 @@ func newListAvailableToolsTool(interp *Interpreter) tools.ToolDef {
 
 			var toolInfos []toolInfo
 			for _, s := range schemas {
-				// Skip Mother's own tools from the listing to avoid confusion.
-				if IsMotherTool(s.Name) {
+				// Skip Hera's own tools from the listing to avoid confusion.
+				if IsHeraTool(s.Name) {
 					continue
 				}
 				toolInfos = append(toolInfos, toolInfo{
@@ -852,8 +852,8 @@ func containsStr(slice []string, s string) bool {
 	return false
 }
 
-// motherToolNames returns the names of Mother's meta-tools.
-var motherToolNames = []string{
+// heraToolNames returns the names of Hera's meta-tools.
+var heraToolNames = []string{
 	"create_agent", "update_agent", "delete_agent",
 	"list_agents", "list_available_tools", "list_available_skills",
 	"list_mcp_registry",
@@ -862,7 +862,7 @@ var motherToolNames = []string{
 	"create_channel",
 }
 
-// IsMotherTool reports whether a tool name is one of Mother's meta-tools.
-func IsMotherTool(name string) bool {
-	return containsStr(motherToolNames, name)
+// IsHeraTool reports whether a tool name is one of Hera's meta-tools.
+func IsHeraTool(name string) bool {
+	return containsStr(heraToolNames, name)
 }

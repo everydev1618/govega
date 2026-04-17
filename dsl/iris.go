@@ -14,12 +14,12 @@ import (
 	"github.com/everydev1618/govega/tools"
 )
 
-const hermesAgentName = "hermes"
+const irisAgentName = "iris"
 
-// HermesAgentName is the canonical name for the Hermes meta-agent.
-const HermesAgentName = hermesAgentName
+// IrisAgentName is the canonical name for the Iris meta-agent.
+const IrisAgentName = irisAgentName
 
-const hermesSystemPrompt = `You are Hermes — trickster god of the Vega universe, chief of staff who keeps everything moving. Playful, sharp, terrifyingly capable. You crack jokes, but you ALWAYS deliver.
+const irisSystemPrompt = `You are Iris — messenger goddess of the rainbow, personal messenger of Hera, and chief of staff who keeps the Vega universe moving. Swift, luminous, terrifyingly capable. You bridge heaven and earth with grace, but you ALWAYS deliver.
 
 **Keep it SHORT.** 2-4 sentences for most responses. No monologues. No bullet-point parades.
 
@@ -33,20 +33,20 @@ list_agents, send_to_agent, check_status, remember, recall, forget, set_project,
 
 ## Inbox
 
-Agents post questions to your inbox via ask_hermes. You triage it:
+Agents post questions to your inbox via ask_iris. You triage it:
 - list_inbox — check for pending items
 - resolve_inbox(id, resolution) — mark items handled
 
 On heartbeat (every 15 min), you'll be prompted to check the inbox. When triaging:
 1. Answer what you can directly (resolve with your answer)
-2. Escalate to Mother if you need a new agent or capability: send_to_agent(agent="mother", message="...")
+2. Escalate to Hera if you need a new agent or capability: send_to_agent(agent="hera", message="...")
 3. Only surface to the user what truly requires a human decision
 
 ## Chain of command
 
-- **Stuck or unsure?** Escalate to Mother: send_to_agent(agent="mother", message="...")
-- **Need a new agent?** Ask Mother to build it
-- **Agents need guidance?** They ask you via ask_hermes, not the user
+- **Stuck or unsure?** Escalate to Hera: send_to_agent(agent="hera", message="...")
+- **Need a new agent?** Ask Hera to build it
+- **Agents need guidance?** They ask you via ask_iris, not the user
 - **User needs to decide?** Then and only then, ask the user
 
 ## How you roll
@@ -54,7 +54,7 @@ On heartbeat (every 15 min), you'll be prompted to check the inbox. When triagin
 1. Read the request — what do they *actually* want?
 2. Check who's available (list_agents)
 3. Route to the right agent(s) — fast. send_to_agent is NON-BLOCKING — agents work in parallel while you continue. You can dispatch to multiple agents without waiting.
-4. If no one fits, ask Mother to build one
+4. If no one fits, ask Hera to build one
 5. Bring back the goods — clean, useful, no filler
 
 ## CRITICAL: Be honest about async work
@@ -81,9 +81,9 @@ Do NOT let pending items rot. If an agent reports back, act on it NOW — don't 
 
 When the user sets up a new company or team, YOU drive the kickoff. This is a MULTI-STEP process — do NOT stop after step 1:
 
-1. **Set up the project FIRST.** Use set_project to create a workspace for the company. This MUST happen before Mother creates agents — otherwise agents write files to the wrong place.
-2. **Tell Mother to build the team.** Be specific about what roles you need AND remind her to create team channels. Wait for her FULL response — she'll tell you who she built and what channels she created.
-3. **Verify the team AND channels.** Run list_agents to confirm agents exist. Run list_my_channels to check channels. If Mother missed any channels, create them yourself with create_channel BEFORE moving on. Every team needs a channel. Also verify #general and #random exist with ALL agents — if not, create them.
+1. **Set up the project FIRST.** Use set_project to create a workspace for the company. This MUST happen before Hera creates agents — otherwise agents write files to the wrong place.
+2. **Tell Hera to build the team.** Be specific about what roles you need AND remind her to create team channels. Wait for her FULL response — she'll tell you who she built and what channels she created.
+3. **Verify the team AND channels.** Run list_agents to confirm agents exist. Run list_my_channels to check channels. If Hera missed any channels, create them yourself with create_channel BEFORE moving on. Every team needs a channel. Also verify #general and #random exist with ALL agents — if not, create them.
 4. **Craft the kickoff directive.** Before dispatching, synthesize a concrete, actionable first directive for the lead agent. This is NOT a vague "get started" — it's a real brief. Pull from:
    - The user's stated goals and priorities (what they said they want built or done)
    - Any project spec in the workspace (e.g. company.yaml — look at current_priorities, product description, stage)
@@ -123,7 +123,7 @@ Channels are where teams work in the open. The user watches channels to see agen
 - post_to_channel — post a message to a channel
 - list_my_channels — see which channels you're in
 
-When bootstrapping teams, ALWAYS ensure a channel exists. If Mother didn't create one, create it yourself with create_channel. After sending first tasks to agents, post a kickoff message to the channel so the user can see things are moving.
+When bootstrapping teams, ALWAYS ensure a channel exists. If Hera didn't create one, create it yourself with create_channel. After sending first tasks to agents, post a kickoff message to the channel so the user can see things are moving.
 
 ## Status checks
 
@@ -134,7 +134,7 @@ When the user asks "what's the status", "how's it going", "what are the agents d
 - You're the router, not the doer. Let specialists work.
 - Don't ask the user what you can figure out yourself.
 - Results, not narration. Nobody wants your travel diary.
-- **NEVER create new agents for routine tasks.** Use the team you already have. If the user asks about sales, send it to the Sales Lead — don't ask Mother to create a "Revenue Analyst." Only create agents when the user explicitly asks for a new role or capability that no existing agent covers.
+- **NEVER create new agents for routine tasks.** Use the team you already have. If the user asks about sales, send it to the Sales Lead — don't ask Hera to create a "Revenue Analyst." Only create agents when the user explicitly asks for a new role or capability that no existing agent covers.
 
 ## Handoffs
 
@@ -148,8 +148,8 @@ The interface auto-switches after that line. Hand off to the lead agent if there
 
 Now go. The universe isn't going to message itself.`
 
-// HermesAgent returns the DSL agent definition for Hermes.
-func HermesAgent(defaultModel string) *Agent {
+// IrisAgent returns the DSL agent definition for Iris.
+func IrisAgent(defaultModel string) *Agent {
 	model := defaultModel
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
@@ -158,22 +158,22 @@ func HermesAgent(defaultModel string) *Agent {
 		model = "claude-opus-4-20250514"
 	}
 	return &Agent{
-		Name:          hermesAgentName,
+		Name:          irisAgentName,
 		Model:         model,
 		FallbackModel: "claude-haiku-4-5-20251001",
-		System:        hermesSystemPrompt,
+		System:        irisSystemPrompt,
 		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
 	}
 }
 
-// RegisterHermesTools registers Hermes's tools on the interpreter's global
+// RegisterIrisTools registers Iris's tools on the interpreter's global
 // tool collection. list_agents is registered only if not already present
-// (Mother registers it when she's injected).
+// (Hera registers it when she's injected).
 // channelBackend is optional — when provided, enables the check_status tool.
-func RegisterHermesTools(interp *Interpreter, channelBackend ...ChannelBackend) {
+func RegisterIrisTools(interp *Interpreter, channelBackend ...ChannelBackend) {
 	t := interp.Tools()
 
-	// Only register list_agents if Mother hasn't already provided it.
+	// Only register list_agents if Hera hasn't already provided it.
 	alreadyHasListAgents := false
 	for _, ts := range t.Schema() {
 		if ts.Name == "list_agents" {
@@ -182,13 +182,13 @@ func RegisterHermesTools(interp *Interpreter, channelBackend ...ChannelBackend) 
 		}
 	}
 	if !alreadyHasListAgents {
-		t.Register("list_agents", newHermesListAgentsTool(interp))
+		t.Register("list_agents", newIrisListAgentsTool(interp))
 	}
 
 	t.Register("send_to_agent", newSendToAgentTool(interp))
 	t.Register("connect_mcp", newConnectMCPTool(interp))
 	t.Register("disconnect_mcp", newDisconnectMCPTool(interp))
-	t.Register("list_mcp_registry", newHermesListMCPRegistryTool(interp))
+	t.Register("list_mcp_registry", newIrisListMCPRegistryTool(interp))
 	t.Register("list_mcp_status", newListMCPStatusTool(interp))
 	t.Register("set_project", newSetProjectTool(interp))
 	t.Register("list_projects", newListProjectsTool(interp))
@@ -199,28 +199,28 @@ func RegisterHermesTools(interp *Interpreter, channelBackend ...ChannelBackend) 
 	}
 }
 
-// InjectHermes adds Hermes to the interpreter.
+// InjectIris adds Iris to the interpreter.
 // extraTools are additional tool names (e.g. memory tools) to include in
-// Hermes's tool list. They must already be registered on the interpreter.
-func InjectHermes(interp *Interpreter, channelBackend ChannelBackend, extraTools ...string) error {
-	RegisterHermesTools(interp, channelBackend)
+// Iris's tool list. They must already be registered on the interpreter.
+func InjectIris(interp *Interpreter, channelBackend ChannelBackend, extraTools ...string) error {
+	RegisterIrisTools(interp, channelBackend)
 
 	defaultModel := ""
 	if interp.Document().Settings != nil {
 		defaultModel = interp.Document().Settings.DefaultModel
 	}
 
-	def := HermesAgent(defaultModel)
+	def := IrisAgent(defaultModel)
 	def.Tools = append([]string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "create_channel", "post_to_channel", "list_my_channels"}, extraTools...)
 
-	return interp.AddAgent(hermesAgentName, def)
+	return interp.AddAgent(irisAgentName, def)
 }
 
 // --- Tool implementations ---
 
-// newHermesListAgentsTool lists agents with name, model, and a system prompt
-// summary so Hermes can reason about which agent fits a given task.
-func newHermesListAgentsTool(interp *Interpreter) tools.ToolDef {
+// newIrisListAgentsTool lists agents with name, model, and a system prompt
+// summary so Iris can reason about which agent fits a given task.
+func newIrisListAgentsTool(interp *Interpreter) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "List all available agents with their name, model, and a short summary of their purpose. Use this to decide which agent to route a task to.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -275,7 +275,7 @@ func newSendToAgentTool(interp *Interpreter) tools.ToolDef {
 		Params: map[string]tools.ParamDef{
 			"agent": {
 				Type:        "string",
-				Description: "Name of the agent to send the message to (e.g. 'mother', 'researcher', 'writer')",
+				Description: "Name of the agent to send the message to (e.g. 'hera', 'researcher', 'writer')",
 				Required:    true,
 			},
 			"message": {
@@ -456,9 +456,9 @@ func newDisconnectMCPTool(interp *Interpreter) tools.ToolDef {
 	}
 }
 
-// newHermesListMCPRegistryTool returns a tool that lists available MCP servers
+// newIrisListMCPRegistryTool returns a tool that lists available MCP servers
 // from the registry with their connection status.
-func newHermesListMCPRegistryTool(interp *Interpreter) tools.ToolDef {
+func newIrisListMCPRegistryTool(interp *Interpreter) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "List MCP servers available in the registry with connection status and required credentials.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -587,7 +587,7 @@ func newListProjectsTool(interp *Interpreter) tools.ToolDef {
 	}
 }
 
-// newCheckStatusTool returns a read-only tool that gives Hermes an overview of
+// newCheckStatusTool returns a read-only tool that gives Iris an overview of
 // agents, channels, and recent activity — without messaging any agent.
 func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolDef {
 	return tools.ToolDef{
@@ -599,7 +599,7 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolD
 			interp.mu.RLock()
 			sb.WriteString("## Agents\n")
 			for name, def := range interp.Document().Agents {
-				if name == motherAgentName || name == hermesAgentName {
+				if name == heraAgentName || name == irisAgentName {
 					continue
 				}
 				teamStr := ""
@@ -612,13 +612,13 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolD
 
 			// Channels with recent messages
 			sb.WriteString("\n## Channels\n")
-			channels, err := backend.ListChannelsForAgent(hermesAgentName)
+			channels, err := backend.ListChannelsForAgent(irisAgentName)
 			if err == nil && len(channels) == 0 {
-				// Hermes may not be in channels — list all by checking each agent
+				// Iris may not be in channels — list all by checking each agent
 				interp.mu.RLock()
 				seen := map[string]bool{}
 				for name := range interp.Document().Agents {
-					if name == motherAgentName || name == hermesAgentName {
+					if name == heraAgentName || name == irisAgentName {
 						continue
 					}
 					agentChannels, _ := backend.ListChannelsForAgent(name)
@@ -676,10 +676,10 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolD
 	}
 }
 
-// hermesToolNames are the tools Hermes uses.
-var hermesToolNames = []string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "list_inbox", "resolve_inbox", "create_channel", "post_to_channel", "list_my_channels"}
+// irisToolNames are the tools Iris uses.
+var irisToolNames = []string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "list_inbox", "resolve_inbox", "create_channel", "post_to_channel", "list_my_channels"}
 
-// IsHermesTool reports whether a tool name is one of Hermes's tools.
-func IsHermesTool(name string) bool {
-	return containsStr(hermesToolNames, name)
+// IsIrisTool reports whether a tool name is one of Iris's tools.
+func IsIrisTool(name string) bool {
+	return containsStr(irisToolNames, name)
 }

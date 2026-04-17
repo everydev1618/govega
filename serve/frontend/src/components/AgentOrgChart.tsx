@@ -15,7 +15,7 @@ interface OrgGraph {
   standalone: AgentResponse[]
 }
 
-const META_AGENTS = new Set(['hermes', 'mother'])
+const META_AGENTS = new Set(['iris', 'hera'])
 
 function buildOrgGraph(agents: AgentResponse[]): OrgGraph {
   const filtered = agents.filter(a => !META_AGENTS.has(a.name.toLowerCase()))

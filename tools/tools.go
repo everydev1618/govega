@@ -45,7 +45,7 @@ type SkillsRef interface {
 
 // projectState holds the active project name for workspace subdirectories.
 // It is shared by pointer across Filter/WithSkillsRef copies so that when
-// Hermes sets the project, every downstream agent sees it immediately.
+// Iris sets the project, every downstream agent sees it immediately.
 type projectState struct {
 	mu   sync.RWMutex
 	name string

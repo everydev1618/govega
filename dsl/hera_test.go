@@ -10,7 +10,7 @@ import (
 	"github.com/everydev1618/govega/tools"
 )
 
-func newMotherTestInterpreter(t *testing.T) *Interpreter {
+func newHeraTestInterpreter(t *testing.T) *Interpreter {
 	t.Helper()
 	doc := &Document{
 		Name:   "MotherTest",
@@ -35,39 +35,39 @@ func newMotherTestInterpreter(t *testing.T) *Interpreter {
 	}
 }
 
-func TestInjectMother(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestInjectHera(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	if err := InjectMother(interp, nil); err != nil {
-		t.Fatalf("InjectMother: %v", err)
+	if err := InjectHera(interp, nil); err != nil {
+		t.Fatalf("InjectHera: %v", err)
 	}
 
-	// Mother should appear in the agent map.
+	// Hera should appear in the agent map.
 	agents := interp.Agents()
-	if _, ok := agents["mother"]; !ok {
-		t.Fatal("mother agent should exist after InjectMother")
+	if _, ok := agents["hera"]; !ok {
+		t.Fatal("hera agent should exist after InjectHera")
 	}
 
-	// Mother's definition should be in the document.
-	if _, ok := interp.Document().Agents["mother"]; !ok {
-		t.Fatal("mother definition should be in document")
+	// Hera's definition should be in the document.
+	if _, ok := interp.Document().Agents["hera"]; !ok {
+		t.Fatal("hera definition should be in document")
 	}
 }
 
-func TestMotherCreateAgent(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraCreateAgent(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
 	var createdName string
-	cb := &MotherCallbacks{
+	cb := &HeraCallbacks{
 		OnAgentCreated: func(agent *Agent) error {
 			createdName = agent.Name
 			return nil
 		},
 	}
 
-	RegisterMotherTools(interp, cb)
+	RegisterHeraTools(interp, cb)
 	ctx := context.Background()
 
 	result, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
@@ -96,34 +96,34 @@ func TestMotherCreateAgent(t *testing.T) {
 	}
 }
 
-func TestMotherCreateAgentProtectsMother(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraCreateAgentProtectsHera(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterMotherTools(interp, nil)
+	RegisterHeraTools(interp, nil)
 	ctx := context.Background()
 
 	_, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
-		"name":   "mother",
-		"system": "Trying to overwrite mother",
+		"name":   "hera",
+		"system": "Trying to overwrite hera",
 	})
 	if err == nil {
-		t.Fatal("should not be able to create agent named 'mother'")
+		t.Fatal("should not be able to create agent named 'hera'")
 	}
 }
 
-func TestMotherDeleteAgent(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraDeleteAgent(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
 	var deletedName string
-	cb := &MotherCallbacks{
+	cb := &HeraCallbacks{
 		OnAgentDeleted: func(name string) {
 			deletedName = name
 		},
 	}
 
-	RegisterMotherTools(interp, cb)
+	RegisterHeraTools(interp, cb)
 	ctx := context.Background()
 
 	// Create an agent first.
@@ -156,26 +156,26 @@ func TestMotherDeleteAgent(t *testing.T) {
 	}
 }
 
-func TestMotherDeleteAgentProtectsMother(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraDeleteAgentProtectsHera(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterMotherTools(interp, nil)
+	RegisterHeraTools(interp, nil)
 	ctx := context.Background()
 
 	_, err := interp.Tools().Execute(ctx, "delete_agent", map[string]any{
-		"name": "mother",
+		"name": "hera",
 	})
 	if err == nil {
-		t.Fatal("should not be able to delete Mother")
+		t.Fatal("should not be able to delete Hera")
 	}
 }
 
-func TestMotherUpdateAgent(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraUpdateAgent(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterMotherTools(interp, nil)
+	RegisterHeraTools(interp, nil)
 	ctx := context.Background()
 
 	// Create an agent.
@@ -211,11 +211,11 @@ func TestMotherUpdateAgent(t *testing.T) {
 	}
 }
 
-func TestMotherListAgents(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraListAgents(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterMotherTools(interp, nil)
+	RegisterHeraTools(interp, nil)
 	ctx := context.Background()
 
 	// Create two agents.
@@ -256,11 +256,11 @@ func TestMotherListAgents(t *testing.T) {
 	}
 }
 
-func TestMotherListAvailableTools(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraListAvailableTools(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterMotherTools(interp, nil)
+	RegisterHeraTools(interp, nil)
 	ctx := context.Background()
 
 	result, err := interp.Tools().Execute(ctx, "list_available_tools", map[string]any{})
@@ -274,7 +274,7 @@ func TestMotherListAvailableTools(t *testing.T) {
 		t.Fatalf("returned invalid JSON: %v", err)
 	}
 
-	// Should include built-in tools but NOT Mother's meta-tools.
+	// Should include built-in tools but NOT Hera's meta-tools.
 	names := make(map[string]bool)
 	for _, tool := range tools {
 		if n, ok := tool["name"].(string); ok {
@@ -283,7 +283,7 @@ func TestMotherListAvailableTools(t *testing.T) {
 	}
 
 	if names["create_agent"] {
-		t.Error("Mother's meta-tools should be excluded from the list")
+		t.Error("Hera's meta-tools should be excluded from the list")
 	}
 
 	// Built-in tools should be present (registered via RegisterBuiltins).
@@ -292,11 +292,11 @@ func TestMotherListAvailableTools(t *testing.T) {
 	}
 }
 
-func TestMotherListMCPRegistry(t *testing.T) {
-	interp := newMotherTestInterpreter(t)
+func TestHeraListMCPRegistry(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterMotherTools(interp, nil)
+	RegisterHeraTools(interp, nil)
 	ctx := context.Background()
 
 	result, err := interp.Tools().Execute(ctx, "list_mcp_registry", map[string]any{})
@@ -327,23 +327,23 @@ func TestMotherListMCPRegistry(t *testing.T) {
 	}
 }
 
-func TestMotherAgentDefaults(t *testing.T) {
-	def := MotherAgent("")
+func TestHeraAgentDefaults(t *testing.T) {
+	def := HeraAgent("")
 	if def.Model != "claude-opus-4-20250514" {
 		t.Errorf("default model = %q, want claude-opus-4-20250514", def.Model)
 	}
 
-	def = MotherAgent("custom-model")
+	def = HeraAgent("custom-model")
 	if def.Model != "custom-model" {
 		t.Errorf("model = %q, want custom-model", def.Model)
 	}
 }
 
-func TestIsMotherTool(t *testing.T) {
-	if !IsMotherTool("create_agent") {
-		t.Error("create_agent should be a mother tool")
+func TestIsHeraTool(t *testing.T) {
+	if !IsHeraTool("create_agent") {
+		t.Error("create_agent should be a hera tool")
 	}
-	if IsMotherTool("read_file") {
-		t.Error("read_file should not be a mother tool")
+	if IsHeraTool("read_file") {
+		t.Error("read_file should not be a hera tool")
 	}
 }

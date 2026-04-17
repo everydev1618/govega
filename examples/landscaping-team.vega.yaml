@@ -12,7 +12,7 @@
 # Run with:
 #   vega serve examples/landscaping-team.vega.yaml
 #
-# Then open http://localhost:3001 and talk to Hermes:
+# Then open http://localhost:3001 and talk to Iris:
 #   "I need an estimate for a full landscape renovation at 123 Oak Street"
 
 name: Landscaping Backoffice
@@ -186,7 +186,7 @@ agents:
 
   # --- Operations Manager ---
   # High-level view across all projects, budgets, and team utilization.
-  # The agent Hermes should route "how's the business doing?" questions to.
+  # The agent Iris should route "how's the business doing?" questions to.
   ops-manager:
     model: claude-sonnet-4-20250514
     system: |

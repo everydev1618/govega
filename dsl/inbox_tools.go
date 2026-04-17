@@ -10,7 +10,7 @@ import (
 	"github.com/everydev1618/govega/tools"
 )
 
-// InboxItem represents a message posted to Hermes's inbox by another agent.
+// InboxItem represents a message posted to Iris's inbox by another agent.
 type InboxItem struct {
 	ID         int64     `json:"id"`
 	FromAgent  string    `json:"from_agent"`
@@ -32,13 +32,13 @@ type InboxBackend interface {
 }
 
 // RegisterInboxTools registers the inbox tools on the interpreter.
-// ask_hermes is available to all agents. list_inbox and resolve_inbox are
-// added to Hermes's tool list by the caller.
+// ask_iris is available to all agents. list_inbox and resolve_inbox are
+// added to Iris's tool list by the caller.
 func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 	t := interp.Tools()
 
-	t.Register("ask_hermes", tools.ToolDef{
-		Description: "Post a question or request to Hermes's inbox. Hermes triages the inbox periodically. Use this instead of asking the user directly.",
+	t.Register("ask_iris", tools.ToolDef{
+		Description: "Post a question or request to Iris's inbox. Iris triages the inbox periodically. Use this instead of asking the user directly.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			subject, _ := params["subject"].(string)
 			if subject == "" {
@@ -65,7 +65,7 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 			if err != nil {
 				return "", fmt.Errorf("post to inbox: %w", err)
 			}
-			return fmt.Sprintf("Message posted to Hermes's inbox (id=%d, priority=%s). Hermes will review it shortly.", id, priority), nil
+			return fmt.Sprintf("Message posted to Iris's inbox (id=%d, priority=%s). Iris will review it shortly.", id, priority), nil
 		}),
 		Params: map[string]tools.ParamDef{
 			"subject": {

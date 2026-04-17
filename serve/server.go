@@ -238,11 +238,11 @@ func (s *Server) Start(ctx context.Context) error {
 	// Register domain tools (job tracking, follow-ups, production rates).
 	RegisterDomainTools(s.interp)
 
-	// Inject Mother — the built-in meta-agent for creating agents via chat.
-	s.injectMother()
+	// Inject Hera — the built-in meta-agent for creating agents via chat.
+	s.injectHera()
 
-	// Inject Hermes — the cosmic orchestrator that routes goals across all agents.
-	s.injectHermes()
+	// Inject Iris — the messenger goddess that routes goals across all agents.
+	s.injectIris()
 
 	// Set up scheduler and restore persisted jobs.
 	s.scheduler = NewScheduler(
@@ -280,8 +280,8 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	dsl.RegisterSchedulerTools(s.interp, s.scheduler)
 
-	// Register inbox tools — ask_hermes is available to all agents,
-	// list_inbox and resolve_inbox are already in Hermes's tool list.
+	// Register inbox tools — ask_iris is available to all agents,
+	// list_inbox and resolve_inbox are already in Iris's tool list.
 	inboxBack := &inboxAdapter{store: s.store}
 	dsl.RegisterInboxTools(s.interp, inboxBack)
 
@@ -391,10 +391,10 @@ func (s *Server) Start(ctx context.Context) error {
 		})
 	})
 
-	// When a dispatched agent finishes, immediately poke Hermes to triage
+	// When a dispatched agent finishes, immediately poke Iris to triage
 	// the inbox instead of waiting for the 15-minute heartbeat.
-	// Skip when Hermes itself completes — otherwise we get an infinite loop
-	// (Hermes triages → dispatches → completes → pokes Hermes → repeat).
+	// Skip when Iris itself completes — otherwise we get an infinite loop
+	// (Iris triages → dispatches → completes → pokes Iris → repeat).
 	s.interp.SetDispatchCompleteCallback(func(agentName string) {
 		// Clear the synthetic active stream so the busy spinner stops.
 		s.streamsMu.Lock()
@@ -408,32 +408,32 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		s.streamsMu.Unlock()
 
-		if agentName == dsl.HermesAgentName || strings.HasPrefix(agentName, dsl.HermesAgentName+":") {
-			slog.Debug("skipping hermes poke — completing agent is hermes itself", "agent", agentName)
+		if agentName == dsl.IrisAgentName || strings.HasPrefix(agentName, dsl.IrisAgentName+":") {
+			slog.Debug("skipping iris poke — completing agent is iris itself", "agent", agentName)
 			return
 		}
-		slog.Info("dispatch complete, poking hermes to triage inbox", "agent", agentName)
+		slog.Info("dispatch complete, poking iris to triage inbox", "agent", agentName)
 		go func() {
 			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", agentName)
 			ctx := ContextWithDomainStore(context.Background(), s.sqliteStore)
-			resp, err := s.interp.SendToAgent(ctx, "hermes", msg)
+			resp, err := s.interp.SendToAgent(ctx, "iris", msg)
 			if err != nil {
-				slog.Error("failed to poke hermes after dispatch", "agent", agentName, "error", err)
+				slog.Error("failed to poke iris after dispatch", "agent", agentName, "error", err)
 				return
 			}
 
-			// Persist Hermes's triage response to all hermes chat clones
+			// Persist Iris's triage response to all iris chat clones
 			// so the user sees it in their chat.
 			for name := range s.interp.Agents() {
-				if name == "hermes" || strings.HasPrefix(name, "hermes:") {
+				if name == "iris" || strings.HasPrefix(name, "iris:") {
 					_ = s.store.InsertChatMessage(name, "assistant", resp)
 				}
 			}
 
-			// Notify connected frontends to refresh Hermes chat.
+			// Notify connected frontends to refresh Iris chat.
 			s.broker.Publish(BrokerEvent{
 				Type:      "chat.update",
-				Agent:     "hermes",
+				Agent:     "iris",
 				Timestamp: time.Now(),
 			})
 		}()
@@ -482,11 +482,11 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	})
 
-	// Add the hermes-heartbeat schedule if not already persisted.
+	// Add the iris-heartbeat schedule if not already persisted.
 	s.scheduler.AddJob(dsl.ScheduledJob{
-		Name:      "hermes-heartbeat",
+		Name:      "iris-heartbeat",
 		Cron:      "*/15 * * * *",
-		AgentName: "hermes",
+		AgentName: "iris",
 		Message:   "Heartbeat: Check your inbox (list_inbox) for pending questions from agents. Triage and resolve what you can.",
 		Enabled:   true,
 	})
@@ -497,7 +497,7 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.cfg.TelegramToken != "" {
 		agentName := s.cfg.TelegramAgent
 		if agentName == "" {
-			agentName = dsl.HermesAgentName // default to Hermes
+			agentName = dsl.IrisAgentName // default to Iris
 		}
 		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
 			s.extractMemory(userID, agent, userMsg, response)
@@ -956,10 +956,10 @@ func (s *Server) persistYAMLMCPServers() {
 	}
 }
 
-// injectMother adds the Mother meta-agent to the interpreter with persistence
+// injectHera adds the Hera meta-agent to the interpreter with persistence
 // callbacks that keep composed agents in sync with the SQLite store.
-func (s *Server) injectMother() {
-	cb := &dsl.MotherCallbacks{
+func (s *Server) injectHera() {
+	cb := &dsl.HeraCallbacks{
 		OnAgentCreated: func(agent *dsl.Agent) error {
 			var skills []string
 			if agent.Skills != nil {
@@ -1012,15 +1012,15 @@ func (s *Server) injectMother() {
 		ChannelBackend: s.store,
 	}
 
-	if err := dsl.InjectMother(s.interp, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules", "create_channel"); err != nil {
-		slog.Warn("failed to inject Mother agent", "error", err)
+	if err := dsl.InjectHera(s.interp, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules", "create_channel"); err != nil {
+		slog.Warn("failed to inject Hera agent", "error", err)
 	}
 }
 
-// injectHermes adds Hermes, the cosmic orchestrator, to the interpreter.
-func (s *Server) injectHermes() {
-	if err := dsl.InjectHermes(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
-		slog.Warn("failed to inject Hermes agent", "error", err)
+// injectIris adds Iris, the messenger goddess, to the interpreter.
+func (s *Server) injectIris() {
+	if err := dsl.InjectIris(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
+		slog.Warn("failed to inject Iris agent", "error", err)
 	}
 }
 

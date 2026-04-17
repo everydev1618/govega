@@ -525,7 +525,7 @@ Six tables persist data across restarts:
 - **events** — All orchestration events (type, process_id, agent, timestamp, data JSON)
 - **process_snapshots** — Process state snapshots (status, metrics, parent, timestamps)
 - **workflow_runs** — Workflow execution history (name, inputs, status, result)
-- **composed_agents** — Agent definitions created via Mother or REST API
+- **composed_agents** — Agent definitions created via Hera or REST API
 - **chat_messages** — Per-agent conversation history
 - **scheduled_jobs** — Recurring cron schedules (name, cron expression, agent, message, enabled)
 

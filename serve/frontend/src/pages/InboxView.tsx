@@ -31,8 +31,8 @@ export function InboxView() {
     for (const a of agents) {
       m.set(a.name, { displayName: a.display_name || a.name, avatar: a.avatar || '' })
     }
-    m.set('hermes', { displayName: 'Hermes', avatar: 'n2' })
-    m.set('mother', { displayName: 'Mother', avatar: 'n6' })
+    m.set('iris', { displayName: 'Iris', avatar: 'n2' })
+    m.set('hera', { displayName: 'Hera', avatar: 'n6' })
     return m
   }, [agents])
 

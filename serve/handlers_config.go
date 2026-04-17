@@ -69,11 +69,11 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	builtins := map[string]bool{"mother": true, "hermes": true}
+	builtins := map[string]bool{"hera": true, "iris": true}
 
 	var agents []ConfigAgentInfo
 	for name, def := range doc.Agents {
-		if name == "mother" {
+		if name == "hera" {
 			continue
 		}
 		source := "yaml"
@@ -286,7 +286,7 @@ func (s *Server) upsertUploadedAgent(name string, agentDef *dsl.Agent, result *C
 	doc := s.interp.Document()
 
 	// Skip meta-agents.
-	if name == "mother" || name == "hermes" {
+	if name == "hera" || name == "iris" {
 		result.AgentsSkipped = append(result.AgentsSkipped, name+" (reserved)")
 		return
 	}
