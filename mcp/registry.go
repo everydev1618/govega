@@ -13,11 +13,20 @@ type RegistryEntry struct {
 	// Description briefly explains what the server provides.
 	Description string
 
-	// Command is the executable to run.
+	// Transport is the transport type (stdio, http, sse). Defaults to stdio.
+	Transport TransportType
+
+	// Command is the executable to run (stdio transport).
 	Command string
 
-	// Args are default command-line arguments.
+	// Args are default command-line arguments (stdio transport).
 	Args []string
+
+	// URL is the server endpoint (http/sse transport).
+	URL string
+
+	// Headers are default HTTP headers (http/sse transport).
+	Headers map[string]string
 
 	// RequiredEnv lists environment variables that must be set.
 	RequiredEnv []string
@@ -117,6 +126,13 @@ var DefaultRegistry = map[string]RegistryEntry{
 		RequiredEnv: []string{"SYNKEDUP_API_URL", "SYNKEDUP_USERNAME", "SYNKEDUP_PASSWORD"},
 		GitHubRepo:  "etdebruin/synkedup-vega-mcp",
 	},
+	"composio": {
+		Name:        "composio",
+		Description: "Composio integration platform (850+ app integrations with managed auth)",
+		Transport:   TransportHTTP,
+		URL:         "https://mcp.composio.dev/v2/mcp",
+		RequiredEnv: []string{"COMPOSIO_API_KEY"},
+	},
 }
 
 // Lookup finds a registry entry by name.
@@ -128,13 +144,27 @@ func Lookup(name string) (RegistryEntry, bool) {
 // ToServerConfig converts a registry entry to a ServerConfig,
 // merging any overrides from the caller.
 func (e RegistryEntry) ToServerConfig(overrideEnv map[string]string) ServerConfig {
+	transport := e.Transport
+	if transport == "" {
+		transport = TransportStdio
+	}
+
 	cfg := ServerConfig{
 		Name:      e.Name,
-		Transport: TransportStdio,
+		Transport: transport,
 		Command:   e.Command,
 		Args:      append([]string{}, e.Args...),
+		URL:       e.URL,
 		Env:       make(map[string]string),
 		Timeout:   30 * time.Second,
+	}
+
+	// Copy default headers.
+	if len(e.Headers) > 0 {
+		cfg.Headers = make(map[string]string, len(e.Headers))
+		for k, v := range e.Headers {
+			cfg.Headers[k] = v
+		}
 	}
 
 	// Auto-populate required env from os.Getenv when not overridden.
@@ -154,6 +184,16 @@ func (e RegistryEntry) ToServerConfig(overrideEnv map[string]string) ServerConfi
 	// Apply overrides (caller wins).
 	for k, v := range overrideEnv {
 		cfg.Env[k] = v
+	}
+
+	// Inject env-based headers for HTTP servers (e.g. API keys).
+	if transport == TransportHTTP || transport == TransportSSE {
+		if cfg.Headers == nil {
+			cfg.Headers = make(map[string]string)
+		}
+		if apiKey := cfg.Env["COMPOSIO_API_KEY"]; apiKey != "" && e.Name == "composio" {
+			cfg.Headers["x-api-key"] = apiKey
+		}
 	}
 
 	cfg.GitHubRepo = e.GitHubRepo

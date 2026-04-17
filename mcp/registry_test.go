@@ -20,6 +20,7 @@ func TestLookup(t *testing.T) {
 		{"slack", true},
 		{"puppeteer", true},
 		{"sequential-thinking", true},
+		{"composio", true},
 		{"nonexistent", false},
 	}
 
@@ -106,11 +107,70 @@ func TestDefaultRegistryComplete(t *testing.T) {
 		if entry.Name != name {
 			t.Errorf("registry key %q != entry.Name %q", name, entry.Name)
 		}
-		if entry.Command == "" {
-			t.Errorf("registry entry %q has empty Command", name)
+		if entry.Command == "" && entry.URL == "" {
+			t.Errorf("registry entry %q has neither Command nor URL", name)
 		}
 		if entry.Description == "" {
 			t.Errorf("registry entry %q has empty Description", name)
 		}
+	}
+}
+
+func TestComposioRegistryEntry(t *testing.T) {
+	entry, ok := Lookup("composio")
+	if !ok {
+		t.Fatal("composio not in registry")
+	}
+
+	if entry.Transport != TransportHTTP {
+		t.Errorf("Transport=%q, want %q", entry.Transport, TransportHTTP)
+	}
+	if entry.URL == "" {
+		t.Error("URL should not be empty")
+	}
+
+	// Test ToServerConfig produces HTTP config with headers
+	os.Setenv("COMPOSIO_API_KEY", "test-key")
+	defer os.Unsetenv("COMPOSIO_API_KEY")
+
+	cfg := entry.ToServerConfig(nil)
+
+	if cfg.Transport != TransportHTTP {
+		t.Errorf("config Transport=%q, want %q", cfg.Transport, TransportHTTP)
+	}
+	if cfg.URL == "" {
+		t.Error("config URL should not be empty")
+	}
+	if cfg.Headers["x-api-key"] != "test-key" {
+		t.Errorf("config Headers[x-api-key]=%q, want %q", cfg.Headers["x-api-key"], "test-key")
+	}
+}
+
+func TestHTTPRegistryEntryToServerConfig(t *testing.T) {
+	entry := RegistryEntry{
+		Name:        "test-http",
+		Description: "Test HTTP server",
+		Transport:   TransportHTTP,
+		URL:         "https://example.com/mcp",
+		Headers:     map[string]string{"Authorization": "Bearer token"},
+		RequiredEnv: []string{"TEST_KEY"},
+	}
+
+	os.Setenv("TEST_KEY", "val")
+	defer os.Unsetenv("TEST_KEY")
+
+	cfg := entry.ToServerConfig(nil)
+
+	if cfg.Transport != TransportHTTP {
+		t.Errorf("Transport=%q, want %q", cfg.Transport, TransportHTTP)
+	}
+	if cfg.URL != "https://example.com/mcp" {
+		t.Errorf("URL=%q", cfg.URL)
+	}
+	if cfg.Headers["Authorization"] != "Bearer token" {
+		t.Errorf("Headers not copied")
+	}
+	if cfg.Command != "" {
+		t.Errorf("Command should be empty for HTTP, got %q", cfg.Command)
 	}
 }
