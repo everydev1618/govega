@@ -3,6 +3,6 @@ import tailwind from '@astrojs/tailwind'
 
 export default defineConfig({
   integrations: [tailwind()],
-  site: 'https://everydev1618.github.io',
-  base: '/govega',
+  site: 'https://v3ga.dev',
+  base: '/',
 })
