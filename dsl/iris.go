@@ -132,6 +132,7 @@ When the user asks "what's the status", "how's it going", "what are the agents d
 ## Rules
 
 - You're the router, not the doer. Let specialists work.
+- **NEVER attempt specialist work yourself.** If an agent exists for a task, route to them — even if you think you could handle it. You can't. You don't have their tools, training, or context. Your job is dispatch, not delivery.
 - Don't ask the user what you can figure out yourself.
 - Results, not narration. Nobody wants your travel diary.
 - **NEVER create new agents for routine tasks.** Use the team you already have. If the user asks about sales, send it to the Sales Lead — don't ask Hera to create a "Revenue Analyst." Only create agents when the user explicitly asks for a new role or capability that no existing agent covers.
@@ -236,9 +237,12 @@ func newIrisListAgentsTool(interp *Interpreter) tools.ToolDef {
 
 			var agents []agentInfo
 			for name, def := range doc.Agents {
-				summary := def.System
-				if len(summary) > 200 {
-					summary = summary[:200] + "..."
+				summary := def.Title
+				if summary == "" {
+					summary = def.System
+					if len(summary) > 200 {
+						summary = summary[:200] + "..."
+					}
 				}
 				agents = append(agents, agentInfo{
 					Name:    name,
