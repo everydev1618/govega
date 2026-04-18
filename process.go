@@ -113,6 +113,10 @@ type Process struct {
 	// Named process support
 	name string
 
+	// Per-agent rate limiter and circuit breaker (initialized on first use)
+	rateLimiter    *agentRateLimiter
+	circuitBreaker *circuitBreakerState
+
 	// Automatic restart support
 	restartPolicy ChildRestart
 	spawnOpts     []SpawnOption

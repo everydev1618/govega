@@ -214,6 +214,31 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 		}
 	}
 
+	// Parse rate_limit
+	if rl, ok := m["rate_limit"].(map[string]any); ok {
+		agent.RateLimit = &RateLimitDef{}
+		if v, ok := rl["requests_per_minute"].(int); ok {
+			agent.RateLimit.RequestsPerMinute = v
+		}
+		if v, ok := rl["tokens_per_minute"].(int); ok {
+			agent.RateLimit.TokensPerMinute = v
+		}
+	}
+
+	// Parse circuit_breaker
+	if cb, ok := m["circuit_breaker"].(map[string]any); ok {
+		agent.CircuitBreaker = &CircuitBreakerDef{}
+		if v, ok := cb["threshold"].(int); ok {
+			agent.CircuitBreaker.Threshold = v
+		}
+		if v, ok := cb["reset_after"].(string); ok {
+			agent.CircuitBreaker.ResetAfter = v
+		}
+		if v, ok := cb["half_open_max"].(int); ok {
+			agent.CircuitBreaker.HalfOpenMax = v
+		}
+	}
+
 	// Parse skills
 	if skills, ok := m["skills"].(map[string]any); ok {
 		agent.Skills = &SkillsDef{}

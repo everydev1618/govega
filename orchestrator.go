@@ -316,6 +316,10 @@ func (o *Orchestrator) Spawn(agent Agent, opts ...SpawnOption) (*Process, error)
 		},
 	}
 
+	// Initialize rate limiter and circuit breaker from agent config
+	p.rateLimiter = newAgentRateLimiter(agent.RateLimit)
+	p.circuitBreaker = newCircuitBreakerState(agent.CircuitBreaker)
+
 	// Apply options
 	for _, opt := range opts {
 		opt(p)

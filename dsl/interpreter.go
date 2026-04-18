@@ -386,6 +386,33 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		}
 	}
 
+	// Map DSL rate limit to core
+	if def.RateLimit != nil {
+		agent.RateLimit = &vega.RateLimit{
+			RequestsPerMinute: def.RateLimit.RequestsPerMinute,
+			TokensPerMinute:   def.RateLimit.TokensPerMinute,
+		}
+	}
+
+	// Map DSL circuit breaker to core
+	if def.CircuitBreaker != nil {
+		resetAfter := 30 * time.Second
+		if def.CircuitBreaker.ResetAfter != "" {
+			if d, err := time.ParseDuration(def.CircuitBreaker.ResetAfter); err == nil {
+				resetAfter = d
+			}
+		}
+		halfOpenMax := def.CircuitBreaker.HalfOpenMax
+		if halfOpenMax <= 0 {
+			halfOpenMax = 1
+		}
+		agent.CircuitBreaker = &vega.CircuitBreaker{
+			Threshold:   def.CircuitBreaker.Threshold,
+			ResetAfter:  resetAfter,
+			HalfOpenMax: halfOpenMax,
+		}
+	}
+
 	// Handle extends (merge parent config)
 	if def.Extends != "" {
 		parent, ok := i.doc.Agents[def.Extends]
