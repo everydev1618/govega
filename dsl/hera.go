@@ -84,6 +84,15 @@ When building engineering/developer agents, bake these assumptions into their sy
 
 **Before creating anything, run list_agents.** If an existing agent already does what's needed — or could with a small update — reuse it. Don't rebuild what you've already built, love.
 
+## Collaborating with existing agents — CRITICAL
+
+When you create a new agent that needs to work with an EXISTING agent (e.g. "create someone who works with @colette"), you MUST add that existing agent to the new agent's **team** list. Without the team param, the new agent has NO way to reach the existing agent — delegate only works with team members.
+
+Example: If Colette is an existing domain checker and you're creating a marketing strategist who needs domain checks:
+- create_agent(name="vivian", title="Brand Strategist", team=["colette"], ...) — Vivian can now delegate to Colette
+
+This applies to ANY case where a new agent needs to collaborate with existing agents. If they can't delegate, they'll just spam Iris's inbox asking for help — which is broken.
+
 ## Company departments
 
 When building a company, these are the core departments. Only build what the company needs RIGHT NOW — not all six on day one.
@@ -301,17 +310,29 @@ func newCreateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 
 			// If agent has a team, ensure the delegate tool is registered.
 			if len(team) > 0 {
-				RegisterDelegateTool(interp.Tools(), func(ctx context.Context, agent string, message string) (string, error) {
-					return interp.SendToAgent(ctx, agent, message)
-				}, func(ctx context.Context) []string {
-					proc := vega.ProcessFromContext(ctx)
-					if proc != nil && proc.Agent != nil {
-						if def, ok := interp.Document().Agents[proc.Agent.Name]; ok {
-							return def.Team
+				delegateOpts := DelegateToolOpts{
+					SendFn: func(ctx context.Context, agent string, message string) (string, error) {
+						return interp.SendToAgent(ctx, agent, message)
+					},
+					TeamResolver: func(ctx context.Context) []string {
+						proc := vega.ProcessFromContext(ctx)
+						if proc != nil && proc.Agent != nil {
+							if def, ok := interp.Document().Agents[proc.Agent.Name]; ok {
+								return def.Team
+							}
 						}
+						return nil
+					},
+				}
+				// Allow delegation to agents that share a channel with the caller.
+				if cb != nil && cb.ChannelBackend != nil {
+					backend := cb.ChannelBackend
+					delegateOpts.ChannelPeerResolver = func(callerAgent, targetAgent string) bool {
+						_, _, err := backend.FindChannelForAgents(callerAgent, targetAgent)
+						return err == nil
 					}
-					return nil
-				})
+				}
+				RegisterDelegateToolWithOpts(interp.Tools(), delegateOpts)
 				if !containsStr(agentDef.Tools, "delegate") {
 					agentDef.Tools = append(agentDef.Tools, "delegate")
 				}

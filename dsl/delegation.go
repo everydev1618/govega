@@ -60,13 +60,34 @@ func BuildTeamPrompt(system string, team []string, agentDescriptions map[string]
 // It is called at invocation time so that team changes are picked up dynamically.
 type TeamResolver func(ctx context.Context) []string
 
+// ChannelPeerResolver checks whether two agents share a channel.
+// Returns true if callerAgent and targetAgent are members of any common channel.
+type ChannelPeerResolver func(callerAgent, targetAgent string) bool
+
+// DelegateToolOpts configures the delegate tool.
+type DelegateToolOpts struct {
+	SendFn              SendFunc
+	TeamResolver        TeamResolver
+	ChannelPeerResolver ChannelPeerResolver // optional — allows delegation to channel peers
+}
+
 // NewDelegateTool returns a tools.ToolDef for the delegate tool.
 // sendFn is called when the tool is invoked to relay a message to another agent.
 // teamResolver is called at invocation time to determine which agents the caller
 // can delegate to; if it returns nil/empty, any agent name is accepted.
 func NewDelegateTool(sendFn SendFunc, teamResolver TeamResolver) tools.ToolDef {
+	return NewDelegateToolWithOpts(DelegateToolOpts{
+		SendFn:       sendFn,
+		TeamResolver: teamResolver,
+	})
+}
+
+// NewDelegateToolWithOpts returns a delegate tool with full configuration.
+// When a ChannelPeerResolver is provided, agents that share a channel with the
+// caller are also allowed as delegation targets — not just explicit team members.
+func NewDelegateToolWithOpts(opts DelegateToolOpts) tools.ToolDef {
 	return tools.ToolDef{
-		Description: "Delegate a task to another agent on your team and get their response. Use this to assign work to team members.",
+		Description: "Delegate a task to another agent on your team or in a shared channel and get their response.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			agent, _ := params["agent"].(string)
 			message, _ := params["message"].(string)
@@ -74,23 +95,40 @@ func NewDelegateTool(sendFn SendFunc, teamResolver TeamResolver) tools.ToolDef {
 				return "", fmt.Errorf("both agent and message are required")
 			}
 			// Resolve team dynamically from the calling process's agent definition.
-			team := teamResolver(ctx)
+			team := opts.TeamResolver(ctx)
 			if len(team) > 0 {
 				teamSet := make(map[string]bool, len(team))
 				for _, t := range team {
 					teamSet[t] = true
 				}
-				if !teamSet[agent] {
-					return "", fmt.Errorf("agent %q is not on your team — you can only delegate to: %s",
-						agent, strings.Join(team, ", "))
+				if teamSet[agent] {
+					return opts.SendFn(ctx, agent, message)
 				}
 			}
-			return sendFn(ctx, agent, message)
+
+			// Fall back to channel peer check — agents sharing a channel can delegate.
+			if opts.ChannelPeerResolver != nil {
+				callerName := ""
+				if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
+					callerName = proc.Agent.Name
+				}
+				if callerName != "" && opts.ChannelPeerResolver(callerName, agent) {
+					return opts.SendFn(ctx, agent, message)
+				}
+			}
+
+			// No team and no channel peer — if team is empty, allow anything.
+			if len(team) == 0 {
+				return opts.SendFn(ctx, agent, message)
+			}
+
+			return "", fmt.Errorf("agent %q is not on your team or in a shared channel — you can only delegate to: %s",
+				agent, strings.Join(team, ", "))
 		},
 		Params: map[string]tools.ParamDef{
 			"agent": {
 				Type:        "string",
-				Description: "Name of the team member agent to delegate to",
+				Description: "Name of the agent to delegate to (team member or channel peer)",
 				Required:    true,
 			},
 			"message": {
@@ -107,12 +145,21 @@ func NewDelegateTool(sendFn SendFunc, teamResolver TeamResolver) tools.ToolDef {
 // determine which agents the caller can delegate to.
 // Returns true if registration happened.
 func RegisterDelegateTool(t *tools.Tools, sendFn SendFunc, teamResolver TeamResolver) bool {
+	return RegisterDelegateToolWithOpts(t, DelegateToolOpts{
+		SendFn:       sendFn,
+		TeamResolver: teamResolver,
+	})
+}
+
+// RegisterDelegateToolWithOpts registers the delegate tool with full options.
+// Returns true if registration happened.
+func RegisterDelegateToolWithOpts(t *tools.Tools, opts DelegateToolOpts) bool {
 	for _, ts := range t.Schema() {
 		if ts.Name == "delegate" {
 			return false
 		}
 	}
-	t.Register("delegate", NewDelegateTool(sendFn, teamResolver))
+	t.Register("delegate", NewDelegateToolWithOpts(opts))
 	return true
 }
 

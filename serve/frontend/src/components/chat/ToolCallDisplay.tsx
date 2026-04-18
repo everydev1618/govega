@@ -1,8 +1,8 @@
 import type { ToolCallState } from '../../lib/types'
 
-export function statusDotClass(tc: ToolCallState): string {
-  return tc.status === 'running' ? 'bg-yellow-400 animate-pulse'
-    : tc.status === 'error' ? 'bg-red-400' : 'bg-green-400'
+export function statusEmoji(tc: ToolCallState): string {
+  return tc.status === 'running' ? '⏳'
+    : tc.status === 'error' ? '❌' : '✅'
 }
 
 export function shortToolName(name: string): string {
@@ -105,7 +105,7 @@ export function ToolCallBadges({
                 ? 'border-indigo-500/50 bg-indigo-500/10 text-foreground'
                 : 'border-border bg-background/50 text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
               }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(tc)}`} />
+            <span className={tc.status === 'running' ? 'animate-pulse' : ''}>{statusEmoji(tc)}</span>
             <span>{shortToolName(tc.name)}</span>
             {tc.duration_ms != null && <span className="text-muted-foreground">{tc.duration_ms}ms</span>}
           </button>
