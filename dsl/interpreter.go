@@ -1385,7 +1385,10 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		}
 		// Detach from the caller's deadline/cancel (it will be closed) but
 		// preserve context values so domain-store, memory, etc. propagate.
-		resp, err := i.SendToAgent(context.WithoutCancel(ctx), agentName, message)
+		// Strip the parent's event sink — it will be closed by the time this
+		// goroutine runs, and sending to it would panic.
+		detached := vega.ContextWithEventSink(context.WithoutCancel(ctx), nil)
+		resp, err := i.SendToAgent(detached, agentName, message)
 
 		// Post completion notification to inbox as pending so Iris triages it.
 		// Failed tasks are marked urgent.

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { CompanySwitcher } from './CompanySwitcher'
+import { ActivityBar } from './ActivityBar'
 import { AgentAvatar } from './chat/AgentAvatar'
 import { UserIdentityPrompt, getUserName } from './UserIdentityPrompt'
 import { api } from '../lib/api'
@@ -341,9 +342,12 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 p-3 pt-14 md:p-6 md:pt-6 overflow-auto flex flex-col min-h-0">
-        <Outlet />
-      </main>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <ActivityBar agents={agents} />
+        <main className="flex-1 p-3 pt-14 md:p-6 md:pt-6 overflow-auto flex flex-col min-h-0">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

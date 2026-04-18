@@ -8,7 +8,7 @@ import type { AgentResponse, Channel, ChannelMessage } from '../lib/types'
 import { AgentAvatar, UserAvatar } from '../components/chat/AgentAvatar'
 import { ThreadPanel } from '../components/chat/ThreadPanel'
 import { ScrollToBottom } from '../components/chat/ScrollToBottom'
-import { ToolCallBadges, statusDotClass, shortToolName, ActivityConstellation, ActivityNarrative } from '../components/chat/ToolCallDisplay'
+import { ToolCallBadges, statusEmoji, shortToolName, ActivityConstellation, ActivityNarrative } from '../components/chat/ToolCallDisplay'
 import { getUserName } from '../components/UserIdentityPrompt'
 
 const META_AGENTS = new Set(['iris', 'hera'])
@@ -203,7 +203,7 @@ export function ChannelView() {
                         {msg.toolCalls.map((tc) => (
                           <span key={tc.id}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono border border-border bg-background/50 text-muted-foreground">
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(tc)}`} />
+                            <span className={tc.status === 'running' ? 'animate-pulse' : ''}>{statusEmoji(tc)}</span>
                             <span>{shortToolName(tc.name)}</span>
                             {tc.duration_ms != null && <span className="text-muted-foreground">{tc.duration_ms}ms</span>}
                           </span>
