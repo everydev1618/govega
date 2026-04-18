@@ -358,7 +358,40 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 }
 
 // callLLMWithRetry calls the LLM with retry logic based on agent's RetryPolicy.
+// It also enforces per-agent rate limits and circuit breaker state.
 func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
+	// Circuit breaker check
+	if p.circuitBreaker != nil && !p.circuitBreaker.Allow() {
+		return nil, &ProcessError{
+			ProcessID: p.ID,
+			AgentName: p.Agent.Name,
+			Err:       ErrCircuitOpen,
+		}
+	}
+
+	// Rate limiter: wait for a token if needed
+	if p.rateLimiter != nil {
+		if wait := p.rateLimiter.WaitTime(); wait > 0 {
+			slog.Debug("rate limit: waiting for token",
+				"process_id", p.ID,
+				"agent", p.Agent.Name,
+				"wait_ms", wait.Milliseconds(),
+			)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+		if !p.rateLimiter.Allow() {
+			return nil, &ProcessError{
+				ProcessID: p.ID,
+				AgentName: p.Agent.Name,
+				Err:       ErrRateLimited,
+			}
+		}
+	}
+
 	policy := p.Agent.Retry
 	maxAttempts := 1
 	if policy != nil && policy.MaxAttempts > 0 {
@@ -372,6 +405,9 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 		latency := time.Since(start)
 
 		if err == nil {
+			if p.circuitBreaker != nil {
+				p.circuitBreaker.RecordSuccess()
+			}
 			slog.Debug("llm call succeeded",
 				"process_id", p.ID,
 				"agent", p.Agent.Name,
@@ -384,6 +420,9 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 		}
 
 		lastErr = err
+		if p.circuitBreaker != nil {
+			p.circuitBreaker.RecordFailure()
+		}
 		errClass := ClassifyError(err)
 
 		slog.Warn("llm call failed",

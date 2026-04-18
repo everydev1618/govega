@@ -70,9 +70,11 @@ type Agent struct {
 	Knowledge   []string          `yaml:"knowledge"`
 	Team        []string          `yaml:"team"`
 	Supervision *SupervisionDef   `yaml:"supervision"`
-	Retry       *RetryDef         `yaml:"retry"`
-	Skills      *SkillsDef        `yaml:"skills"`
-	Delegation  *DelegationDef    `yaml:"delegation"`
+	Retry          *RetryDef          `yaml:"retry"`
+	RateLimit      *RateLimitDef      `yaml:"rate_limit"`
+	CircuitBreaker *CircuitBreakerDef `yaml:"circuit_breaker"`
+	Skills         *SkillsDef         `yaml:"skills"`
+	Delegation     *DelegationDef     `yaml:"delegation"`
 }
 
 // DelegationDef configures context-aware delegation for an agent.
@@ -101,6 +103,13 @@ type SupervisionDef struct {
 type RetryDef struct {
 	MaxAttempts int    `yaml:"max_attempts"`
 	Backoff     string `yaml:"backoff"` // linear, exponential, constant
+}
+
+// CircuitBreakerDef is DSL circuit breaker configuration.
+type CircuitBreakerDef struct {
+	Threshold   int    `yaml:"threshold"`     // failures before opening
+	ResetAfter  string `yaml:"reset_after"`   // e.g., "30s", "1m"
+	HalfOpenMax int    `yaml:"half_open_max"` // probes allowed in half-open
 }
 
 // Workflow represents a workflow definition in the DSL.
