@@ -4,25 +4,19 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Cascadia Code', 'monospace'],
       },
       colors: {
         space: {
-          950: '#05050d',
-          900: '#0a0a18',
-          800: '#10102a',
-          700: '#1a1a3a',
+          950: '#09090b',
+          900: '#0a0a0f',
+          800: '#18181b',
+          700: '#27272a',
         },
       },
       animation: {
-        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'fade-in': 'fadeIn 0.8s ease forwards',
-      },
-      keyframes: {
-        fadeIn: {
-          from: { opacity: '0', transform: 'translateY(12px)' },
-          to:   { opacity: '1', transform: 'translateY(0)' },
-        },
+        'float': 'float 6s ease-in-out infinite',
       },
     },
   },
