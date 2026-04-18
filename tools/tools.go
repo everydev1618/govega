@@ -71,6 +71,7 @@ type Tools struct {
 	tools      map[string]*tool
 	middleware []ToolMiddleware
 	sandbox    string
+	baseURL    string // Server base URL for constructing deliverable URLs
 	mcpClients []*mcpClientEntry // MCP server clients
 	container  *containerState   // Container routing state
 	project    *projectState     // Active project subdirectory (shared pointer)
@@ -210,6 +211,24 @@ func WithSandbox(path string) ToolsOption {
 	return func(t *Tools) {
 		t.sandbox = path
 	}
+}
+
+// WithBaseURL sets the server base URL for constructing deliverable URLs
+// in tool responses (e.g. write_file returns the accessible URL).
+func WithBaseURL(url string) ToolsOption {
+	return func(t *Tools) {
+		t.baseURL = url
+	}
+}
+
+// BaseURL returns the configured server base URL.
+func (t *Tools) BaseURL() string {
+	return t.baseURL
+}
+
+// SetBaseURL sets the server base URL after construction.
+func (t *Tools) SetBaseURL(url string) {
+	t.baseURL = url
 }
 
 // WithContainer enables container-based tool execution.

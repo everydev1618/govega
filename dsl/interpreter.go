@@ -58,6 +58,7 @@ type Interpreter struct {
 // workspace URLs for deliverables.
 func (i *Interpreter) SetServerBaseURL(url string) {
 	i.serverBaseURL = url
+	i.tools.SetBaseURL(url)
 }
 
 // SetDelegationObserver registers a callback that fires after each delegation.
@@ -158,7 +159,7 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	var skillsLoader *skills.Loader
 	if doc.Settings != nil && doc.Settings.Skills != nil && len(doc.Settings.Skills.Directories) > 0 {
 		skillsLoader = skills.NewLoader(doc.Settings.Skills.Directories...)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		skillsLoader.Load(ctx)
 	}
@@ -321,7 +322,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 			}
 
 			// Load skills if not already loaded
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			loader.Load(ctx)
 			cancel()
 

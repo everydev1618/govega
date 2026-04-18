@@ -109,7 +109,15 @@ func (t *Tools) RegisterBuiltins() {
 			if t.OnFileWrite != nil {
 				t.OnFileWrite(ctx, path, "write", desc)
 			}
-			return "File written successfully", nil
+			msg := "File written successfully"
+			// Include accessible URL when a server base URL is configured.
+			if t.baseURL != "" && t.sandbox != "" {
+				relPath, err := filepath.Rel(t.sandbox, path)
+				if err == nil && !strings.HasPrefix(relPath, "..") {
+					msg += fmt.Sprintf("\nAccessible at: %s/workspace/%s", t.baseURL, relPath)
+				}
+			}
+			return msg, nil
 		},
 		Params: map[string]ParamDef{
 			"path":        {Type: "string", Description: "File path", Required: true},
