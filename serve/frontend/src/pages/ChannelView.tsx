@@ -9,11 +9,9 @@ import { AgentAvatar, UserAvatar } from '../components/chat/AgentAvatar'
 import { ThreadPanel } from '../components/chat/ThreadPanel'
 import { ScrollToBottom } from '../components/chat/ScrollToBottom'
 import { ToolCallBadges, statusEmoji, shortToolName, ActivityConstellation, ActivityNarrative } from '../components/chat/ToolCallDisplay'
-import { getUserName } from '../components/UserIdentityPrompt'
-
 const META_AGENTS = new Set(['iris', 'hera'])
 
-// Strip per-user clone suffix (e.g. "iris:Etienne" → "iris").
+// Strip per-user clone suffix (e.g. "iris:123" → "iris").
 function baseAgentName(name: string): string {
   const i = name.indexOf(':')
   return i >= 0 ? name.substring(0, i) : name
@@ -164,9 +162,8 @@ export function ChannelView() {
             const replyCount = 'reply_count' in msg ? (msg as ChannelMessage).reply_count : 0
             const msgId = 'id' in msg ? msg.id : undefined
             const sender = 'sender' in msg ? msg.sender : undefined
-            const currentUser = getUserName()
             const displayName = isUser
-              ? (sender && sender !== currentUser ? sender : (sender || 'You'))
+              ? (sender || 'You')
               : (info?.displayName || agentName)
 
             return (

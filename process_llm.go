@@ -351,6 +351,10 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 				Role:    llm.RoleUser,
 				Content: strings.TrimSpace(toolResults.String()),
 			})
+			// Separate tool results from next LLM response with a newline
+			// so streamed text doesn't concatenate without whitespace.
+			events <- ChatEvent{Type: ChatEventTextDelta, Delta: "\n\n"}
+			fullResponse += "\n\n"
 		}
 	}
 

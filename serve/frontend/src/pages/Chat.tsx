@@ -191,7 +191,7 @@ function VegaStar() {
   )
 }
 
-// Strip per-user clone suffix (e.g. "iris:Etienne" → "iris").
+// Strip per-user clone suffix (e.g. "iris:123" → "iris").
 function baseAgentName(name: string): string {
   const i = name.indexOf(':')
   return i >= 0 ? name.substring(0, i) : name

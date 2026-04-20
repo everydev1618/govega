@@ -121,8 +121,18 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 	t.Register("resolve_inbox", tools.ToolDef{
 		Description: "Resolve an inbox item by providing a resolution. Use after you've handled an agent's question.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
-			id, ok := params["id"].(float64)
-			if !ok || id <= 0 {
+			var id int64
+			switch v := params["id"].(type) {
+			case float64:
+				id = int64(v)
+			case int64:
+				id = v
+			case int:
+				id = int64(v)
+			default:
+				return "", fmt.Errorf("id is required (positive integer)")
+			}
+			if id <= 0 {
 				return "", fmt.Errorf("id is required (positive integer)")
 			}
 			resolution, _ := params["resolution"].(string)
@@ -130,10 +140,10 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 				return "", fmt.Errorf("resolution is required")
 			}
 
-			if err := backend.ResolveInboxItem(int64(id), resolution); err != nil {
+			if err := backend.ResolveInboxItem(id, resolution); err != nil {
 				return "", fmt.Errorf("resolve inbox item: %w", err)
 			}
-			return fmt.Sprintf("Inbox item %d resolved.", int64(id)), nil
+			return fmt.Sprintf("Inbox item %d resolved.", id), nil
 		}),
 		Params: map[string]tools.ParamDef{
 			"id": {

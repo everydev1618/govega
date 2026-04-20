@@ -352,167 +352,31 @@ Commands:
 	}
 	requireAPIKey()
 
-	var doc *dsl.Document
-	var interp *dsl.Interpreter
-
-	// Load file if provided
-	if fs.NArg() > 0 {
-		file := fs.Arg(0)
-		parser := dsl.NewParser()
-		var err error
-		doc, err = parser.ParseFile(file)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", file, err)
-			os.Exit(1)
-		}
-
-		interp, err = dsl.NewInterpreter(doc)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating interpreter: %v\n", err)
-			os.Exit(1)
-		}
-		defer interp.Shutdown()
-
-		fmt.Printf("Loaded: %s (%d agents, %d workflows)\n",
-			doc.Name, len(doc.Agents), len(doc.Workflows))
-	}
-
-	fmt.Println("Vega REPL - Type /help for commands, /quit to exit")
-	fmt.Println()
-
-	scanner := bufio.NewScanner(os.Stdin)
-	var currentAgent string
-
-	for {
-		if currentAgent != "" {
-			fmt.Printf("[%s]> ", currentAgent)
-		} else {
-			fmt.Print("vega> ")
-		}
-
-		if !scanner.Scan() {
-			break
-		}
-
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-
-		// Handle commands
-		if strings.HasPrefix(line, "/") {
-			parts := strings.Fields(line)
-			cmd := parts[0]
-
-			switch cmd {
-			case "/quit", "/exit", "/q":
-				fmt.Println("Goodbye!")
-				return
-
-			case "/help", "/h":
-				printReplHelp()
-
-			case "/agents":
-				if doc == nil {
-					fmt.Println("No file loaded. Use: vega repl <file.vega.yaml>")
-					continue
-				}
-				fmt.Println("Agents:")
-				for name, agent := range doc.Agents {
-					model := agent.Model
-					if model == "" {
-						model = "(default)"
-					}
-					fmt.Printf("  %s - %s\n", name, model)
-				}
-
-			case "/workflows":
-				if doc == nil {
-					fmt.Println("No file loaded. Use: vega repl <file.vega.yaml>")
-					continue
-				}
-				fmt.Println("Workflows:")
-				for name, wf := range doc.Workflows {
-					desc := wf.Description
-					if desc == "" {
-						desc = fmt.Sprintf("%d steps", len(wf.Steps))
-					}
-					fmt.Printf("  %s - %s\n", name, desc)
-				}
-
-			case "/ask":
-				if len(parts) < 2 {
-					fmt.Println("Usage: /ask <agent>")
-					continue
-				}
-				agentName := parts[1]
-				if doc == nil {
-					fmt.Println("No file loaded. Use: vega repl <file.vega.yaml>")
-					continue
-				}
-				if _, ok := doc.Agents[agentName]; !ok {
-					fmt.Printf("Agent '%s' not found\n", agentName)
-					continue
-				}
-				currentAgent = agentName
-				fmt.Printf("Now talking to %s. Type /end to stop.\n", agentName)
-
-			case "/end":
-				currentAgent = ""
-				fmt.Println("Ended conversation.")
-
-			case "/run":
-				if len(parts) < 2 {
-					fmt.Println("Usage: /run <workflow> [task]")
-					continue
-				}
-				if interp == nil {
-					fmt.Println("No file loaded. Use: vega repl <file.vega.yaml>")
-					continue
-				}
-
-				workflowName := parts[1]
-				inputs := make(map[string]any)
-				if len(parts) > 2 {
-					inputs["task"] = strings.Join(parts[2:], " ")
-				}
-
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				result, err := interp.Execute(ctx, workflowName, inputs)
-				cancel()
-
-				if err != nil {
-					fmt.Printf("Error: %v\n", err)
-				} else {
-					fmt.Printf("Result:\n%v\n", result)
-				}
-
-			default:
-				fmt.Printf("Unknown command: %s. Type /help for available commands.\n", cmd)
-			}
-			continue
-		}
-
-		// Handle agent conversation
-		if currentAgent != "" && interp != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			response, err := interp.SendToAgent(ctx, currentAgent, line)
-			cancel()
-
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-			} else {
-				fmt.Printf("\n%s\n\n", response)
-			}
-		} else if line != "" {
-			fmt.Println("No agent selected. Use /ask <agent> to start a conversation.")
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+	if fs.NArg() == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: vega repl <file.vega.yaml>")
 		os.Exit(1)
 	}
+
+	file := fs.Arg(0)
+	parser := dsl.NewParser()
+	doc, err := parser.ParseFile(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", file, err)
+		os.Exit(1)
+	}
+
+	interp, err := dsl.NewInterpreter(doc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating interpreter: %v\n", err)
+		os.Exit(1)
+	}
+	defer interp.Shutdown()
+
+	fmt.Printf("Loaded: %s (%d agents, %d workflows)\n",
+		doc.Name, len(doc.Agents), len(doc.Workflows))
+
+	repl := dsl.NewREPL(interp, dsl.WithREPLPrompt("vega"))
+	repl.Run()
 }
 
 // requireAPIKey checks that ANTHROPIC_API_KEY is set (loadEnvFile must have run
@@ -564,17 +428,3 @@ func loadEnvFile() {
 	}
 }
 
-func printReplHelp() {
-	fmt.Println(`REPL Commands:
-  /agents          List available agents
-  /workflows       List available workflows
-  /ask <agent>     Start a conversation with an agent
-  /end             End current conversation
-  /run <wf> [task] Run a workflow
-  /help            Show this help
-  /quit            Exit the REPL
-
-When in a conversation (after /ask):
-  Type your message and press Enter to send it to the agent.
-  Use /end to stop the conversation.`)
-}

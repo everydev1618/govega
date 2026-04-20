@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
 
 	vega "github.com/everydev1618/govega"
 )
+
+var mentionRe = regexp.MustCompile(`@(\w+)`)
 
 // channelStreams tracks active channel streams keyed by channel name.
 var (
@@ -182,7 +185,19 @@ func (s *Server) handleChannelPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine which agent(s) to activate.
+	// Check for @mentions first — if the user @mentions a team member, route to them.
 	targetAgent := req.Agent
+	if targetAgent == "" {
+		if matches := mentionRe.FindStringSubmatch(req.Message); len(matches) > 1 {
+			mentioned := matches[1]
+			for _, member := range ch.Team {
+				if member == mentioned {
+					targetAgent = mentioned
+					break
+				}
+			}
+		}
+	}
 	if targetAgent == "" && len(ch.Team) > 0 {
 		targetAgent = ch.Team[0] // team lead
 	}

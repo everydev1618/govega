@@ -79,6 +79,16 @@
   animation: agent-orbit 2s linear infinite;
 }
 
+@keyframes visualize-glow {
+  0%, 100% { box-shadow: 0 4px 12px rgba(59,130,246,0.15), 0 0 0 0 rgba(59,130,246,0); }
+  50% { box-shadow: 0 4px 16px rgba(59,130,246,0.3), 0 0 0 4px rgba(59,130,246,0.08); }
+}
+
+.visualize-btn-active {
+  animation: visualize-glow 2.5s ease-in-out infinite;
+  border-color: rgba(59,130,246,0.3);
+}
+
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 
