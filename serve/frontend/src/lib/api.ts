@@ -18,17 +18,11 @@ async function parseErrorResponse(res: Response): Promise<APIError> {
   return new APIError(res.status, body)
 }
 
-function authHeaders(): Record<string, string> {
-  const userName = localStorage.getItem('vega-user-name')
-  return userName ? { 'X-Auth-User': userName } : {}
-}
-
 export async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...authHeaders(),
       ...init?.headers,
     },
   })
@@ -183,7 +177,7 @@ export const api = {
   ): Promise<void> => {
     return fetch(`${BASE}/api/agents/${agent}/chat/stream`, {
       method: 'GET',
-      headers: { ...authHeaders() },
+      headers: {},
       signal,
     }).then(async (res) => {
       if (!res.ok) return // no active stream or error
@@ -252,7 +246,7 @@ export const api = {
   ): Promise<void> => {
     return fetch(`${BASE}/api/channels/${encodeURIComponent(name)}/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, thread_id: threadId, agent }),
       signal,
     }).then(async (res) => {
@@ -318,7 +312,7 @@ export const api = {
   ): Promise<void> => {
     return fetch(`${BASE}/api/agents/${agent}/chat/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),
       signal,
     }).then(async (res) => {

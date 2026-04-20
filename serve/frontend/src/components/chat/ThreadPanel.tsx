@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../../lib/api'
 import type { ChannelMessage, ChannelEvent, ChatEventMetrics } from '../../lib/types'
 import { AgentAvatar, UserAvatar } from './AgentAvatar'
-import { getUserName } from '../UserIdentityPrompt'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -60,7 +59,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
     if (!msg || sending) return
     setInput('')
 
-    const userReply: StreamingReply = { agent: '', sender: getUserName() || '', role: 'user', content: msg, streaming: false }
+    const userReply: StreamingReply = { agent: '', sender: '', role: 'user', content: msg, streaming: false }
     setReplies(prev => [...prev, userReply])
 
     const assistantReply: StreamingReply = { agent: '', role: 'assistant', content: '', streaming: true }
@@ -127,9 +126,8 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
     const info = agentDisplayInfo.get(agentName)
     const streaming = 'streaming' in msg && msg.streaming
     const sender = 'sender' in msg ? (msg as ChannelMessage).sender : undefined
-    const currentUser = getUserName()
     const displayName = isUser
-      ? (sender && sender !== currentUser ? sender : (sender || 'You'))
+      ? (sender || 'You')
       : (info?.displayName || agentName)
 
     return (

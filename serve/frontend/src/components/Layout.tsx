@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { CompanySwitcher } from './CompanySwitcher'
-import { ActivityBar } from './ActivityBar'
 import { AgentAvatar } from './chat/AgentAvatar'
-import { UserIdentityPrompt, getUserName } from './UserIdentityPrompt'
 import { api } from '../lib/api'
 import type { AgentResponse, Channel, InboxItem, ProcessResponse } from '../lib/types'
 
@@ -24,6 +22,7 @@ const adminNav = [
   { to: '/processes', label: 'Processes' },
   { to: '/events', label: 'Events' },
   { to: '/spawn-tree', label: 'Spawn Tree' },
+  { to: '/visualize', label: 'Visualize' },
   { to: '/connections', label: 'Connections' },
   { to: '/costs', label: 'Costs' },
   { to: '/settings', label: 'Settings' },
@@ -50,7 +49,6 @@ function SectionHeader({ children, action, collapsed, onToggle }: { children: Re
 
 export function Layout() {
   const location = useLocation()
-  const [userName, setUserNameState] = useState<string | null>(getUserName())
   const [agents, setAgents] = useState<AgentResponse[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
@@ -107,10 +105,6 @@ export function Layout() {
   useEffect(() => {
     setSidebarOpen(false)
   }, [location.pathname])
-
-  if (!userName) {
-    return <UserIdentityPrompt onComplete={setUserNameState} />
-  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -342,13 +336,42 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <ActivityBar agents={agents} />
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
         <main className="flex-1 p-3 pt-14 md:p-6 md:pt-6 overflow-auto flex flex-col min-h-0">
           <Outlet />
         </main>
+        {location.pathname !== '/visualize' && (
+          <VisualizeButton running={runningTasks.length} />
+        )}
       </div>
     </div>
+  )
+}
+
+function VisualizeButton({ running }: { running: number }) {
+  const navigate = useNavigate()
+  return (
+    <button
+      onClick={() => navigate('/visualize')}
+      className={`absolute bottom-5 right-5 z-30 group flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-full border border-border bg-card shadow-lg transition-all hover:scale-105 hover:border-primary/50 hover:shadow-primary/10 hover:shadow-xl ${running > 0 ? 'visualize-btn-active' : ''}`}
+      title="Supervision Tree"
+    >
+      {/* Constellation icon */}
+      <svg className="w-4.5 h-4.5 text-muted-foreground group-hover:text-primary transition-colors" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <circle cx="9" cy="4" r="2" />
+        <circle cx="4" cy="13" r="2" />
+        <circle cx="14" cy="13" r="2" />
+        <line x1="7.5" y1="5.5" x2="5.5" y2="11.5" />
+        <line x1="10.5" y1="5.5" x2="12.5" y2="11.5" />
+        <line x1="6" y1="13" x2="12" y2="13" />
+      </svg>
+      {running > 0 && (
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+        </span>
+      )}
+    </button>
   )
 }
 

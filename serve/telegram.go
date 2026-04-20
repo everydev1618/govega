@@ -73,7 +73,7 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	userID := strconv.FormatInt(update.Message.From.ID, 10)
 	chatID := update.Message.Chat.ID
 
-	// Derive a per-user agent name (mirrors chatAgentName in handlers_api.go).
+	// Derive a per-user agent name for Telegram multi-user support.
 	name := t.agentName + ":" + userID
 
 	// Ensure the per-user agent clone exists.
