@@ -28,7 +28,7 @@ func defaultDocument() *dsl.Document {
 // serveCmd starts the web dashboard and REST API server.
 func serveCmd(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	addr := fs.String("addr", ":3001", "HTTP listen address")
+	addr := fs.String("addr", "", "HTTP listen address (default: auto-assign free port)")
 	dbPath := fs.String("db", vega.DefaultDBPath(), "SQLite database path")
 
 	fs.Usage = func() {

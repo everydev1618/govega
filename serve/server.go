@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -157,6 +158,20 @@ func (s *Server) getExtractLLM() llm.LLM {
 		s.extractLLM = llm.New()
 	})
 	return s.extractLLM
+}
+
+// resolveAddr binds a TCP listener on addr (or ":0" if addr is empty to
+// let the OS pick a free port). It returns the listener and the resolved
+// address with the actual port filled in.
+func resolveAddr(addr string) (net.Listener, string, error) {
+	if addr == "" {
+		addr = ":0"
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, "", err
+	}
+	return ln, ln.Addr().String(), nil
 }
 
 // Start initializes the store, wires callbacks, registers routes, and
@@ -518,18 +533,22 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
 
+	ln, addr, err := resolveAddr(s.cfg.Addr)
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+
 	srv := &http.Server{
-		Addr:    s.cfg.Addr,
 		Handler: corsMiddleware(mux),
 	}
 
 	// Start server in goroutine.
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("vega serve started", "addr", s.cfg.Addr)
-		fmt.Printf("Dashboard: http://localhost%s\n", s.cfg.Addr)
-		fmt.Printf("API:       http://localhost%s/api/stats\n", s.cfg.Addr)
-		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+		slog.Info("vega serve started", "addr", addr)
+		fmt.Printf("Dashboard: http://localhost%s\n", addr)
+		fmt.Printf("API:       http://localhost%s/api/stats\n", addr)
+		if err := srv.Serve(ln); err != http.ErrServerClosed {
 			errCh <- err
 		}
 	}()
