@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/everydev1618/govega/llm"
@@ -68,17 +69,29 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
 
-		// Collect all tool results into a single user message.
-		var toolResults strings.Builder
-		for _, tc := range resp.ToolCalls {
+		// Execute all tool calls in parallel and collect results.
+		type toolResult struct {
+			id, name, result string
+		}
+		results := make([]toolResult, len(resp.ToolCalls))
+		var wg sync.WaitGroup
+		for i, tc := range resp.ToolCalls {
 			metrics.ToolCalls = append(metrics.ToolCalls, tc.Name)
+			wg.Add(1)
+			go func(idx int, tc llm.ToolCall) {
+				defer wg.Done()
+				result, err := p.Agent.Tools.Execute(toolCtx, tc.Name, tc.Arguments)
+				if err != nil {
+					result = "Error: " + err.Error()
+				}
+				results[idx] = toolResult{tc.ID, tc.Name, result}
+			}(i, tc)
+		}
+		wg.Wait()
 
-			result, err := p.Agent.Tools.Execute(toolCtx, tc.Name, tc.Arguments)
-			if err != nil {
-				result = "Error: " + err.Error()
-			}
-
-			toolResults.WriteString(formatToolResult(tc.ID, tc.Name, result))
+		var toolResults strings.Builder
+		for _, tr := range results {
+			toolResults.WriteString(formatToolResult(tr.id, tr.name, tr.result))
 			toolResults.WriteString("\n")
 		}
 		if toolResults.Len() > 0 {
@@ -180,19 +193,31 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
 
-		// Collect all tool results into a single user message.
-		var toolResults strings.Builder
-		for _, tc := range toolCalls {
+		// Execute all tool calls in parallel and collect results.
+		type streamToolResult struct {
+			id, name, result string
+		}
+		streamResults := make([]streamToolResult, len(toolCalls))
+		var wg sync.WaitGroup
+		for i, tc := range toolCalls {
 			p.mu.Lock()
 			p.metrics.ToolCalls++
 			p.mu.Unlock()
+			wg.Add(1)
+			go func(idx int, tc llm.ToolCall) {
+				defer wg.Done()
+				result, err := p.Agent.Tools.Execute(toolCtx, tc.Name, tc.Arguments)
+				if err != nil {
+					result = "Error: " + err.Error()
+				}
+				streamResults[idx] = streamToolResult{tc.ID, tc.Name, result}
+			}(i, tc)
+		}
+		wg.Wait()
 
-			result, err := p.Agent.Tools.Execute(toolCtx, tc.Name, tc.Arguments)
-			if err != nil {
-				result = "Error: " + err.Error()
-			}
-
-			toolResults.WriteString(formatToolResult(tc.ID, tc.Name, result))
+		var toolResults strings.Builder
+		for _, tr := range streamResults {
+			toolResults.WriteString(formatToolResult(tr.id, tr.name, tr.result))
 			toolResults.WriteString("\n")
 		}
 		if toolResults.Len() > 0 {
@@ -321,29 +346,42 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		toolCtx := ContextWithProcess(ctx, p)
 		toolCtx = ContextWithEventSink(toolCtx, events)
 
-		// Execute tools and collect results into a single user message.
-		var toolResults strings.Builder
-		for _, tc := range toolCalls {
+		// Execute all tool calls in parallel and collect results.
+		type richToolResult struct {
+			id, name, result string
+			elapsed          int64
+		}
+		richResults := make([]richToolResult, len(toolCalls))
+		var wg sync.WaitGroup
+		for i, tc := range toolCalls {
 			p.mu.Lock()
 			p.metrics.ToolCalls++
 			p.mu.Unlock()
+			wg.Add(1)
+			go func(idx int, tc llm.ToolCall) {
+				defer wg.Done()
+				start := time.Now()
+				result, execErr := p.Agent.Tools.Execute(toolCtx, tc.Name, tc.Arguments)
+				elapsed := toolDuration(start)
+				if execErr != nil {
+					result = "Error: " + execErr.Error()
+				}
+				richResults[idx] = richToolResult{tc.ID, tc.Name, result, elapsed}
+			}(i, tc)
+		}
+		wg.Wait()
 
-			start := time.Now()
-			result, execErr := p.Agent.Tools.Execute(toolCtx, tc.Name, tc.Arguments)
-			elapsed := toolDuration(start)
-			if execErr != nil {
-				result = "Error: " + execErr.Error()
-			}
-
+		// Emit tool end events and build result message in order.
+		var toolResults strings.Builder
+		for _, tr := range richResults {
 			events <- ChatEvent{
 				Type:       ChatEventToolEnd,
-				ToolCallID: tc.ID,
-				ToolName:   tc.Name,
-				Result:     result,
-				DurationMs: elapsed,
+				ToolCallID: tr.id,
+				ToolName:   tr.name,
+				Result:     tr.result,
+				DurationMs: tr.elapsed,
 			}
-
-			toolResults.WriteString(formatToolResult(tc.ID, tc.Name, result))
+			toolResults.WriteString(formatToolResult(tr.id, tr.name, tr.result))
 			toolResults.WriteString("\n")
 		}
 		if toolResults.Len() > 0 {

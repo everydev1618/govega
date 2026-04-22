@@ -45,7 +45,8 @@ type Interpreter struct {
 	delegationObserver DelegationObserver
 	inboxBackend      InboxBackend   // for async dispatch completion notifications
 	channelBackend    ChannelBackend // for posting completion summaries to channels
-	memoryInjector    func(proc *vega.Process, agentName string) // injects memory into agent before send
+	memoryInjector       func(proc *vega.Process, agentName string) // injects memory into agent before send
+	delegationCtxDecorator func(ctx context.Context, agentName string) context.Context // rewrites ctx before delegation
 	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
 	onDispatchStart    func(agentName string) // fires when a dispatched agent begins working
 	onDispatchComplete func(agentName string) // fires when a dispatched agent finishes
@@ -1318,6 +1319,12 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 		i.memoryInjector(proc, agentName)
 	}
 
+	// Scope memory context to the delegated agent so its remember/recall
+	// tools use their own namespace instead of the parent's.
+	if i.delegationCtxDecorator != nil {
+		ctx = i.delegationCtxDecorator(ctx, agentName)
+	}
+
 	// If the parent is streaming, use rich streaming so we can forward
 	// nested tool activity back to the parent's event channel.
 	parentSink := vega.EventSinkFromContext(ctx)
@@ -1382,6 +1389,13 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 // during delegated tasks, not just during direct chat.
 func (i *Interpreter) SetMemoryInjector(fn func(proc *vega.Process, agentName string)) {
 	i.memoryInjector = fn
+}
+
+// SetDelegationCtxDecorator sets a callback that rewrites the context before
+// each delegation. The serve layer uses this to scope memory context to the
+// delegated agent so each agent's remember/recall tools use their own namespace.
+func (i *Interpreter) SetDelegationCtxDecorator(fn func(ctx context.Context, agentName string) context.Context) {
+	i.delegationCtxDecorator = fn
 }
 
 // SetInboxBackend sets the inbox backend used by DispatchToAgent for
