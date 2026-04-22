@@ -199,8 +199,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Resolve company identity.
 	s.company = s.resolveCompany()
 
-	// Tell the interpreter our base URL so agents can construct workspace URLs.
-	s.interp.SetServerBaseURL(fmt.Sprintf("http://localhost%s", s.cfg.Addr))
+	// Base URL is set later after the listener resolves the actual port.
 
 	// Load settings into tools collection.
 	s.refreshToolSettings()
@@ -314,6 +313,12 @@ func (s *Server) Start(ctx context.Context) error {
 		if extra := buildExtraSystem(memText, projectCtx, companyCtx); extra != "" {
 			proc.SetExtraSystem(extra)
 		}
+	})
+
+	// Scope memory context to delegated agent so each module's remember/recall
+	// tools use their own namespace.
+	s.interp.SetDelegationCtxDecorator(func(ctx context.Context, agentName string) context.Context {
+		return ContextWithMemory(ctx, s.store, "default", agentName)
 	})
 
 	// Channel post callback — publishes SSE events for real-time updates.
@@ -538,6 +543,11 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 
+	// Extract the port from the resolved address and build a clean base URL.
+	_, port, _ := net.SplitHostPort(addr)
+	baseURL := fmt.Sprintf("http://localhost:%s", port)
+	s.interp.SetServerBaseURL(baseURL)
+
 	srv := &http.Server{
 		Handler: corsMiddleware(mux),
 	}
@@ -546,8 +556,8 @@ func (s *Server) Start(ctx context.Context) error {
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("vega serve started", "addr", addr)
-		fmt.Printf("Dashboard: http://localhost%s\n", addr)
-		fmt.Printf("API:       http://localhost%s/api/stats\n", addr)
+		fmt.Printf("Dashboard: %s\n", baseURL)
+		fmt.Printf("API:       %s/api/stats\n", baseURL)
 		if err := srv.Serve(ln); err != http.ErrServerClosed {
 			errCh <- err
 		}
