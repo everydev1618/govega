@@ -88,6 +88,17 @@ func (p *Parser) Parse(data []byte) (*Document, error) {
 		}
 	}
 
+	// Parse top-level tools (custom tool definitions with implementations)
+	if toolsRaw, ok := raw["tools"].(map[string]any); ok {
+		for name, tRaw := range toolsRaw {
+			td, err := p.parseToolDef(name, tRaw)
+			if err != nil {
+				return nil, fmt.Errorf("parse tool %s: %w", name, err)
+			}
+			doc.Tools[name] = td
+		}
+	}
+
 	// Parse workflows
 	if workflows, ok := raw["workflows"].(map[string]any); ok {
 		for name, wfRaw := range workflows {
@@ -926,6 +937,99 @@ func similarity(a, b string) int {
 	}
 
 	return score
+}
+
+// parseToolDef parses a top-level tool definition with implementation.
+func (p *Parser) parseToolDef(name string, raw any) (*ToolDef, error) {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected map")
+	}
+
+	td := &ToolDef{Name: name}
+
+	if v, ok := m["name"].(string); ok {
+		td.Name = v
+	}
+	if v, ok := m["description"].(string); ok {
+		td.Description = v
+	}
+
+	// Parse params
+	if params, ok := m["params"].([]any); ok {
+		for _, pRaw := range params {
+			pm, ok := pRaw.(map[string]any)
+			if !ok {
+				continue
+			}
+			param := ToolParam{}
+			if v, ok := pm["name"].(string); ok {
+				param.Name = v
+			}
+			if v, ok := pm["type"].(string); ok {
+				param.Type = v
+			}
+			if v, ok := pm["description"].(string); ok {
+				param.Description = v
+			}
+			if v, ok := pm["required"].(bool); ok {
+				param.Required = v
+			}
+			if v, ok := pm["default"]; ok {
+				param.Default = v
+			}
+			if enums, ok := pm["enum"].([]any); ok {
+				for _, e := range enums {
+					if s, ok := e.(string); ok {
+						param.Enum = append(param.Enum, s)
+					}
+				}
+			}
+			td.Params = append(td.Params, param)
+		}
+	}
+
+	// Parse implementation
+	if implRaw, ok := m["implementation"].(map[string]any); ok {
+		impl := &ToolImpl{}
+		if v, ok := implRaw["type"].(string); ok {
+			impl.Type = v
+		}
+		if v, ok := implRaw["method"].(string); ok {
+			impl.Method = v
+		}
+		if v, ok := implRaw["url"].(string); ok {
+			impl.URL = v
+		}
+		if v, ok := implRaw["command"].(string); ok {
+			impl.Command = v
+		}
+		if v, ok := implRaw["timeout"].(string); ok {
+			impl.Timeout = v
+		}
+		if headers, ok := implRaw["headers"].(map[string]any); ok {
+			impl.Headers = make(map[string]string)
+			for k, v := range headers {
+				if s, ok := v.(string); ok {
+					impl.Headers[k] = s
+				}
+			}
+		}
+		if query, ok := implRaw["query"].(map[string]any); ok {
+			impl.Query = make(map[string]string)
+			for k, v := range query {
+				if s, ok := v.(string); ok {
+					impl.Query[k] = s
+				}
+			}
+		}
+		if body, ok := implRaw["body"]; ok {
+			impl.Body = body
+		}
+		td.Implementation = impl
+	}
+
+	return td, nil
 }
 
 // Expression parsing

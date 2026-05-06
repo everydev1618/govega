@@ -147,6 +147,49 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	t := tools.NewTools(toolOpts...)
 	t.RegisterBuiltins()
 
+	// Register custom tools defined in the YAML tools: section.
+	for name, td := range doc.Tools {
+		if td.Implementation == nil {
+			continue
+		}
+		// Expand ${ENV_VAR} references in tool implementation fields.
+		headers := make(map[string]string, len(td.Implementation.Headers))
+		for k, v := range td.Implementation.Headers {
+			headers[k] = os.ExpandEnv(v)
+		}
+		query := make(map[string]string, len(td.Implementation.Query))
+		for k, v := range td.Implementation.Query {
+			query[k] = os.ExpandEnv(v)
+		}
+		dynDef := tools.DynamicToolDef{
+			Name:        name,
+			Description: td.Description,
+			Implementation: tools.DynamicToolImpl{
+				Type:    td.Implementation.Type,
+				Method:  td.Implementation.Method,
+				URL:     os.ExpandEnv(td.Implementation.URL),
+				Headers: headers,
+				Query:   query,
+				Body:    td.Implementation.Body,
+				Command: td.Implementation.Command,
+				Timeout: td.Implementation.Timeout,
+			},
+		}
+		for _, p := range td.Params {
+			dynDef.Params = append(dynDef.Params, tools.DynamicParamDef{
+				Name:        p.Name,
+				Type:        p.Type,
+				Description: p.Description,
+				Required:    p.Required,
+				Default:     p.Default,
+				Enum:        p.Enum,
+			})
+		}
+		if err := t.RegisterDynamicTool(dynDef); err != nil {
+			return nil, fmt.Errorf("register tool %s: %w", name, err)
+		}
+	}
+
 	// Connect MCP servers
 	if doc.Settings != nil && doc.Settings.MCP != nil && len(doc.Settings.MCP.Servers) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

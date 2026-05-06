@@ -170,6 +170,30 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 // --- Chat Handlers ---
 
+// ensureChatAgent ensures the named agent exists, auto-cloning from a base
+// when name uses the "base:suffix" form. This gives chat clients a way to
+// scope conversations (e.g. per-user, per-document) without registering
+// every clone up front. Mirrors the telegram per-user clone pattern.
+func (s *Server) ensureChatAgent(name string) error {
+	if !strings.Contains(name, ":") {
+		return nil
+	}
+	if agents := s.interp.Agents(); agents[name] != nil {
+		return nil
+	}
+	base := name[:strings.Index(name, ":")]
+	doc := s.interp.Document()
+	baseDef, ok := doc.Agents[base]
+	if !ok {
+		return fmt.Errorf("base agent '%s' not found", base)
+	}
+	clone := *baseDef
+	if err := s.interp.AddAgent(name, &clone); err != nil {
+		return fmt.Errorf("clone agent %s from %s: %w", name, base, err)
+	}
+	return nil
+}
+
 // hydrateAgent loads persisted chat history into a process that has no
 // conversation history (e.g. freshly spawned after restart). This gives
 // agents continuity across server restarts.
@@ -198,8 +222,11 @@ func (s *Server) hydrateAgent(proc *vega.Process, agentName string) {
 
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
-	baseAgent := r.PathValue("name")
-	name := baseAgent
+	name := r.PathValue("name")
+	baseAgent := name
+	if i := strings.Index(name, ":"); i >= 0 {
+		baseAgent = name[:i]
+	}
 	userID := "default"
 
 	var req struct {
@@ -207,6 +234,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
+		return
+	}
+
+	if err := s.ensureChatAgent(name); err != nil {
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 
@@ -268,15 +301,25 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
-	baseAgent := r.PathValue("name")
-	name := baseAgent
+	name := r.PathValue("name")
+	baseAgent := name
+	if i := strings.Index(name, ":"); i >= 0 {
+		baseAgent = name[:i]
+	}
 	userID := "default"
 
 	var req struct {
 		Message string `json:"message"`
+		Context string `json:"context,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
+		return
+	}
+
+	if err := s.ensureChatAgent(name); err != nil {
+		status, msg := classifyHTTPError(err)
+		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 
@@ -296,7 +339,14 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	projectCtxStream := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtxStream := buildCompanyContext(s.company)
-	if extra := buildExtraSystem(memTextStream, projectCtxStream, companyCtxStream); extra != "" {
+	extra := buildExtraSystem(memTextStream, projectCtxStream, companyCtxStream)
+	if req.Context != "" {
+		if extra != "" {
+			extra += "\n\n"
+		}
+		extra += req.Context
+	}
+	if extra != "" {
 		proc.SetExtraSystem(extra)
 	}
 
