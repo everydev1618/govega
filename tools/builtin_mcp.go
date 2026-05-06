@@ -21,6 +21,7 @@ type builtinMCPServer struct {
 var builtinServers = map[string]*builtinMCPServer{
 	"fetch": fetchServer(),
 	"mssql": mssqlServer(),
+	"gmail": gmailServer(),
 }
 
 // HasBuiltinServer reports whether a Go-native implementation exists for the named MCP server.

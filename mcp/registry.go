@@ -133,6 +133,12 @@ var DefaultRegistry = map[string]RegistryEntry{
 		URL:         "https://mcp.composio.dev/v2/mcp",
 		RequiredEnv: []string{"COMPOSIO_API_KEY"},
 	},
+	"gmail": {
+		Name:        "gmail",
+		Description: "Gmail API (list, read, label, archive, draft) — built-in Go server using a BYO OAuth refresh token",
+		BuiltinGo:   true,
+		RequiredEnv: []string{"GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"},
+	},
 }
 
 // Lookup finds a registry entry by name.
