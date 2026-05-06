@@ -13,6 +13,40 @@ import (
 	"github.com/everydev1618/govega/mcp"
 )
 
+// --- Identity Handler ---
+
+// IdentityResponse describes the configured meta-agent identities so the
+// frontend can render role names without hardcoding "iris"/"hera".
+type IdentityResponse struct {
+	Orchestrator AgentIdentity `json:"orchestrator"`
+	Builder      AgentIdentity `json:"builder"`
+	ProductName  string        `json:"product_name"`
+}
+
+// AgentIdentity is the public identity of a meta-agent.
+type AgentIdentity struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	Title       string `json:"title,omitempty"`
+}
+
+func (s *Server) handleGetIdentity(w http.ResponseWriter, r *http.Request) {
+	resp := IdentityResponse{
+		Orchestrator: AgentIdentity{
+			ID:          s.cfg.Orchestrator.Name,
+			DisplayName: s.cfg.Orchestrator.DisplayName,
+			Title:       "Orchestrator",
+		},
+		Builder: AgentIdentity{
+			ID:          s.cfg.Builder.Name,
+			DisplayName: s.cfg.Builder.DisplayName,
+			Title:       "Agent Builder",
+		},
+		ProductName: s.cfg.Orchestrator.ProductName,
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // --- Config Upload/Get Handlers ---
 
 // ConfigUploadResult describes the outcome of a YAML config upload.
@@ -69,18 +103,16 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	builtins := map[string]bool{"hera": true, "iris": true}
-
 	var agents []ConfigAgentInfo
 	for name, def := range doc.Agents {
-		if name == "hera" {
+		if name == s.cfg.Builder.Name {
 			continue
 		}
 		source := "yaml"
 		if composedMap[name] {
 			source = "composed"
 		}
-		if builtins[name] {
+		if def.IsMeta {
 			source = "builtin"
 		}
 		agents = append(agents, ConfigAgentInfo{
@@ -286,7 +318,7 @@ func (s *Server) upsertUploadedAgent(name string, agentDef *dsl.Agent, result *C
 	doc := s.interp.Document()
 
 	// Skip meta-agents.
-	if name == "hera" || name == "iris" {
+	if name == s.cfg.Builder.Name || name == s.cfg.Orchestrator.Name {
 		result.AgentsSkipped = append(result.AgentsSkipped, name+" (reserved)")
 		return
 	}

@@ -239,8 +239,8 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
-	if name == "hera" {
-		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Hera cannot be updated"})
+	if name == s.cfg.Builder.Name {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: s.cfg.Builder.DisplayName + " cannot be updated"})
 		return
 	}
 
@@ -350,8 +350,8 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
-	if name == "hera" {
-		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "Hera cannot be deleted"})
+	if name == s.cfg.Builder.Name {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: s.cfg.Builder.DisplayName + " cannot be deleted"})
 		return
 	}
 

@@ -39,7 +39,7 @@ func TestInjectHera(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	if err := InjectHera(interp, nil); err != nil {
+	if err := InjectHera(interp, DefaultHeraConfig(), nil); err != nil {
 		t.Fatalf("InjectHera: %v", err)
 	}
 
@@ -67,7 +67,7 @@ func TestHeraCreateAgent(t *testing.T) {
 		},
 	}
 
-	RegisterHeraTools(interp, cb)
+	RegisterHeraTools(interp, DefaultHeraConfig(), cb)
 	ctx := context.Background()
 
 	result, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
@@ -100,7 +100,7 @@ func TestHeraCreateAgentProtectsHera(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterHeraTools(interp, nil)
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
 	ctx := context.Background()
 
 	_, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
@@ -123,7 +123,7 @@ func TestHeraDeleteAgent(t *testing.T) {
 		},
 	}
 
-	RegisterHeraTools(interp, cb)
+	RegisterHeraTools(interp, DefaultHeraConfig(), cb)
 	ctx := context.Background()
 
 	// Create an agent first.
@@ -160,7 +160,7 @@ func TestHeraDeleteAgentProtectsHera(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterHeraTools(interp, nil)
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
 	ctx := context.Background()
 
 	_, err := interp.Tools().Execute(ctx, "delete_agent", map[string]any{
@@ -175,7 +175,7 @@ func TestHeraUpdateAgent(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterHeraTools(interp, nil)
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
 	ctx := context.Background()
 
 	// Create an agent.
@@ -215,7 +215,7 @@ func TestHeraListAgents(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterHeraTools(interp, nil)
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
 	ctx := context.Background()
 
 	// Create two agents.
@@ -260,7 +260,7 @@ func TestHeraListAvailableTools(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterHeraTools(interp, nil)
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
 	ctx := context.Background()
 
 	result, err := interp.Tools().Execute(ctx, "list_available_tools", map[string]any{})
@@ -296,7 +296,7 @@ func TestHeraListMCPRegistry(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()
 
-	RegisterHeraTools(interp, nil)
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
 	ctx := context.Background()
 
 	result, err := interp.Tools().Execute(ctx, "list_mcp_registry", map[string]any{})
@@ -328,12 +328,14 @@ func TestHeraListMCPRegistry(t *testing.T) {
 }
 
 func TestHeraAgentDefaults(t *testing.T) {
-	def := HeraAgent("")
+	def := HeraAgent(DefaultHeraConfig())
 	if def.Model != "claude-opus-4-20250514" {
 		t.Errorf("default model = %q, want claude-opus-4-20250514", def.Model)
 	}
 
-	def = HeraAgent("custom-model")
+	cfg := DefaultHeraConfig()
+	cfg.Model = "custom-model"
+	def = HeraAgent(cfg)
 	if def.Model != "custom-model" {
 		t.Errorf("model = %q, want custom-model", def.Model)
 	}

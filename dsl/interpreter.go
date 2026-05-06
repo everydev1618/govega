@@ -1320,11 +1320,11 @@ func (i *Interpreter) ResetAgent(name string) error {
 func (i *Interpreter) RemoveComposedAgents() {
 	i.mu.Lock()
 	var toRemove []string
-	for name := range i.doc.Agents {
+	for name, def := range i.doc.Agents {
 		if i.yamlAgents[name] {
 			continue // YAML-defined, keep it
 		}
-		if name == heraAgentName || name == irisAgentName {
+		if def.IsMeta {
 			continue // meta-agents, keep them
 		}
 		toRemove = append(toRemove, name)

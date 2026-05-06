@@ -75,6 +75,12 @@ type Agent struct {
 	CircuitBreaker *CircuitBreakerDef `yaml:"circuit_breaker"`
 	Skills         *SkillsDef         `yaml:"skills"`
 	Delegation     *DelegationDef     `yaml:"delegation"`
+
+	// IsMeta marks an agent as a built-in meta-agent (e.g. orchestrator,
+	// builder). Meta-agents are filtered out of "team" / "channel member"
+	// listings and protected from runtime mutation. Set by Inject*-style
+	// constructors; not parsed from YAML.
+	IsMeta bool `yaml:"-" json:"-"`
 }
 
 // DelegationDef configures context-aware delegation for an agent.

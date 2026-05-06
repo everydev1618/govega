@@ -11,13 +11,26 @@ import (
 //go:embed frontend/dist/*
 var frontendFS embed.FS
 
-// frontendHandler returns an http.Handler that serves the embedded SPA.
-// It serves static files from the embedded filesystem and falls back
-// to index.html for SPA routing.
-func frontendHandler() http.Handler {
-	dist, err := fs.Sub(frontendFS, "frontend/dist")
+// BuiltinFrontendFS exposes govega's bundled React build as an fs.FS rooted at
+// the dist directory. Apps embedding govega/serve can either pass this (the
+// default) or their own fs.FS via Config.FrontendFS to ship a custom UI.
+var BuiltinFrontendFS = func() fs.FS {
+	sub, err := fs.Sub(frontendFS, "frontend/dist")
 	if err != nil {
-		// If frontend hasn't been built yet, serve a placeholder.
+		return nil
+	}
+	return sub
+}()
+
+// frontendHandler returns an http.Handler that serves the SPA from the
+// given fs.FS. When dist is nil, the bundled BuiltinFrontendFS is used.
+// If neither is available (frontend not built), a placeholder HTML page
+// is served instead.
+func frontendHandler(dist fs.FS) http.Handler {
+	if dist == nil {
+		dist = BuiltinFrontendFS
+	}
+	if dist == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Write([]byte(placeholderHTML))

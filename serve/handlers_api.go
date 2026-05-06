@@ -118,8 +118,9 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]AgentResponse, 0, len(doc.Agents))
 	for name, def := range doc.Agents {
-		// Hide Hera from the API — she's internal, accessed only via Iris.
-		if name == "hera" {
+		// Hide the builder meta-agent from the API — internal-only,
+		// accessed via the orchestrator.
+		if name == s.cfg.Builder.Name {
 			continue
 		}
 		// Hide per-user clones (e.g. "iris:Etienne") — they're internal.
@@ -271,7 +272,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Record original prompt to iris in prompt history (survives reset).
-	if baseAgent == "iris" {
+	if baseAgent == s.cfg.Orchestrator.Name {
 		if _, err := s.store.InsertPromptHistory(req.Message); err != nil {
 			slog.Error("failed to persist prompt history", "error", err)
 		}
@@ -355,7 +356,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Record original prompt to iris in prompt history (survives reset).
-	if baseAgent == "iris" {
+	if baseAgent == s.cfg.Orchestrator.Name {
 		if _, err := s.store.InsertPromptHistory(req.Message); err != nil {
 			slog.Error("failed to persist prompt history", "error", err)
 		}

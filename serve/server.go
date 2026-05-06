@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -99,6 +100,17 @@ type Config struct {
 	TelegramToken string       // TELEGRAM_BOT_TOKEN; leave empty to disable
 	TelegramAgent string       // TELEGRAM_AGENT; defaults to first agent if empty
 	Company       *dsl.Company // optional company identity (env var overrides)
+
+	// Orchestrator/Builder identify the meta-agents used for routing,
+	// scheduling, and UI affordances. Default to "iris"/"hera" — apps
+	// embedding govega can override to rebrand.
+	Orchestrator dsl.IrisConfig
+	Builder      dsl.HeraConfig
+
+	// FrontendFS lets a downstream consumer embed its own React build
+	// instead of govega's bundled UI. When nil, the bundled frontend is
+	// served from serve/builtinui.
+	FrontendFS fs.FS
 }
 
 // Server is the HTTP server for the Vega dashboard and REST API.
@@ -132,6 +144,44 @@ type Server struct {
 
 // New creates a new Server.
 func New(interp *dsl.Interpreter, cfg Config) *Server {
+	// Fill in defaults for the meta-agent identities so callers passing
+	// zero-value Config still get the bundled Iris/Hera personas.
+	if cfg.Orchestrator.Name == "" {
+		cfg.Orchestrator = dsl.DefaultIrisConfig()
+	} else {
+		// Caller set Name (and possibly other fields); fill remaining defaults.
+		// applyDefaults is unexported, so set the zero fields here.
+		def := dsl.DefaultIrisConfig()
+		if cfg.Orchestrator.DisplayName == "" {
+			cfg.Orchestrator.DisplayName = def.DisplayName
+		}
+		if cfg.Orchestrator.BuilderName == "" {
+			cfg.Orchestrator.BuilderName = def.BuilderName
+		}
+		if cfg.Orchestrator.BuilderDisplayName == "" {
+			cfg.Orchestrator.BuilderDisplayName = def.BuilderDisplayName
+		}
+		if cfg.Orchestrator.ProductName == "" {
+			cfg.Orchestrator.ProductName = def.ProductName
+		}
+	}
+	if cfg.Builder.Name == "" {
+		cfg.Builder = dsl.DefaultHeraConfig()
+	} else {
+		def := dsl.DefaultHeraConfig()
+		if cfg.Builder.DisplayName == "" {
+			cfg.Builder.DisplayName = def.DisplayName
+		}
+		if cfg.Builder.OrchestratorName == "" {
+			cfg.Builder.OrchestratorName = def.OrchestratorName
+		}
+		if cfg.Builder.OrchestratorDisplayName == "" {
+			cfg.Builder.OrchestratorDisplayName = def.OrchestratorDisplayName
+		}
+		if cfg.Builder.ProductName == "" {
+			cfg.Builder.ProductName = def.ProductName
+		}
+	}
 	return &Server{
 		interp:     interp,
 		broker:     NewEventBroker(),
@@ -428,32 +478,33 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		s.streamsMu.Unlock()
 
-		if agentName == dsl.IrisAgentName || strings.HasPrefix(agentName, dsl.IrisAgentName+":") {
-			slog.Debug("skipping iris poke — completing agent is iris itself", "agent", agentName)
+		orchName := s.cfg.Orchestrator.Name
+		if agentName == orchName || strings.HasPrefix(agentName, orchName+":") {
+			slog.Debug("skipping orchestrator poke — completing agent is the orchestrator itself", "agent", agentName)
 			return
 		}
-		slog.Info("dispatch complete, poking iris to triage inbox", "agent", agentName)
+		slog.Info("dispatch complete, poking orchestrator to triage inbox", "agent", agentName, "orchestrator", orchName)
 		go func() {
 			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", agentName)
 			ctx := ContextWithDomainStore(context.Background(), s.sqliteStore)
-			resp, err := s.interp.SendToAgent(ctx, "iris", msg)
+			resp, err := s.interp.SendToAgent(ctx, orchName, msg)
 			if err != nil {
-				slog.Error("failed to poke iris after dispatch", "agent", agentName, "error", err)
+				slog.Error("failed to poke orchestrator after dispatch", "agent", agentName, "error", err)
 				return
 			}
 
-			// Persist Iris's triage response to all iris chat clones
-			// so the user sees it in their chat.
+			// Persist the orchestrator's triage response to all orchestrator
+			// chat clones so the user sees it in their chat.
 			for name := range s.interp.Agents() {
-				if name == "iris" || strings.HasPrefix(name, "iris:") {
+				if name == orchName || strings.HasPrefix(name, orchName+":") {
 					_ = s.store.InsertChatMessage(name, "assistant", resp)
 				}
 			}
 
-			// Notify connected frontends to refresh Iris chat.
+			// Notify connected frontends to refresh the orchestrator's chat.
 			s.broker.Publish(BrokerEvent{
 				Type:      "chat.update",
-				Agent:     "iris",
+				Agent:     orchName,
 				Timestamp: time.Now(),
 			})
 		}()
@@ -502,11 +553,11 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	})
 
-	// Add the iris-heartbeat schedule if not already persisted.
+	// Add the orchestrator heartbeat schedule if not already persisted.
 	s.scheduler.AddJob(dsl.ScheduledJob{
-		Name:      "iris-heartbeat",
+		Name:      s.cfg.Orchestrator.Name + "-heartbeat",
 		Cron:      "*/15 * * * *",
-		AgentName: "iris",
+		AgentName: s.cfg.Orchestrator.Name,
 		Message:   "Heartbeat: Check your inbox (list_inbox) for pending questions from agents. Triage and resolve what you can.",
 		Enabled:   true,
 	})
@@ -517,7 +568,7 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.cfg.TelegramToken != "" {
 		agentName := s.cfg.TelegramAgent
 		if agentName == "" {
-			agentName = dsl.IrisAgentName // default to Iris
+			agentName = s.cfg.Orchestrator.Name // default to the orchestrator
 		}
 		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
 			s.extractMemory(userID, agent, userMsg, response)
@@ -679,6 +730,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Config
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("POST /api/config/upload", s.handleConfigUpload)
+	mux.HandleFunc("GET /api/identity", s.handleGetIdentity)
 
 	// Reset
 	mux.HandleFunc("POST /api/reset", s.handleReset)
@@ -691,7 +743,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("/workspace/", http.StripPrefix("/workspace/", http.HandlerFunc(s.handleWorkspaceStatic)))
 
 	// Frontend SPA
-	mux.Handle("/", frontendHandler())
+	mux.Handle("/", frontendHandler(s.cfg.FrontendFS))
 }
 
 // wireCallbacks hooks the orchestrator's lifecycle events into the broker and store.
@@ -1041,14 +1093,14 @@ func (s *Server) injectHera() {
 		ChannelBackend: s.store,
 	}
 
-	if err := dsl.InjectHera(s.interp, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules", "create_channel"); err != nil {
-		slog.Warn("failed to inject Hera agent", "error", err)
+	if err := dsl.InjectHera(s.interp, s.cfg.Builder, cb, "create_schedule", "update_schedule", "delete_schedule", "list_schedules", "create_channel"); err != nil {
+		slog.Warn("failed to inject builder agent", "error", err)
 	}
 }
 
-// injectIris adds Iris, the messenger goddess, to the interpreter.
+// injectIris adds the orchestrator (default: Iris) to the interpreter.
 func (s *Server) injectIris() {
-	if err := dsl.InjectIris(s.interp, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
+	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
 		slog.Warn("failed to inject Iris agent", "error", err)
 	}
 }

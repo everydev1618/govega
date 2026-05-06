@@ -13,7 +13,73 @@ import (
 	"github.com/everydev1618/govega/tools"
 )
 
-const heraAgentName = "hera"
+// HeraAgentName is the default canonical name for the agent-builder meta-agent.
+const HeraAgentName = "hera"
+
+// HeraConfig customizes the agent-builder's identity. Apps embedding govega
+// can override the slug/display name and the orchestrator companion's name.
+// SystemPrompt is optional — when empty the bundled template is used.
+type HeraConfig struct {
+	Name                    string // lowercase slug (default: "hera")
+	DisplayName             string // capitalized name (default: "Hera")
+	OrchestratorName        string // companion orchestrator's slug (default: "iris")
+	OrchestratorDisplayName string // companion orchestrator's display name (default: "Iris")
+	ProductName             string // product/universe name (default: "Vega")
+	SystemPrompt            string // optional prompt override
+	Model                   string
+	FallbackModel           string
+}
+
+// DefaultHeraConfig returns the bundled Hera persona with original names.
+func DefaultHeraConfig() HeraConfig {
+	return HeraConfig{
+		Name:                    HeraAgentName,
+		DisplayName:             "Hera",
+		OrchestratorName:        IrisAgentName,
+		OrchestratorDisplayName: "Iris",
+		ProductName:             "Vega",
+	}
+}
+
+func (c *HeraConfig) applyDefaults() {
+	if c.Name == "" {
+		c.Name = HeraAgentName
+	}
+	if c.DisplayName == "" {
+		c.DisplayName = "Hera"
+	}
+	if c.OrchestratorName == "" {
+		c.OrchestratorName = IrisAgentName
+	}
+	if c.OrchestratorDisplayName == "" {
+		c.OrchestratorDisplayName = "Iris"
+	}
+	if c.ProductName == "" {
+		c.ProductName = "Vega"
+	}
+}
+
+// renderHeraPrompt substitutes identity tokens in cfg's SystemPrompt (or
+// the bundled template when empty). Default identity returns the prompt
+// unchanged (fast path).
+func renderHeraPrompt(cfg HeraConfig) string {
+	template := cfg.SystemPrompt
+	if template == "" {
+		template = heraSystemPrompt
+	}
+	if cfg.Name == HeraAgentName && cfg.DisplayName == "Hera" &&
+		cfg.OrchestratorName == IrisAgentName && cfg.OrchestratorDisplayName == "Iris" &&
+		cfg.ProductName == "Vega" {
+		return template
+	}
+	return strings.NewReplacer(
+		"Iris", cfg.OrchestratorDisplayName,
+		"iris", cfg.OrchestratorName,
+		"Hera", cfg.DisplayName,
+		"hera", cfg.Name,
+		"Vega", cfg.ProductName,
+	).Replace(template)
+}
 
 const heraSystemPrompt = `You are Hera. You build agents. You build them well. You build them fast.
 
@@ -205,32 +271,43 @@ type HeraCallbacks struct {
 	ChannelBackend ChannelBackend // optional — auto-creates channels for team leads
 }
 
-// HeraAgent returns the DSL agent definition for Hera.
-func HeraAgent(defaultModel string) *Agent {
-	model := defaultModel
+// HeraAgent returns the DSL agent definition for the agent-builder using cfg.
+// Pass DefaultHeraConfig() for the standard Hera persona.
+func HeraAgent(cfg HeraConfig) *Agent {
+	cfg.applyDefaults()
+	model := cfg.Model
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
 	}
 	if model == "" {
 		model = "claude-opus-4-20250514"
 	}
+	fallback := cfg.FallbackModel
+	if fallback == "" {
+		fallback = "claude-haiku-4-5-20251001"
+	}
 	return &Agent{
-		Name:          heraAgentName,
+		Name:          cfg.Name,
+		DisplayName:   cfg.DisplayName,
 		Model:         model,
-		FallbackModel: "claude-haiku-4-5-20251001",
-		System:        heraSystemPrompt,
+		FallbackModel: fallback,
+		System:        renderHeraPrompt(cfg),
 		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
+		IsMeta:        true,
 	}
 }
 
-// RegisterHeraTools registers Hera's meta-tools on the interpreter's global
-// tool collection. The callbacks are optional — when nil, no persistence hooks fire.
-func RegisterHeraTools(interp *Interpreter, cb *HeraCallbacks) {
+// RegisterHeraTools registers the builder's meta-tools on the interpreter's
+// global tool collection. cfg.Name is used to protect Hera from rename/delete
+// via her own tools. The callbacks are optional — when nil, no persistence
+// hooks fire.
+func RegisterHeraTools(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) {
+	cfg.applyDefaults()
 	t := interp.Tools()
 
-	t.Register("create_agent", newCreateAgentTool(interp, cb))
-	t.Register("update_agent", newUpdateAgentTool(interp, cb))
-	t.Register("delete_agent", newDeleteAgentTool(interp, cb))
+	t.Register("create_agent", newCreateAgentTool(interp, cfg, cb))
+	t.Register("update_agent", newUpdateAgentTool(interp, cfg, cb))
+	t.Register("delete_agent", newDeleteAgentTool(interp, cfg, cb))
 	t.Register("list_agents", newListAgentsTool(interp))
 	t.Register("list_available_tools", newListAvailableToolsTool(interp))
 	t.Register("list_available_skills", newListAvailableSkillsTool(interp))
@@ -239,19 +316,20 @@ func RegisterHeraTools(interp *Interpreter, cb *HeraCallbacks) {
 	t.Register("list_blueprints", newListBlueprintsTool())
 }
 
-// InjectHera adds the Hera agent to the interpreter.
-// It registers the meta-tools and then adds Hera as an agent.
-// extraTools are additional tool names (e.g. scheduler tools) to include in
-// Hera's tool list. They must already be registered on the interpreter.
-func InjectHera(interp *Interpreter, cb *HeraCallbacks, extraTools ...string) error {
-	RegisterHeraTools(interp, cb)
+// InjectHera adds the agent-builder to the interpreter using cfg. Pass
+// DefaultHeraConfig() for the standard Hera persona, or override fields to
+// customize identity. extraTools are additional tool names (e.g. scheduler
+// tools) to include in the agent's tool list — they must already be
+// registered on the interpreter.
+func InjectHera(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks, extraTools ...string) error {
+	cfg.applyDefaults()
+	RegisterHeraTools(interp, cfg, cb)
 
-	defaultModel := ""
-	if interp.Document().Settings != nil {
-		defaultModel = interp.Document().Settings.DefaultModel
+	if cfg.Model == "" && interp.Document().Settings != nil {
+		cfg.Model = interp.Document().Settings.DefaultModel
 	}
 
-	def := HeraAgent(defaultModel)
+	def := HeraAgent(cfg)
 
 	// Give Hera access to her meta-tools plus channel tools and any extras (e.g. scheduler tools).
 	def.Tools = append([]string{
@@ -262,12 +340,12 @@ func InjectHera(interp *Interpreter, cb *HeraCallbacks, extraTools ...string) er
 		"create_channel", "post_to_channel", "list_my_channels",
 	}, extraTools...)
 
-	return interp.AddAgent(heraAgentName, def)
+	return interp.AddAgent(cfg.Name, def)
 }
 
 // --- Tool implementations ---
 
-func newCreateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
+func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Create a new agent with the given configuration. Returns confirmation with the agent name.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -275,8 +353,8 @@ func newCreateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 			if name == "" {
 				return "", fmt.Errorf("name is required")
 			}
-			if name == heraAgentName {
-				return "", fmt.Errorf("cannot create an agent named %q", heraAgentName)
+			if name == cfg.Name {
+				return "", fmt.Errorf("cannot create an agent named %q", cfg.Name)
 			}
 
 			displayName, _ := params["display_name"].(string)
@@ -361,7 +439,7 @@ func newCreateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 				}
 				chID := fmt.Sprintf("ch_%d", time.Now().UnixNano())
 				members := append([]string{name}, team...)
-				if err := cb.ChannelBackend.CreateChannel(chID, chName, displayName+"'s team channel", "hera", members, ""); err != nil {
+				if err := cb.ChannelBackend.CreateChannel(chID, chName, displayName+"'s team channel", cfg.Name, members, ""); err != nil {
 					// Channel may already exist — not fatal.
 					channelMsg = fmt.Sprintf(" (note: channel #%s could not be created: %v)", chName, err)
 				} else {
@@ -425,7 +503,7 @@ func newCreateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 	}
 }
 
-func newUpdateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
+func newUpdateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Update an existing agent's configuration. Removes and re-creates the agent with merged settings.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -433,8 +511,8 @@ func newUpdateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 			if name == "" {
 				return "", fmt.Errorf("name is required")
 			}
-			if name == heraAgentName {
-				return "", fmt.Errorf("cannot update Hera")
+			if name == cfg.Name {
+				return "", fmt.Errorf("cannot update %s", cfg.DisplayName)
 			}
 
 			// Look up current definition.
@@ -565,7 +643,7 @@ func newUpdateAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 	}
 }
 
-func newDeleteAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
+func newDeleteAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Delete an agent by name. Stops its process and removes it completely.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -573,8 +651,8 @@ func newDeleteAgentTool(interp *Interpreter, cb *HeraCallbacks) tools.ToolDef {
 			if name == "" {
 				return "", fmt.Errorf("name is required")
 			}
-			if name == heraAgentName {
-				return "", fmt.Errorf("cannot delete Hera")
+			if name == cfg.Name {
+				return "", fmt.Errorf("cannot delete %s", cfg.DisplayName)
 			}
 
 			if err := interp.RemoveAgent(name); err != nil {

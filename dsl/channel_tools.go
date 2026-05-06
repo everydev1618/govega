@@ -200,8 +200,8 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			// For company-wide channels, auto-populate team with all agents if empty.
 			if len(team) == 0 && (name == "general" || name == "random") {
 				interp.mu.RLock()
-				for n := range interp.Document().Agents {
-					if n != heraAgentName && n != irisAgentName {
+				for n, def := range interp.Document().Agents {
+					if !def.IsMeta {
 						team = append(team, n)
 					}
 				}
@@ -217,8 +217,13 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				return "", fmt.Errorf("team is required — provide at least one agent name")
 			}
 
+			// Creator is the calling agent (or "system" when no process context).
+			creator := "system"
+			if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
+				creator = proc.Agent.Name
+			}
 			id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
-			if err := backend.CreateChannel(id, name, description, "hera", team, mode); err != nil {
+			if err := backend.CreateChannel(id, name, description, creator, team, mode); err != nil {
 				return "", fmt.Errorf("create channel: %w", err)
 			}
 			modeMsg := ""

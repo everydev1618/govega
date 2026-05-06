@@ -14,10 +14,74 @@ import (
 	"github.com/everydev1618/govega/tools"
 )
 
-const irisAgentName = "iris"
+// IrisAgentName is the default canonical name for the orchestrator meta-agent.
+const IrisAgentName = "iris"
 
-// IrisAgentName is the canonical name for the Iris meta-agent.
-const IrisAgentName = irisAgentName
+// IrisConfig customizes the orchestrator agent's identity. Apps embedding
+// govega can override the agent's lowercase slug, capitalized display name,
+// builder companion name, and product name. The default Iris persona uses
+// the bundled system prompt; override SystemPrompt to bring your own.
+type IrisConfig struct {
+	Name               string // lowercase slug for routing/registration (default: "iris")
+	DisplayName        string // capitalized name shown in UI/prompt (default: "Iris")
+	BuilderName        string // companion builder's slug (default: "hera")
+	BuilderDisplayName string // companion builder's display name (default: "Hera")
+	ProductName        string // product/universe name (default: "Vega")
+	SystemPrompt       string // optional prompt override; if empty the bundled template is used
+	Model              string // optional model override
+	FallbackModel      string // optional fallback model override
+}
+
+// DefaultIrisConfig returns the bundled Iris persona with original names.
+func DefaultIrisConfig() IrisConfig {
+	return IrisConfig{
+		Name:               IrisAgentName,
+		DisplayName:        "Iris",
+		BuilderName:        HeraAgentName,
+		BuilderDisplayName: "Hera",
+		ProductName:        "Vega",
+	}
+}
+
+func (c *IrisConfig) applyDefaults() {
+	if c.Name == "" {
+		c.Name = IrisAgentName
+	}
+	if c.DisplayName == "" {
+		c.DisplayName = "Iris"
+	}
+	if c.BuilderName == "" {
+		c.BuilderName = HeraAgentName
+	}
+	if c.BuilderDisplayName == "" {
+		c.BuilderDisplayName = "Hera"
+	}
+	if c.ProductName == "" {
+		c.ProductName = "Vega"
+	}
+}
+
+// renderIrisPrompt returns the system prompt with identity tokens
+// substituted from cfg. When cfg uses the default identity tokens, the
+// prompt is returned unchanged (fast path).
+func renderIrisPrompt(cfg IrisConfig) string {
+	template := cfg.SystemPrompt
+	if template == "" {
+		template = irisSystemPrompt
+	}
+	if cfg.Name == IrisAgentName && cfg.DisplayName == "Iris" &&
+		cfg.BuilderName == HeraAgentName && cfg.BuilderDisplayName == "Hera" &&
+		cfg.ProductName == "Vega" {
+		return template
+	}
+	return strings.NewReplacer(
+		"Iris", cfg.DisplayName,
+		"iris", cfg.Name,
+		"Hera", cfg.BuilderDisplayName,
+		"hera", cfg.BuilderName,
+		"Vega", cfg.ProductName,
+	).Replace(template)
+}
 
 const irisSystemPrompt = `You are Iris — messenger goddess of the rainbow, personal messenger of Hera, and chief of staff who keeps the Vega universe moving. Swift, luminous, terrifyingly capable. You bridge heaven and earth with grace, but you ALWAYS deliver.
 
@@ -149,29 +213,39 @@ The interface auto-switches after that line. Hand off to the lead agent if there
 
 Now go. The universe isn't going to message itself.`
 
-// IrisAgent returns the DSL agent definition for Iris.
-func IrisAgent(defaultModel string) *Agent {
-	model := defaultModel
+// IrisAgent returns the DSL agent definition for the orchestrator using cfg.
+// Pass DefaultIrisConfig() (or a struct populated by IrisConfig.applyDefaults)
+// for the standard Iris persona.
+func IrisAgent(cfg IrisConfig) *Agent {
+	cfg.applyDefaults()
+	model := cfg.Model
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
 	}
 	if model == "" {
 		model = "claude-opus-4-20250514"
 	}
+	fallback := cfg.FallbackModel
+	if fallback == "" {
+		fallback = "claude-haiku-4-5-20251001"
+	}
 	return &Agent{
-		Name:          irisAgentName,
+		Name:          cfg.Name,
+		DisplayName:   cfg.DisplayName,
 		Model:         model,
-		FallbackModel: "claude-haiku-4-5-20251001",
-		System:        irisSystemPrompt,
+		FallbackModel: fallback,
+		System:        renderIrisPrompt(cfg),
 		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
+		IsMeta:        true,
 	}
 }
 
-// RegisterIrisTools registers Iris's tools on the interpreter's global
-// tool collection. list_agents is registered only if not already present
-// (Hera registers it when she's injected).
-// channelBackend is optional — when provided, enables the check_status tool.
-func RegisterIrisTools(interp *Interpreter, channelBackend ...ChannelBackend) {
+// RegisterIrisTools registers the orchestrator's tools on the interpreter's
+// global tool collection. list_agents is registered only if not already
+// present (Hera registers it when she's injected). channelBackend is
+// optional — when provided, enables the check_status tool.
+func RegisterIrisTools(interp *Interpreter, cfg IrisConfig, channelBackend ...ChannelBackend) {
+	cfg.applyDefaults()
 	t := interp.Tools()
 
 	// Only register list_agents if Hera hasn't already provided it.
@@ -196,25 +270,27 @@ func RegisterIrisTools(interp *Interpreter, channelBackend ...ChannelBackend) {
 
 	// check_status — read-only overview of agents, channels, and recent activity.
 	if len(channelBackend) > 0 && channelBackend[0] != nil {
-		t.Register("check_status", newCheckStatusTool(interp, channelBackend[0]))
+		t.Register("check_status", newCheckStatusTool(interp, channelBackend[0], cfg.Name))
 	}
 }
 
-// InjectIris adds Iris to the interpreter.
-// extraTools are additional tool names (e.g. memory tools) to include in
-// Iris's tool list. They must already be registered on the interpreter.
-func InjectIris(interp *Interpreter, channelBackend ChannelBackend, extraTools ...string) error {
-	RegisterIrisTools(interp, channelBackend)
+// InjectIris adds the orchestrator agent to the interpreter using cfg.
+// Pass DefaultIrisConfig() to use the bundled Iris persona, or override
+// fields to customize the agent's identity. extraTools are additional tool
+// names (e.g. memory tools) to include in the agent's tool list — they
+// must already be registered on the interpreter.
+func InjectIris(interp *Interpreter, cfg IrisConfig, channelBackend ChannelBackend, extraTools ...string) error {
+	cfg.applyDefaults()
+	RegisterIrisTools(interp, cfg, channelBackend)
 
-	defaultModel := ""
-	if interp.Document().Settings != nil {
-		defaultModel = interp.Document().Settings.DefaultModel
+	if cfg.Model == "" && interp.Document().Settings != nil {
+		cfg.Model = interp.Document().Settings.DefaultModel
 	}
 
-	def := IrisAgent(defaultModel)
+	def := IrisAgent(cfg)
 	def.Tools = append([]string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "create_channel", "post_to_channel", "list_my_channels"}, extraTools...)
 
-	return interp.AddAgent(irisAgentName, def)
+	return interp.AddAgent(cfg.Name, def)
 }
 
 // --- Tool implementations ---
@@ -591,9 +667,11 @@ func newListProjectsTool(interp *Interpreter) tools.ToolDef {
 	}
 }
 
-// newCheckStatusTool returns a read-only tool that gives Iris an overview of
-// agents, channels, and recent activity — without messaging any agent.
-func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolDef {
+// newCheckStatusTool returns a read-only tool that gives the orchestrator
+// an overview of agents, channels, and recent activity — without messaging
+// any agent. orchestratorName is used to query the orchestrator's own
+// channel membership.
+func newCheckStatusTool(interp *Interpreter, backend ChannelBackend, orchestratorName string) tools.ToolDef {
 	return tools.ToolDef{
 		Description: "Get a read-only status overview: agents, channels, recent channel messages, and workspace files. Use this INSTEAD of send_to_agent when the user asks 'what's the status' or 'how's it going'. This does NOT trigger any agent work.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
@@ -602,8 +680,8 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolD
 			// Agents
 			interp.mu.RLock()
 			sb.WriteString("## Agents\n")
-			for name, def := range interp.Document().Agents {
-				if name == heraAgentName || name == irisAgentName {
+			for _, def := range interp.Document().Agents {
+				if def.IsMeta {
 					continue
 				}
 				teamStr := ""
@@ -616,13 +694,13 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend) tools.ToolD
 
 			// Channels with recent messages
 			sb.WriteString("\n## Channels\n")
-			channels, err := backend.ListChannelsForAgent(irisAgentName)
+			channels, err := backend.ListChannelsForAgent(orchestratorName)
 			if err == nil && len(channels) == 0 {
-				// Iris may not be in channels — list all by checking each agent
+				// Orchestrator may not be in channels — list all by checking each agent
 				interp.mu.RLock()
 				seen := map[string]bool{}
-				for name := range interp.Document().Agents {
-					if name == heraAgentName || name == irisAgentName {
+				for name, def := range interp.Document().Agents {
+					if def.IsMeta {
 						continue
 					}
 					agentChannels, _ := backend.ListChannelsForAgent(name)
