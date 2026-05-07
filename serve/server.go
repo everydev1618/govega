@@ -411,14 +411,21 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}
 
-	// Reactive channel callback — notifies other team members when an agent posts.
-	// Stagger notifications by 2s to avoid overwhelming the LLM API.
+	// Reactive channel callback — notifies other team members when an
+	// agent posts. Gated by channel mode: only fires when the channel
+	// has opted in via mode="reactive" or mode="social". Default mode
+	// ("" / passive) is a silent log and SSE broadcast — no agents are
+	// auto-activated. Stagger by 2s to avoid hammering the LLM API.
 	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int, triggerMsgID int64) {
-		// Look up channel mode for social prompt selection.
-		social := false
-		if ch, err := s.store.GetChannel(channelName); err == nil && ch != nil {
-			social = ch.Mode == "social"
+		ch, err := s.store.GetChannel(channelName)
+		if err != nil || ch == nil {
+			return
 		}
+		mode := ch.Mode
+		if mode != "reactive" && mode != "social" {
+			return // passive channel — log only, no agent fanout
+		}
+		social := mode == "social"
 		go func() {
 			first := true
 			for _, member := range team {
