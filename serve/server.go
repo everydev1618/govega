@@ -488,7 +488,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Routes the orchestrator's response back to whichever conversation
 	// originated the dispatch (Telegram chat, web user) via the
 	// ReplyTarget registered for that agent — see server.replyTargets.
-	s.interp.SetDispatchCompleteCallback(func(completedAgent, callerAgent string) {
+	s.interp.SetDispatchCompleteCallback(func(completedAgent, callerAgent, dispatchMsg, dispatchResp string, dispatchErr error) {
 		// Clear the synthetic active stream so the busy spinner stops.
 		s.streamsMu.Lock()
 		if as, ok := s.streams[completedAgent]; ok {
@@ -500,6 +500,33 @@ func (s *Server) Start(ctx context.Context) error {
 			delete(s.streams, completedAgent)
 		}
 		s.streamsMu.Unlock()
+
+		// Persist the dispatched exchange to the agent's private chat
+		// history so the user can watch the work in /chat/<agent>.
+		// Format the inbound message as if it came from the caller so
+		// it's clear who asked, and the response as the agent's reply.
+		// Skip when dispatchMsg is empty (defensive — shouldn't happen).
+		if dispatchMsg != "" {
+			fromTag := callerAgent
+			if fromTag == "" {
+				fromTag = "system"
+			}
+			tagged := "_(from " + fromTag + ")_ " + dispatchMsg
+			if err := s.store.InsertChatMessage(completedAgent, "user", tagged); err != nil {
+				slog.Warn("failed to persist dispatched user message", "agent", completedAgent, "error", err)
+			}
+			if dispatchErr != nil {
+				_ = s.store.InsertChatMessage(completedAgent, "assistant", "_(dispatch failed: "+dispatchErr.Error()+")_")
+			} else if dispatchResp != "" {
+				_ = s.store.InsertChatMessage(completedAgent, "assistant", dispatchResp)
+			}
+			// Notify the frontend so any open /chat/<agent> view refreshes.
+			s.broker.Publish(BrokerEvent{
+				Type:      "chat.update",
+				Agent:     completedAgent,
+				Timestamp: time.Now(),
+			})
+		}
 
 		orchName := s.cfg.Orchestrator.Name
 		// Resolve who to poke: the originating caller if known, else the

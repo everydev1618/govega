@@ -49,7 +49,7 @@ type Interpreter struct {
 	delegationCtxDecorator func(ctx context.Context, agentName string) context.Context // rewrites ctx before delegation
 	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
 	onDispatchStart    func(agentName string) // fires when a dispatched agent begins working
-	onDispatchComplete func(agentName, callerName string) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty)
+	onDispatchComplete func(agentName, callerName, message, response string, err error) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty)
 	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
 	mu                sync.RWMutex
@@ -1535,7 +1535,7 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		// (e.g. the specific Telegram chat) rather than always routing
 		// to the base orchestrator's web chat.
 		if i.onDispatchComplete != nil {
-			i.onDispatchComplete(agentName, callerName)
+			i.onDispatchComplete(agentName, callerName, message, resp, err)
 		}
 	}()
 
@@ -1549,13 +1549,20 @@ func (i *Interpreter) SetDispatchStartCallback(fn func(agentName string)) {
 }
 
 // SetDispatchCompleteCallback registers a callback that fires when a
-// dispatched agent finishes. callerName is the agent name that originally
-// invoked send_to_agent (may be empty if the dispatch wasn't attributable
-// to an agent — e.g. scheduler-triggered). The serve layer uses these to
-// route the completion notification + the orchestrator's response back to
-// the originating conversation (Telegram chat, web user, etc.) rather
-// than only the base orchestrator's web chat.
-func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName, callerName string)) {
+// dispatched agent finishes. Args:
+//   - agentName: the agent that just completed (e.g. "riley")
+//   - callerName: the agent that called send_to_agent (e.g. "apex"), or
+//     empty when the dispatch isn't attributable to an agent (e.g. a
+//     scheduler-triggered turn)
+//   - message: the original task message sent to the agent
+//   - response: the agent's final response
+//   - err: any error from the dispatch
+//
+// The serve layer uses these to (a) route the orchestrator's response
+// back to the originating conversation and (b) persist the dispatched
+// exchange to the agent's private chat history so the user can watch
+// their work in /chat/<agent>.
+func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName, callerName, message, response string, err error)) {
 	i.onDispatchComplete = fn
 }
 

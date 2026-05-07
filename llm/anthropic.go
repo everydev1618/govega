@@ -71,7 +71,7 @@ func WithMaxConcurrent(n int) AnthropicOption {
 // Default Anthropic configuration values
 const (
 	DefaultAnthropicTimeout = 5 * time.Minute
-	DefaultAnthropicModel   = "claude-opus-4-20250514"
+	DefaultAnthropicModel   = "claude-sonnet-4-20250514"
 	DefaultAnthropicBaseURL = "https://api.anthropic.com"
 )
 
