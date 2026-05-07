@@ -296,6 +296,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Fire async memory extraction.
 	go s.extractMemory(userID, baseAgent, req.Message, response)
+	// Fire async typed-memory reflection (no-op unless VEGA_REFLECTION is set).
+	go s.reflectMemory(userID, baseAgent, req.Message, response)
 
 	writeJSON(w, http.StatusOK, map[string]string{"response": response})
 }
@@ -429,6 +431,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
 			}
 			go s.extractMemory(userID, baseAgent, req.Message, response)
+			go s.reflectMemory(userID, baseAgent, req.Message, response)
 		}
 
 		// Keep the stream in the map briefly so late reconnects can see
