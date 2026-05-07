@@ -84,12 +84,28 @@ If this is relevant to your work or needs your input, respond using post_to_chan
 	_ = resp
 }
 
-// notifyChannelTeammates notifies all channel team members (except the poster)
-// about a new message. Used to get multiple agents to respond to user messages.
-// triggerMsgID is the message to thread replies under.
+// notifyChannelTeammates notifies channel team members about a new message
+// only when the channel has opted in to reactive behavior — modes
+// "reactive" (members respond when work-relevant) or "social" (members
+// respond with personality for fun/watercooler channels).
+//
+// The default mode ("" / "passive") is silent — channels are a passive
+// log and SSE broadcast, nothing more. Agents collaborate via delegate
+// or send_to_agent (deterministic, single-fire), and use the blackboard
+// (bb_write/bb_read/bb_list) for shared state. This is intentional: the
+// previous default of "all members react to all posts" produced runaway
+// feedback loops where every "starting on the frontend" wake-up call
+// triggered duplicate work.
+//
 // Notifications are staggered by 2 seconds to avoid overwhelming the LLM API.
 func (s *Server) notifyChannelTeammates(ch *Channel, poster, message string, depth int, triggerMsgID int64) {
-	social := ch.Mode == "social"
+	mode := ch.Mode
+	if mode != "reactive" && mode != "social" {
+		// Passive channel — log + SSE broadcast happened upstream;
+		// nothing more for us to do.
+		return
+	}
+	social := mode == "social"
 	go func() {
 		for i, member := range ch.Team {
 			if member == poster {

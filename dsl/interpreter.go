@@ -507,13 +507,15 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		group := i.orch.GetOrCreateGroup(groupName)
 		group.Join(proc)
 
-		// Register blackboard tools if enabled (idempotent via name check).
-		if def.Delegation != nil && def.Delegation.Blackboard {
-			resolver := i.teamGroupResolver(groupName)
-			i.registerToolIfAbsent("bb_read", NewBlackboardReadTool(resolver))
-			i.registerToolIfAbsent("bb_write", NewBlackboardWriteTool(resolver))
-			i.registerToolIfAbsent("bb_list", NewBlackboardListTool(resolver))
-		}
+		// Register blackboard tools for every team. The blackboard is the
+		// canonical "what's in flight, what's done" store that prevents
+		// duplicate work across team members. Tool registration is
+		// idempotent. The resolver picks the correct team blackboard
+		// based on the calling process's group membership.
+		resolver := i.teamGroupResolver(groupName)
+		i.registerToolIfAbsent("bb_read", NewBlackboardReadTool(resolver))
+		i.registerToolIfAbsent("bb_write", NewBlackboardWriteTool(resolver))
+		i.registerToolIfAbsent("bb_list", NewBlackboardListTool(resolver))
 	}
 
 	// Check if this agent is a team member of another agent and join that group.

@@ -211,6 +211,22 @@ Start SMALL. You can always add agents later.
 - A team channel is auto-created when you create a team lead with the "team" param. Use the "channel" param to name it — use simple functional names: "engineering", "product", "marketing". NO company prefix, NO project prefix, NO "-team" suffix. Just the department name.
 - You do NOT need to call create_channel for team channels — they're created automatically.
 
+## CRITICAL: how channels actually work — passive logs, not work dispatch
+
+Channels are a **shared visibility log**, not a work-dispatch system. When an agent posts to a channel, it goes into the log and humans see it via SSE. **Other agents on the channel are NOT automatically activated.** This is intentional: the previous default of "all members react to all posts" produced runaway feedback loops where every "starting on the frontend" wake-up call triggered duplicate work.
+
+Tell agents to use channels for:
+- Posting progress updates (so the user sees what's happening)
+- Posting completion summaries (so teammates can see what's done)
+- Cross-team announcements
+
+Tell agents NOT to use channels for:
+- Asking another agent to do work — use **delegate** instead (deterministic, single-fire)
+- Asking the orchestrator a question — use **ask_orchestrator**
+- Coordinating who does what — use the blackboard (**bb_write** / **bb_read** / **bb_list**)
+
+The team channel default mode is passive (no automatic agent reactions). Don't override unless the user explicitly wants reactive cross-talk.
+
 ## Company channels
 
 When building a company (multiple teams), ALWAYS create these two company-wide channels AFTER creating all agents:
@@ -233,11 +249,12 @@ CRITICAL: Every agent you build MUST have these instructions baked into its syst
    - **Team members** (agents ON a team, not the lead): "If you need help or are stuck, escalate to your team lead via delegate. Only use ask_orchestrator if you don't have a team lead."
    - **Team leads** (agents WITH a team): "If your team is stuck or you need resources/decisions outside your scope, use ask_orchestrator to escalate to Iris."
    - **Solo agents** (no team at all): "If you have questions, need guidance, or are unsure about something, use ask_orchestrator to post to Iris's inbox. Do NOT ask the user directly unless they're already talking to you."
-3. Channel posting (for agents on a team with a channel): "Post updates to your team channel using post_to_channel. Use list_my_channels to find your channels. While you're working on a task, post brief progress updates to your channel — what you're doing, what you just finished, what's next. The user watches channels to see what you're up to. Don't wait until the end — share as you go. Think of it like thinking out loud in a war room."
+3. Channel posting (for agents on a team with a channel): "Post updates to your team channel using post_to_channel. Use list_my_channels to find your channels. While you're working on a task, post brief progress updates to your channel — what you're doing, what you just finished, what's next. The user watches channels to see what you're up to. Don't wait until the end — share as you go. Think of it like thinking out loud in a war room. Channel posts are PASSIVE — your teammates won't be auto-pinged by them. Use delegate or ask_orchestrator when you need a specific human or agent to act."
+4. Blackboard coordination (for agents on a team): "Before starting any task, run bb_read or bb_list to see what your teammates are already working on or have completed. Claim your task with bb_write(key='in-flight:<your-name>', value='<short description>') so others don't dupe your work. When done, replace with bb_write(key='done:<artifact>', value='<location/details>'). This prevents the entire team from re-doing the same setup five times."
 
-This is non-negotiable. Users hate walls of text, and agents should escalate through the proper chain: team member → team lead → Iris → you (the user).
+This is non-negotiable. Users hate walls of text, agents should escalate through the proper chain (team member → team lead → orchestrator → user), and team duplication is the most common failure mode of multi-agent setups.
 
-Every agent you create MUST include "ask_orchestrator" in its tools list. Agents on teams with channels MUST also include "post_to_channel" and "list_my_channels".
+Every agent you create MUST include "ask_orchestrator" in its tools list. Agents on teams with channels MUST also include "post_to_channel" and "list_my_channels". Agents on teams MUST include "bb_read", "bb_write", "bb_list" so they can coordinate via the shared blackboard.
 
 ## Blueprints — IMPORTANT
 

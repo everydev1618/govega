@@ -179,7 +179,18 @@ agents:
 	}
 }
 
-func TestInterpreterNoBlackboardToolsWhenDisabled(t *testing.T) {
+// TestInterpreterRegistersBlackboardForTeams asserts that bb_read/bb_write/
+// bb_list are registered for every team-bound agent — the blackboard is
+// the canonical "what's in flight, what's done" coordination store and
+// must always be available so team members can avoid duplicating work.
+//
+// This replaced an earlier test that asserted bb_* were NOT registered
+// unless explicitly opted in via delegation.blackboard=true. We changed
+// the default: passive channels + always-on blackboard, because the
+// previous setup (reactive channels + opt-in blackboard) produced
+// runaway duplicate-work loops where each "I'm starting on the frontend"
+// post triggered a fresh restart from every other team member.
+func TestInterpreterRegistersBlackboardForTeams(t *testing.T) {
 	yaml := `
 name: Test
 agents:
@@ -198,10 +209,15 @@ agents:
 	interp := newTestInterpreter(t, doc)
 	defer interp.Shutdown()
 
-	schema := interp.tools.Schema()
-	for _, s := range schema {
-		if s.Name == "bb_read" || s.Name == "bb_write" || s.Name == "bb_list" {
-			t.Errorf("tool %q should NOT be registered when blackboard is disabled", s.Name)
+	want := map[string]bool{"bb_read": false, "bb_write": false, "bb_list": false}
+	for _, s := range interp.tools.Schema() {
+		if _, ok := want[s.Name]; ok {
+			want[s.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("tool %q should be registered for team-bound agent (always-on blackboard)", name)
 		}
 	}
 }

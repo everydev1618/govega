@@ -227,8 +227,13 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				return "", fmt.Errorf("create channel: %w", err)
 			}
 			modeMsg := ""
-			if mode == "social" {
-				modeMsg = " (social mode — all members respond to messages)"
+			switch mode {
+			case "social":
+				modeMsg = " (social mode — all members respond to every message)"
+			case "reactive":
+				modeMsg = " (reactive mode — members respond when work-relevant)"
+			default:
+				modeMsg = " (passive — log only, no automatic agent reactions)"
 			}
 			return fmt.Sprintf("Channel **#%s** created with team: %v%s", name, team, modeMsg), nil
 		}),
@@ -248,8 +253,12 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 				Required:    true,
 			},
 			"mode": {
-				Type:        "string",
-				Description: "Channel mode: 'social' means ALL members respond to every message (great for watercooler/fun channels). Default is normal mode where only the team lead responds.",
+				Type: "string",
+				Description: "Channel reactivity. Default '' (passive): channel is a log of who-said-what, no agents auto-respond. " +
+					"'reactive': members are prompted to respond to each post when relevant (use sparingly — can produce duplicate work). " +
+					"'social': all members chime in with personality (use for #random / watercooler channels). " +
+					"For coordinating actual work, prefer delegate / send_to_agent (deterministic) over reactive channels (probabilistic).",
+				Enum: []string{"", "reactive", "social"},
 			},
 		},
 	})
