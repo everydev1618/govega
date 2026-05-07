@@ -651,6 +651,14 @@ func (s *Server) Start(ctx context.Context) error {
 
 	go s.scheduler.Start(ctx)
 
+	// Idle agent process eviction. Composed agents that haven't been
+	// messaged in 30 minutes are unloaded; EnsureAgent re-spawns them
+	// on demand if the user comes back. Meta-agents (orchestrator,
+	// builder) and yaml-defined agents stay resident regardless.
+	// Sweeps every 5 minutes — frequent enough to bound resident
+	// memory, infrequent enough to be cheap.
+	s.interp.StartIdleEviction(ctx, 30*time.Minute, 5*time.Minute)
+
 	// Stash the parent context so runtime restart calls can derive a
 	// child cancel-only ctx for each bot's polling loop.
 	s.telegramMu.Lock()

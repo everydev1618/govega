@@ -516,6 +516,18 @@ func (p *Process) HydrateMessages(msgs []llm.Message) {
 	p.messages = append(p.messages, msgs...)
 }
 
+// MaxResidentMessages caps the number of conversation messages kept in
+// memory per process. Long-running agents accumulate every turn forever;
+// without a bound, a busy orchestrator's memory grows unboundedly. When
+// the cap is exceeded, oldest messages are trimmed but only at user-
+// message boundaries — tool_use messages must stay paired with their
+// tool_result responses or the Anthropic API rejects the request.
+//
+// 100 messages comfortably covers ~25-50 turns of agent activity at
+// typical density. Apps that genuinely need more set Agent.Context
+// (which has its own token-aware bounding via Context.Messages).
+const MaxResidentMessages = 100
+
 // addMessage adds a message to the conversation history.
 func (p *Process) addMessage(msg llm.Message) {
 	p.mu.Lock()
@@ -525,6 +537,30 @@ func (p *Process) addMessage(msg llm.Message) {
 		p.Agent.Context.Add(msg)
 	}
 	p.messages = append(p.messages, msg)
+
+	// Trim oldest messages once we exceed the cap. Walk forward from
+	// the front looking for a user message to start the kept window —
+	// trimming mid-sequence (e.g. cutting a tool_use without its
+	// tool_result) breaks the LLM call. If no clean trim point exists,
+	// leave the buffer alone; we'll try again on the next append.
+	if len(p.messages) > MaxResidentMessages {
+		excess := len(p.messages) - MaxResidentMessages
+		// Look for the first user message at or after position `excess`
+		// — that's the safe new head.
+		newHead := -1
+		for i := excess; i < len(p.messages); i++ {
+			if p.messages[i].Role == llm.RoleUser {
+				newHead = i
+				break
+			}
+		}
+		if newHead > 0 {
+			// Drop the prefix; keep messages[newHead:] as the new history.
+			trimmed := make([]llm.Message, len(p.messages)-newHead)
+			copy(trimmed, p.messages[newHead:])
+			p.messages = trimmed
+		}
+	}
 }
 
 // buildMessages builds the message list for LLM call.

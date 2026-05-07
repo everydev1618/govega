@@ -53,8 +53,20 @@ type Interpreter struct {
 	onDispatchEvent    func(agentName string, ev vega.ChatEvent)                        // fires for each ChatEvent from a dispatched run, so the serve layer can stream tool calls / text deltas back to the user via SSE
 	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
+
+	// dispatchSem caps the number of simultaneously-running dispatched
+	// agent goroutines. Each dispatch holds its own conversation history
+	// (~30-100K tokens) plus tool call state in memory; a fan-out of 6+
+	// agents from a single orchestrator turn was triggering macOS OOM
+	// kills. Default 4; tunable via WithMaxConcurrentDispatches.
+	dispatchSem chan struct{}
+
 	mu                sync.RWMutex
 }
+
+// DefaultMaxConcurrentDispatches is the default cap on simultaneous
+// background dispatch goroutines.
+const DefaultMaxConcurrentDispatches = 4
 
 // SetServerBaseURL sets the base URL of the Vega server so agents can construct
 // workspace URLs for deliverables.
@@ -223,6 +235,7 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 		skillsLoader:      skillsLoader,
 		delegationConfigs: make(map[string]*DelegationDef),
 		yamlAgents:        yamlAgents,
+		dispatchSem:       make(chan struct{}, DefaultMaxConcurrentDispatches),
 	}
 
 	for _, opt := range opts {
@@ -1222,6 +1235,77 @@ func (i *Interpreter) Shutdown() {
 	i.orch.Shutdown(ctx)
 }
 
+// StartIdleEviction launches a background sweep that periodically
+// removes agent processes from the registry whose last_active_at is
+// older than idleTTL. Composed agents (those NOT in yamlAgents) and
+// non-meta processes are eligible; meta-agents (orchestrator, builder)
+// and YAML-defined agents stay resident. Evicted processes are gracefully
+// stopped — a subsequent EnsureAgent call respawns them on demand from
+// the document definition.
+//
+// Cancel via the supplied context. Safe to call once during server
+// startup; subsequent calls would spawn duplicate sweeps.
+func (i *Interpreter) StartIdleEviction(ctx context.Context, idleTTL, sweepInterval time.Duration) {
+	if idleTTL <= 0 || sweepInterval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(sweepInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				i.evictIdle(idleTTL)
+			}
+		}
+	}()
+}
+
+// evictIdle does one sweep, removing eligible idle processes.
+func (i *Interpreter) evictIdle(idleTTL time.Duration) {
+	now := time.Now()
+	type victim struct {
+		name string
+		proc *vega.Process
+	}
+	var victims []victim
+
+	i.mu.RLock()
+	for name, proc := range i.agents {
+		// Keep YAML-defined agents resident — they're the user's
+		// explicit team. Their cost of staying loaded is a feature.
+		if i.yamlAgents[name] {
+			continue
+		}
+		// Keep meta-agents (orchestrator, builder) — flagged at
+		// registration via Agent.IsMeta.
+		if def, ok := i.doc.Agents[name]; ok && def.IsMeta {
+			continue
+		}
+		m := proc.Metrics()
+		if m.LastActiveAt.IsZero() {
+			continue // never been active; can't tell — leave alone
+		}
+		if now.Sub(m.LastActiveAt) > idleTTL {
+			victims = append(victims, victim{name: name, proc: proc})
+		}
+	}
+	i.mu.RUnlock()
+
+	for _, v := range victims {
+		// RemoveAgent stops the process and unregisters it. The agent
+		// definition stays in the document, so EnsureAgent will respawn
+		// on demand the next time someone messages the agent.
+		if err := i.RemoveAgent(v.name); err != nil {
+			slog.Debug("idle-evict: remove failed", "agent", v.name, "error", err)
+			continue
+		}
+		slog.Info("idle-evict: removed inactive agent process", "agent", v.name, "idle_for", now.Sub(v.proc.Metrics().LastActiveAt).Truncate(time.Second).String())
+	}
+}
+
 // Execute runs a workflow by name (alias for RunWorkflow).
 func (i *Interpreter) Execute(ctx context.Context, name string, inputs map[string]any) (any, error) {
 	return i.RunWorkflow(ctx, name, inputs)
@@ -1480,6 +1564,16 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 	}
 
 	go func() {
+		// Bound concurrent in-flight dispatches. Each dispatched agent
+		// run holds its own conversation history + tool call state in
+		// memory; a fan-out of 6+ agents from a single orchestrator
+		// turn was producing macOS OOM kills. Acquire here (not at
+		// the caller) so DispatchToAgent still returns immediately;
+		// excess work waits in the goroutine queue instead of blocking
+		// the orchestrator.
+		i.dispatchSem <- struct{}{}
+		defer func() { <-i.dispatchSem }()
+
 		if i.onDispatchStart != nil {
 			i.onDispatchStart(agentName)
 		}
