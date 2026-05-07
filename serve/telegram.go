@@ -125,9 +125,21 @@ func (s *Server) startTelegramBot(parent context.Context, cfg TelegramBotConfig)
 		return nil, fmt.Errorf("telegram: server not started yet")
 	}
 
-	bot, err := NewTelegramBot(cfg.Token, cfg.Agent, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
-		s.extractMemory(userID, agent, userMsg, response)
-	})
+	bot, err := NewTelegramBot(
+		cfg.Token,
+		cfg.Agent,
+		s.interp,
+		s.store,
+		s.company,
+		func(userID, agent, userMsg, response string) {
+			s.extractMemory(userID, agent, userMsg, response)
+		},
+		// onIncoming: bind the per-user clone agent to a ReplyTarget so
+		// async dispatch completions push back to this exact chat.
+		func(agentName string, target dsl.ReplyTarget) {
+			s.RegisterReplyTarget(agentName, target)
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -277,11 +289,21 @@ type TelegramBot struct {
 	agentName  string
 	company    *dsl.Company
 	onExchange func(userID, agent, userMsg, response string)
+
+	// onIncoming is called once per inbound message, BEFORE the message
+	// is dispatched to the agent. The serve layer uses this to register
+	// a ReplyTarget keyed by the per-user clone agent name so async
+	// dispatch completions can be pushed back to this exact Telegram chat.
+	onIncoming func(agentName string, target dsl.ReplyTarget)
 }
 
 // NewTelegramBot creates a TelegramBot connected to the given token.
-// onExchange is called after each successful exchange for async memory extraction.
-func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Store, company *dsl.Company, onExchange func(userID, agent, userMsg, response string)) (*TelegramBot, error) {
+// onExchange is called after each successful exchange for async memory
+// extraction. onIncoming (optional) is called for each inbound message
+// with the per-user clone agent name and a ReplyTarget that will push
+// to this user's chat — the serve layer registers it on the server's
+// reply-target map so dispatch-complete callbacks can find it.
+func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Store, company *dsl.Company, onExchange func(userID, agent, userMsg, response string), onIncoming func(agentName string, target dsl.ReplyTarget)) (*TelegramBot, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("telegram bot init: %w", err)
@@ -294,7 +316,25 @@ func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Stor
 		agentName:  agentName,
 		company:    company,
 		onExchange: onExchange,
+		onIncoming: onIncoming,
 	}, nil
+}
+
+// telegramReplyTarget is the ReplyTarget implementation for a specific
+// Telegram chat — a user's bot conversation. It captures the bot handle
+// and chat id so async dispatch completions can be pushed back as a
+// fresh message to that exact chat.
+type telegramReplyTarget struct {
+	bot    *tgbotapi.BotAPI
+	chatID int64
+}
+
+func (t *telegramReplyTarget) Reply(ctx context.Context, content string) error {
+	if content == "" {
+		return nil
+	}
+	_, err := t.bot.Send(tgbotapi.NewMessage(t.chatID, content))
+	return err
 }
 
 // Start runs the long-polling loop until ctx is cancelled.
@@ -333,6 +373,14 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 
 	// Derive a per-user agent name for Telegram multi-user support.
 	name := t.agentName + ":" + userID
+
+	// Bind a ReplyTarget for this user's chat so async dispatch
+	// completions originating from this turn can push back to the same
+	// chat. Re-registering on every message keeps it fresh in case the
+	// user's chat id changes (rare; basically never on Telegram).
+	if t.onIncoming != nil {
+		t.onIncoming(name, &telegramReplyTarget{bot: t.bot, chatID: chatID})
+	}
 
 	// Ensure the per-user agent clone exists.
 	if agents := t.interp.Agents(); agents[name] == nil {

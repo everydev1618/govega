@@ -49,7 +49,7 @@ type Interpreter struct {
 	delegationCtxDecorator func(ctx context.Context, agentName string) context.Context // rewrites ctx before delegation
 	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
 	onDispatchStart    func(agentName string) // fires when a dispatched agent begins working
-	onDispatchComplete func(agentName string) // fires when a dispatched agent finishes
+	onDispatchComplete func(agentName, callerName string) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty)
 	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
 	mu                sync.RWMutex
@@ -1456,12 +1456,24 @@ func (i *Interpreter) SetChannelBackend(b ChannelBackend, onPost func(channelNam
 
 // DispatchToAgent is a non-blocking variant of SendToAgent. It validates the
 // agent exists, then spawns a goroutine that calls SendToAgent. On completion
-// (or error), it posts an inbox item so Iris knows the work finished.
-// Returns immediately with a confirmation message.
+// (or error), it posts an inbox item so the orchestrator knows the work
+// finished. Returns immediately with a confirmation message.
+//
+// The caller's agent name (read from the parent ctx's process) is captured
+// before the goroutine detaches and forwarded to onDispatchComplete so
+// downstream layers (e.g. serve.Server) can route the result back to the
+// originating conversation — not just to the base orchestrator.
 func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, message string) (string, error) {
 	// Validate agent exists synchronously so callers get immediate errors.
 	if _, err := i.ensureAgent(agentName); err != nil {
 		return "", err
+	}
+
+	// Capture caller name BEFORE detaching the context, since the parent's
+	// process binding may not survive the detach.
+	callerName := ""
+	if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
+		callerName = proc.Agent.Name
 	}
 
 	go func() {
@@ -1514,10 +1526,14 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 			}
 		}
 
-		// Immediately poke Iris to triage the inbox — don't wait for the
-		// 15-minute heartbeat. This closes the loop so work keeps flowing.
+		// Immediately poke the orchestrator to triage the inbox — don't
+		// wait for the 15-minute heartbeat. This closes the loop so work
+		// keeps flowing. callerName lets the serve layer route the
+		// orchestrator's response back to the originating conversation
+		// (e.g. the specific Telegram chat) rather than always routing
+		// to the base orchestrator's web chat.
 		if i.onDispatchComplete != nil {
-			i.onDispatchComplete(agentName)
+			i.onDispatchComplete(agentName, callerName)
 		}
 	}()
 
@@ -1530,10 +1546,14 @@ func (i *Interpreter) SetDispatchStartCallback(fn func(agentName string)) {
 	i.onDispatchStart = fn
 }
 
-// SetDispatchCompleteCallback registers a callback that fires when a dispatched
-// agent finishes. The serve layer uses this to immediately send Iris an inbox
-// triage prompt so the loop keeps moving without waiting for the heartbeat.
-func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName string)) {
+// SetDispatchCompleteCallback registers a callback that fires when a
+// dispatched agent finishes. callerName is the agent name that originally
+// invoked send_to_agent (may be empty if the dispatch wasn't attributable
+// to an agent — e.g. scheduler-triggered). The serve layer uses these to
+// route the completion notification + the orchestrator's response back to
+// the originating conversation (Telegram chat, web user, etc.) rather
+// than only the base orchestrator's web chat.
+func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName, callerName string)) {
 	i.onDispatchComplete = fn
 }
 

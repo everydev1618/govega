@@ -148,6 +148,13 @@ type Server struct {
 	// from any particular SSE client connection.
 	streamsMu sync.Mutex
 	streams   map[string]*activeStream
+
+	// replyTargets binds an agent name to a channel-of-origin handle so
+	// async dispatch completions can be pushed back to the conversation
+	// they came from (Telegram bot.Send, web SSE flush, etc.). See
+	// reply_targets.go.
+	replyTargetsMu sync.RWMutex
+	replyTargets   map[string]dsl.ReplyTarget
 }
 
 // New creates a new Server.
@@ -469,42 +476,57 @@ func (s *Server) Start(ctx context.Context) error {
 		})
 	})
 
-	// When a dispatched agent finishes, immediately poke Iris to triage
-	// the inbox instead of waiting for the 15-minute heartbeat.
-	// Skip when Iris itself completes — otherwise we get an infinite loop
-	// (Iris triages → dispatches → completes → pokes Iris → repeat).
-	s.interp.SetDispatchCompleteCallback(func(agentName string) {
+	// When a dispatched agent finishes, immediately poke the orchestrator
+	// to triage the inbox instead of waiting for the 15-minute heartbeat.
+	// Routes the orchestrator's response back to whichever conversation
+	// originated the dispatch (Telegram chat, web user) via the
+	// ReplyTarget registered for that agent — see server.replyTargets.
+	s.interp.SetDispatchCompleteCallback(func(completedAgent, callerAgent string) {
 		// Clear the synthetic active stream so the busy spinner stops.
 		s.streamsMu.Lock()
-		if as, ok := s.streams[agentName]; ok {
+		if as, ok := s.streams[completedAgent]; ok {
 			select {
 			case <-as.done:
 			default:
 				close(as.done)
 			}
-			delete(s.streams, agentName)
+			delete(s.streams, completedAgent)
 		}
 		s.streamsMu.Unlock()
 
 		orchName := s.cfg.Orchestrator.Name
-		if agentName == orchName || strings.HasPrefix(agentName, orchName+":") {
-			slog.Debug("skipping orchestrator poke — completing agent is the orchestrator itself", "agent", agentName)
+		// Resolve who to poke: the originating caller if known, else the
+		// base orchestrator. The caller is typically a clone like
+		// "apex:1992054241" for Telegram users, "apex" for the web app.
+		pokeAgent := callerAgent
+		if pokeAgent == "" {
+			pokeAgent = orchName
+		}
+
+		// Don't loop: when the orchestrator (or one of its clones)
+		// finishes its own task, skip the poke.
+		baseCompleted := strings.SplitN(completedAgent, ":", 2)[0]
+		if baseCompleted == orchName {
+			slog.Debug("skipping orchestrator poke — completing agent is the orchestrator itself", "agent", completedAgent)
 			return
 		}
-		slog.Info("dispatch complete, poking orchestrator to triage inbox", "agent", agentName, "orchestrator", orchName)
+
+		slog.Info("dispatch complete, poking originating conversation", "completed", completedAgent, "caller", pokeAgent)
 		go func() {
-			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", agentName)
+			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", completedAgent)
 			ctx := ContextWithDomainStore(context.Background(), s.sqliteStore)
-			resp, err := s.interp.SendToAgent(ctx, orchName, msg)
+			resp, err := s.interp.SendToAgent(ctx, pokeAgent, msg)
 			if err != nil {
-				slog.Error("failed to poke orchestrator after dispatch", "agent", agentName, "error", err)
+				slog.Error("failed to poke orchestrator after dispatch", "completed", completedAgent, "caller", pokeAgent, "error", err)
 				return
 			}
 
-			// Persist the orchestrator's triage response to all orchestrator
-			// chat clones so the user sees it in their chat.
+			// Persist the response to the caller's chat. Also fan out to
+			// other clones with the same base name so any web/Telegram
+			// user looking at the orchestrator sees the update too.
+			basePoke := strings.SplitN(pokeAgent, ":", 2)[0]
 			for name := range s.interp.Agents() {
-				if name == orchName || strings.HasPrefix(name, orchName+":") {
+				if name == basePoke || strings.HasPrefix(name, basePoke+":") {
 					_ = s.store.InsertChatMessage(name, "assistant", resp)
 				}
 			}
@@ -512,9 +534,17 @@ func (s *Server) Start(ctx context.Context) error {
 			// Notify connected frontends to refresh the orchestrator's chat.
 			s.broker.Publish(BrokerEvent{
 				Type:      "chat.update",
-				Agent:     orchName,
+				Agent:     basePoke,
 				Timestamp: time.Now(),
 			})
+
+			// Push to the originating channel via its ReplyTarget if
+			// registered (e.g. Telegram bot.Send back to the user's chat).
+			if target := s.lookupReplyTarget(pokeAgent); target != nil {
+				if err := target.Reply(ctx, resp); err != nil {
+					slog.Warn("reply target push failed", "agent", pokeAgent, "error", err)
+				}
+			}
 		}()
 	})
 
