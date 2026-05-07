@@ -155,6 +155,40 @@ var modelPricing = map[string]struct {
 	"claude-3-haiku-20240307":    {0.25, 1.25},
 }
 
+// ModelCapabilities describes which API features a model supports. Used to
+// gate per-request fields so we don't send shapes that 400 on the model.
+type ModelCapabilities struct {
+	// AdaptiveThinking — model supports {type: "adaptive"} thinking.
+	// Older models use the legacy budget_tokens form, which we don't emit.
+	AdaptiveThinking bool
+
+	// SupportsEffort — model accepts output_config.effort.
+	// Sonnet 4.5 and Haiku 4.5 return 400 if it's sent.
+	SupportsEffort bool
+
+	// MaxOutputTokens is the streaming output ceiling for this model.
+	MaxOutputTokens int
+}
+
+// modelCapabilities maps model IDs to their capabilities. Unknown models
+// resolve to the zero value (no thinking, no effort, conservative max
+// tokens) — safe default.
+var modelCapabilities = map[string]ModelCapabilities{
+	"claude-opus-4-7":   {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 128000},
+	"claude-opus-4-6":   {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 128000},
+	"claude-opus-4-5":   {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 64000},
+	"claude-sonnet-4-6": {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 64000},
+
+	// Adaptive thinking + effort were introduced in 4.6. Older models
+	// don't support them — leave at zero value.
+}
+
+// CapabilitiesFor returns the capabilities for the given model. Unknown
+// models return the zero value (everything disabled).
+func CapabilitiesFor(model string) ModelCapabilities {
+	return modelCapabilities[model]
+}
+
 // CalculateCost calculates the cost of a request including prompt cache tokens.
 // Cache writes cost 125% of base input price; cache reads cost 10%.
 func CalculateCost(model string, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int) float64 {

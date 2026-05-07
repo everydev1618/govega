@@ -25,6 +25,7 @@ type AnthropicLLM struct {
 	baseURL    string
 	httpClient *http.Client
 	model      string
+	effort     string        // "" | "low" | "medium" | "high" | "xhigh" | "max"
 	semaphore  chan struct{} // limits concurrent API requests
 }
 
@@ -65,6 +66,16 @@ func WithMaxConcurrent(n int) AnthropicOption {
 		if n > 0 {
 			a.semaphore = make(chan struct{}, n)
 		}
+	}
+}
+
+// WithEffort sets output_config.effort for requests on capable models.
+// Valid values: "low", "medium", "high", "xhigh", "max". Empty means
+// "high" by default. "xhigh" is the recommended setting for agentic
+// and coding workloads on Opus 4.7. "max" is Opus-tier only.
+func WithEffort(effort string) AnthropicOption {
+	return func(a *AnthropicLLM) {
+		a.effort = effort
 	}
 }
 
@@ -111,22 +122,29 @@ type systemBlock struct {
 	CacheControl *cacheControl `json:"cache_control,omitempty"`
 }
 
-// thinkingBlock configures extended thinking for the API request.
+// thinkingBlock configures adaptive thinking for the API request.
+// Older budget_tokens form is removed on Opus 4.7 and deprecated on 4.6.
 type thinkingBlock struct {
-	Type         string `json:"type"`          // "enabled"
-	BudgetTokens int    `json:"budget_tokens"` // max tokens for thinking
+	Type string `json:"type"` // "adaptive"
+}
+
+// outputConfig carries the effort parameter (and future output controls
+// like task_budget). Sent only for models that support it — Sonnet 4.5
+// and Haiku 4.5 return 400.
+type outputConfig struct {
+	Effort string `json:"effort,omitempty"` // "low" | "medium" | "high" | "xhigh" | "max"
 }
 
 // anthropicRequest is the API request format.
 type anthropicRequest struct {
-	Model       string           `json:"model"`
-	Messages    []anthropicMsg   `json:"messages"`
-	System      any              `json:"system,omitempty"` // string or []systemBlock
-	MaxTokens   int              `json:"max_tokens"`
-	Temperature *float64         `json:"temperature,omitempty"`
-	Tools       []anthropicTool  `json:"tools,omitempty"`
-	Stream      bool             `json:"stream,omitempty"`
-	Thinking    *thinkingBlock   `json:"thinking,omitempty"`
+	Model        string          `json:"model"`
+	Messages     []anthropicMsg  `json:"messages"`
+	System       any             `json:"system,omitempty"` // string or []systemBlock
+	MaxTokens    int             `json:"max_tokens"`
+	Tools        []anthropicTool `json:"tools,omitempty"`
+	Stream       bool            `json:"stream,omitempty"`
+	Thinking     *thinkingBlock  `json:"thinking,omitempty"`
+	OutputConfig *outputConfig   `json:"output_config,omitempty"`
 }
 
 type anthropicMsg struct {
@@ -293,14 +311,11 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 	return eventCh, nil
 }
 
-// isThinkingModel returns true if the model supports extended thinking.
-func isThinkingModel(model string) bool {
-	return strings.Contains(model, "opus")
-}
-
 func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stream bool) *anthropicRequest {
+	caps := CapabilitiesFor(a.model)
+
 	maxTokens := 8192
-	if isThinkingModel(a.model) {
+	if caps.AdaptiveThinking {
 		maxTokens = 16000
 	}
 
@@ -310,14 +325,16 @@ func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stre
 		Stream:    stream,
 	}
 
-	// Enable extended thinking for capable models.
-	if isThinkingModel(a.model) {
-		req.Thinking = &thinkingBlock{
-			Type:         "enabled",
-			BudgetTokens: 10000,
+	if caps.AdaptiveThinking {
+		req.Thinking = &thinkingBlock{Type: "adaptive"}
+	}
+
+	if caps.SupportsEffort {
+		effort := a.effort
+		if effort == "" {
+			effort = "high"
 		}
-		// Temperature must not be set when thinking is enabled.
-		req.Temperature = nil
+		req.OutputConfig = &outputConfig{Effort: effort}
 	}
 
 	// Extract system message and convert others
