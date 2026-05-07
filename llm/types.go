@@ -132,9 +132,22 @@ var modelPricing = map[string]struct {
 	InputPer1M  float64
 	OutputPer1M float64
 }{
-	"claude-sonnet-4-20250514":   {3.00, 15.00},
-	"claude-opus-4-20250514":     {15.00, 75.00},
-	"claude-haiku-4-5-20251001":  {0.80, 4.00},
+	// Current generation
+	"claude-opus-4-7":     {5.00, 25.00},
+	"claude-opus-4-6":     {5.00, 25.00},
+	"claude-opus-4-5":     {5.00, 25.00},
+	"claude-sonnet-4-6":   {3.00, 15.00},
+	"claude-sonnet-4-5":   {3.00, 15.00},
+	"claude-haiku-4-5":    {1.00, 5.00},
+
+	// Dated aliases
+	"claude-haiku-4-5-20251001": {1.00, 5.00},
+
+	// Original 4.0 launch (May 2025) — kept at launch pricing for historical traffic
+	"claude-sonnet-4-20250514": {3.00, 15.00},
+	"claude-opus-4-20250514":   {15.00, 75.00},
+
+	// Claude 3 family (legacy)
 	"claude-haiku-3-20240307":    {0.25, 1.25},
 	"claude-3-5-sonnet-20241022": {3.00, 15.00},
 	"claude-3-opus-20240229":     {15.00, 75.00},
