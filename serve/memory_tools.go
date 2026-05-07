@@ -45,7 +45,7 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 	t := interp.Tools()
 
 	t.Register("remember", tools.ToolDef{
-		Description: "Save information to long-term memory. Use this when the user shares project details, decisions, tasks, preferences, or anything worth remembering across conversations.",
+		Description: "Save information to long-term memory. Always specify the `type` so retrieval can target the right slot — `user` (stable facts about who they are and how they like to work), `feedback` (corrections/confirmations on your behavior), `project` (context about ongoing work), `reference` (pointers to external systems and docs). If you write the same content under the same type twice, the second call merges tags into the first row instead of creating a duplicate.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			store, userID, agent, err := memoryFromContext(ctx)
 			if err != nil {
@@ -59,9 +59,19 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 			topic, _ := params["topic"].(string)
 			tags, _ := params["tags"].(string)
 
+			typ := MemoryTypeReference
+			if rawType, ok := params["type"].(string); ok && rawType != "" {
+				candidate := MemoryType(rawType)
+				if err := candidate.Validate(); err != nil {
+					return "", err
+				}
+				typ = candidate
+			}
+
 			id, err := store.InsertMemoryItem(MemoryItem{
 				UserID:  userID,
 				Agent:   agent,
+				Type:    typ,
 				Topic:   topic,
 				Content: content,
 				Tags:    tags,
@@ -70,13 +80,17 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 				return "", fmt.Errorf("save memory: %w", err)
 			}
 
-			return fmt.Sprintf("Saved to memory (id=%d, topic=%q).", id, topic), nil
+			return fmt.Sprintf("Saved to memory (id=%d, type=%q, topic=%q).", id, typ, topic), nil
 		}),
 		Params: map[string]tools.ParamDef{
 			"content": {
 				Type:        "string",
 				Description: "The information to remember",
 				Required:    true,
+			},
+			"type": {
+				Type:        "string",
+				Description: "Memory class: user | feedback | project | reference. Defaults to 'reference' if omitted, but always set this explicitly for new memories so future recall can target the right slot.",
 			},
 			"topic": {
 				Type:        "string",
@@ -90,7 +104,7 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 	})
 
 	t.Register("recall", tools.ToolDef{
-		Description: "Search long-term memory by keyword. Returns matching memories across all topics. Use this to look up past conversations, project details, or decisions.",
+		Description: "Search long-term memory by keyword. Pass `type` to narrow the search to a single class (user/feedback/project/reference) — useful when you want, say, only feedback rules and not project trivia.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			store, userID, agent, err := memoryFromContext(ctx)
 			if err != nil {
@@ -107,7 +121,18 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 				limit = int(l)
 			}
 
-			items, err := store.SearchMemoryItems(userID, agent, query, limit)
+			var (
+				items []MemoryItem
+			)
+			if rawType, ok := params["type"].(string); ok && rawType != "" {
+				candidate := MemoryType(rawType)
+				if err := candidate.Validate(); err != nil {
+					return "", err
+				}
+				items, err = store.SearchMemoryItemsByType(userID, agent, query, candidate, limit)
+			} else {
+				items, err = store.SearchMemoryItems(userID, agent, query, limit)
+			}
 			if err != nil {
 				return "", fmt.Errorf("search memory: %w", err)
 			}
@@ -117,17 +142,19 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 			}
 
 			type result struct {
-				ID      int64  `json:"id"`
-				Topic   string `json:"topic,omitempty"`
-				Content string `json:"content"`
-				Tags    string `json:"tags,omitempty"`
-				Date    string `json:"date"`
+				ID      int64      `json:"id"`
+				Type    MemoryType `json:"type"`
+				Topic   string     `json:"topic,omitempty"`
+				Content string     `json:"content"`
+				Tags    string     `json:"tags,omitempty"`
+				Date    string     `json:"date"`
 			}
 
 			results := make([]result, len(items))
 			for i, item := range items {
 				results[i] = result{
 					ID:      item.ID,
+					Type:    item.Type,
 					Topic:   item.Topic,
 					Content: item.Content,
 					Tags:    item.Tags,
@@ -143,6 +170,10 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 				Type:        "string",
 				Description: "Keyword or phrase to search for across topics, content, and tags",
 				Required:    true,
+			},
+			"type": {
+				Type:        "string",
+				Description: "Optional: narrow to a single memory class (user/feedback/project/reference)",
 			},
 			"limit": {
 				Type:        "number",

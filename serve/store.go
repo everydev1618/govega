@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/everydev1618/govega/dsl"
@@ -62,11 +63,18 @@ type Store interface {
 	// DeleteUserMemory removes all memory for a user+agent.
 	DeleteUserMemory(userID, agent string) error
 
-	// InsertMemoryItem saves a memory item.
+	// InsertMemoryItem saves a memory item. If an item already exists with the
+	// same (user_id, agent, type, content), its tags are merged and updated_at
+	// advances rather than inserting a duplicate row. Items missing a Type are
+	// stored as MemoryTypeReference.
 	InsertMemoryItem(item MemoryItem) (int64, error)
 
 	// SearchMemoryItems searches memory items by keyword across topic, content, and tags.
 	SearchMemoryItems(userID, agent, query string, limit int) ([]MemoryItem, error)
+
+	// SearchMemoryItemsByType is like SearchMemoryItems but additionally
+	// filters to a single MemoryType.
+	SearchMemoryItemsByType(userID, agent, query string, typ MemoryType, limit int) ([]MemoryItem, error)
 
 	// DeleteMemoryItem removes a memory item by ID.
 	DeleteMemoryItem(id int64) error
@@ -243,16 +251,49 @@ type ComposedAgent struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// MemoryType discriminates between memory categories so the agent can
+// retrieve the right kind for the moment. Mirrors the four-class scheme
+// used by Claude Code's auto-memory system.
+type MemoryType string
+
+const (
+	// MemoryTypeUser captures stable facts about who the user is, their
+	// role, and how they prefer to work.
+	MemoryTypeUser MemoryType = "user"
+	// MemoryTypeFeedback captures corrections and confirmations the user
+	// has given the agent (rules of engagement, validated approaches).
+	MemoryTypeFeedback MemoryType = "feedback"
+	// MemoryTypeProject captures context about ongoing work, decisions,
+	// and motivations behind the current task.
+	MemoryTypeProject MemoryType = "project"
+	// MemoryTypeReference captures pointers to external systems and
+	// documents — the catch-all default when no other type fits.
+	MemoryTypeReference MemoryType = "reference"
+)
+
+// Validate reports whether the type is one of the four canonical values.
+// Empty strings and case variants are rejected so a typo at the boundary
+// fails fast rather than silently becoming a fifth type.
+func (t MemoryType) Validate() error {
+	switch t {
+	case MemoryTypeUser, MemoryTypeFeedback, MemoryTypeProject, MemoryTypeReference:
+		return nil
+	default:
+		return fmt.Errorf("invalid memory type %q (want one of: user, feedback, project, reference)", string(t))
+	}
+}
+
 // MemoryItem is a persisted memory entry for project-aware recall.
 type MemoryItem struct {
-	ID        int64     `json:"id"`
-	UserID    string    `json:"user_id"`
-	Agent     string    `json:"agent"`
-	Topic     string    `json:"topic"`
-	Content   string    `json:"content"`
-	Tags      string    `json:"tags"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        int64      `json:"id"`
+	UserID    string     `json:"user_id"`
+	Agent     string     `json:"agent"`
+	Type      MemoryType `json:"type"`
+	Topic     string     `json:"topic"`
+	Content   string     `json:"content"`
+	Tags      string     `json:"tags"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 // ScheduledJob is a persisted recurring agent trigger.

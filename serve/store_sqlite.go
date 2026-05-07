@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/everydev1618/govega/dsl"
@@ -120,6 +121,7 @@ func (s *SQLiteStore) Init() error {
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id    TEXT NOT NULL,
 		agent      TEXT NOT NULL,
+		type       TEXT NOT NULL DEFAULT 'reference',
 		topic      TEXT NOT NULL DEFAULT '',
 		content    TEXT NOT NULL,
 		tags       TEXT NOT NULL DEFAULT '',
@@ -128,6 +130,7 @@ func (s *SQLiteStore) Init() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_memory_items_user_agent ON memory_items(user_id, agent);
 	CREATE INDEX IF NOT EXISTS idx_memory_items_topic ON memory_items(user_id, agent, topic);
+	CREATE INDEX IF NOT EXISTS idx_memory_items_dedup ON memory_items(user_id, agent, type, content);
 
 	CREATE TABLE IF NOT EXISTS workspace_files (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,6 +257,13 @@ func (s *SQLiteStore) Init() error {
 
 	// Migrate: add sender column to channel_messages for multi-user identity.
 	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN sender TEXT DEFAULT ''`)
+
+	// Migrate: add type column to memory_items so existing rows fall back
+	// to the catch-all 'reference' type instead of an empty string.
+	s.db.Exec(`ALTER TABLE memory_items ADD COLUMN type TEXT NOT NULL DEFAULT 'reference'`)
+	// The dedup index is created in the CREATE TABLE block above for fresh
+	// databases; CREATE IF NOT EXISTS handles the upgrade case.
+	s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_memory_items_dedup ON memory_items(user_id, agent, type, content)`)
 
 	return nil
 }
@@ -559,12 +569,51 @@ func (s *SQLiteStore) ListScheduledJobs() ([]ScheduledJob, error) {
 	return jobs, rows.Err()
 }
 
-// InsertMemoryItem saves a memory item and returns its ID.
+// InsertMemoryItem saves a memory item and returns its ID. If a row already
+// exists with the same (user_id, agent, type, content), its tags are merged
+// (union of comma-separated values) and updated_at advances rather than
+// inserting a duplicate. Items missing a Type are stored as
+// MemoryTypeReference so legacy callers continue to work.
 func (s *SQLiteStore) InsertMemoryItem(item MemoryItem) (int64, error) {
+	if item.Type == "" {
+		item.Type = MemoryTypeReference
+	}
+
+	// Look for an existing row with the same dedup key.
+	var (
+		existingID   int64
+		existingTags string
+	)
+	err := s.db.QueryRow(
+		`SELECT id, tags FROM memory_items
+		 WHERE user_id = ? AND agent = ? AND type = ? AND content = ?
+		 LIMIT 1`,
+		item.UserID, item.Agent, string(item.Type), item.Content,
+	).Scan(&existingID, &existingTags)
+
+	switch {
+	case err == nil:
+		// Existing row — merge tags and bump updated_at.
+		merged := mergeTags(existingTags, item.Tags)
+		if _, err := s.db.Exec(
+			`UPDATE memory_items
+			 SET tags = ?, updated_at = CURRENT_TIMESTAMP
+			 WHERE id = ?`,
+			merged, existingID,
+		); err != nil {
+			return 0, err
+		}
+		return existingID, nil
+	case err == sql.ErrNoRows:
+		// Fall through to insert.
+	default:
+		return 0, err
+	}
+
 	result, err := s.db.Exec(
-		`INSERT INTO memory_items (user_id, agent, topic, content, tags)
-		 VALUES (?, ?, ?, ?, ?)`,
-		item.UserID, item.Agent, item.Topic, item.Content, item.Tags,
+		`INSERT INTO memory_items (user_id, agent, type, topic, content, tags)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		item.UserID, item.Agent, string(item.Type), item.Topic, item.Content, item.Tags,
 	)
 	if err != nil {
 		return 0, err
@@ -579,7 +628,7 @@ func (s *SQLiteStore) SearchMemoryItems(userID, agent, query string, limit int) 
 	}
 	pattern := "%" + query + "%"
 	rows, err := s.db.Query(
-		`SELECT id, user_id, agent, topic, content, tags, created_at, updated_at
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
 		 FROM memory_items
 		 WHERE user_id = ? AND agent = ?
 		   AND (topic LIKE ? OR content LIKE ? OR tags LIKE ?)
@@ -594,12 +643,65 @@ func (s *SQLiteStore) SearchMemoryItems(userID, agent, query string, limit int) 
 	var items []MemoryItem
 	for rows.Next() {
 		var m MemoryItem
-		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Type, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, m)
 	}
 	return items, rows.Err()
+}
+
+// SearchMemoryItemsByType is SearchMemoryItems narrowed to a single MemoryType.
+func (s *SQLiteStore) SearchMemoryItemsByType(userID, agent, query string, typ MemoryType, limit int) ([]MemoryItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
+		 FROM memory_items
+		 WHERE user_id = ? AND agent = ? AND type = ?
+		   AND (topic LIKE ? OR content LIKE ? OR tags LIKE ?)
+		 ORDER BY updated_at DESC LIMIT ?`,
+		userID, agent, string(typ), pattern, pattern, pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []MemoryItem
+	for rows.Next() {
+		var m MemoryItem
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Type, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
+}
+
+// mergeTags returns the comma-separated union of two tag lists, preserving
+// the order of first appearance and skipping empty entries.
+func mergeTags(a, b string) string {
+	seen := make(map[string]struct{})
+	var out []string
+	add := func(raw string) {
+		for _, t := range strings.Split(raw, ",") {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			if _, ok := seen[t]; ok {
+				continue
+			}
+			seen[t] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	add(a)
+	add(b)
+	return strings.Join(out, ",")
 }
 
 // DeleteMemoryItem removes a memory item by ID.
@@ -618,7 +720,7 @@ func (s *SQLiteStore) DeleteMemoryItem(id int64) error {
 // ListMemoryItemsByTopic returns memory items for a given user+agent+topic.
 func (s *SQLiteStore) ListMemoryItemsByTopic(userID, agent, topic string) ([]MemoryItem, error) {
 	rows, err := s.db.Query(
-		`SELECT id, user_id, agent, topic, content, tags, created_at, updated_at
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
 		 FROM memory_items
 		 WHERE user_id = ? AND agent = ? AND topic = ?
 		 ORDER BY created_at ASC`,
@@ -632,7 +734,7 @@ func (s *SQLiteStore) ListMemoryItemsByTopic(userID, agent, topic string) ([]Mem
 	var items []MemoryItem
 	for rows.Next() {
 		var m MemoryItem
-		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Type, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, m)
