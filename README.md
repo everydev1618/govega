@@ -759,14 +759,12 @@ Some MCP servers are standalone binaries distributed via GitHub Releases. Vega c
 2. If a cached copy exists in `~/.vega/bin/`, it is used
 3. Otherwise, Vega downloads the latest release from GitHub and caches it in `~/.vega/bin/`
 
-This is transparent — no extra configuration is needed. Registry entries that support auto-download have a `GitHubRepo` field pointing to their GitHub repository. Currently the `synkedup` MCP server supports this.
-
-**Example:** The `synkedup` server binary (`synkedup-vega-mcp`) is automatically downloaded from [etiennesu/synkedup-vega-mcp](https://github.com/etiennesu/synkedup-vega-mcp/releases) on first use. Subsequent runs use the cached binary.
+This is transparent — no extra configuration is needed. Registry entries that support auto-download have a `GitHubRepo` field pointing to their GitHub repository.
 
 To force a re-download, delete the cached binary:
 
 ```bash
-rm ~/.vega/bin/synkedup-vega-mcp
+rm ~/.vega/bin/<server-name>
 ```
 
 ### Web Dashboard & REST API

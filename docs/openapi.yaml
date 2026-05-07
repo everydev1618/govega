@@ -4,7 +4,7 @@ info:
   description: REST API for Vega, an AI agent orchestration framework.
   version: "1.0.0"
 servers:
-  - url: https://synkedup.v3ga.dev
+  - url: https://your-vega.example.com
     description: Production
 
 paths:

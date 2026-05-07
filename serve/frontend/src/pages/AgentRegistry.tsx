@@ -272,7 +272,7 @@ export function AgentRegistry() {
           const toolCount = toolsExcludeDelegate.length
           const teamCount = agent.team?.length ?? 0
 
-          // Group tools by MCP server prefix (e.g. "synkedup__foo" → group "synkedup")
+          // Group tools by MCP server prefix (e.g. "gmail__foo" → group "gmail")
           const toolGroups = new Map<string, string[]>()
           for (const tool of toolsExcludeDelegate) {
             const sep = tool.indexOf('__')

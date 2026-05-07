@@ -1,6 +1,6 @@
 # Vega API Reference
 
-Base URL: `https://synkedup.v3ga.dev`
+Base URL: `https://your-vega.example.com`
 
 All endpoints return JSON. Errors use `{"error": "message"}`.
 
@@ -17,7 +17,7 @@ POST /api/agents/{name}/chat
 ```
 
 ```bash
-curl -X POST https://synkedup.v3ga.dev/api/agents/iris/chat \
+curl -X POST https://your-vega.example.com/api/agents/iris/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "What can you help me with?"}'
 ```
@@ -41,7 +41,7 @@ POST /api/agents/{name}/chat/stream
 Returns a Server-Sent Events stream. Each event has a `type` and JSON `data`.
 
 ```bash
-curl -N -X POST https://synkedup.v3ga.dev/api/agents/iris/chat/stream \
+curl -N -X POST https://your-vega.example.com/api/agents/iris/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "Build me a landing page"}'
 ```
@@ -107,7 +107,7 @@ GET /api/agents
 ```
 
 ```bash
-curl https://synkedup.v3ga.dev/api/agents
+curl https://your-vega.example.com/api/agents
 ```
 
 **Response:** Array of agent objects:
@@ -135,7 +135,7 @@ POST /api/agents
 ```
 
 ```bash
-curl -X POST https://synkedup.v3ga.dev/api/agents \
+curl -X POST https://your-vega.example.com/api/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "writer",
@@ -744,7 +744,7 @@ POST /api/config/upload
 Upload a `.vega.yaml` file to create or update agents and connect MCP servers at runtime. Changes persist across restarts.
 
 ```bash
-curl -X POST https://synkedup.v3ga.dev/api/config/upload \
+curl -X POST https://your-vega.example.com/api/config/upload \
   -F "file=@landscaping-team.vega.yaml"
 ```
 
