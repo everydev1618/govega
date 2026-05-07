@@ -130,7 +130,8 @@ func (s *SQLiteStore) Init() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_memory_items_user_agent ON memory_items(user_id, agent);
 	CREATE INDEX IF NOT EXISTS idx_memory_items_topic ON memory_items(user_id, agent, topic);
-	CREATE INDEX IF NOT EXISTS idx_memory_items_dedup ON memory_items(user_id, agent, type, content);
+	-- idx_memory_items_dedup is created in the migration block below, after
+	-- ALTER TABLE has added the type column on pre-existing databases.
 
 	CREATE TABLE IF NOT EXISTS workspace_files (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
