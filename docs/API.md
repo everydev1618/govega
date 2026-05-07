@@ -745,18 +745,18 @@ Upload a `.vega.yaml` file to create or update agents and connect MCP servers at
 
 ```bash
 curl -X POST https://your-vega.example.com/api/config/upload \
-  -F "file=@landscaping-team.vega.yaml"
+  -F "file=@my-team.vega.yaml"
 ```
 
 **Response:**
 
 ```json
 {
-  "name": "Landscaping Backoffice",
-  "agents_created": ["estimator", "scheduler"],
-  "agents_updated": ["bookkeeper"],
+  "name": "My Team",
+  "agents_created": ["researcher", "writer"],
+  "agents_updated": ["editor"],
   "agents_skipped": [],
-  "mcp_connected": ["synkedup"],
+  "mcp_connected": ["gmail"],
   "errors": []
 }
 ```

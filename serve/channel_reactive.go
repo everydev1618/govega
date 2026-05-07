@@ -72,7 +72,6 @@ If this is relevant to your work or needs your input, respond using post_to_chan
 	}
 
 	ctx := dsl.ContextWithChannelReactiveDepth(context.Background(), depth+1)
-	ctx = ContextWithDomainStore(ctx, s.sqliteStore)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
