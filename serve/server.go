@@ -120,7 +120,18 @@ type Server struct {
 	store       Store
 	sqliteStore *SQLiteStore // typed reference for domain tools
 	popClient *population.Client
-	telegram  *TelegramBot
+
+	// Telegram bot lifecycle. The bot is optional and restartable at
+	// runtime via the integrations API. ctx tracks the parent (Start)
+	// context so the bot dies with the server. cancel cancels just the
+	// bot's polling loop. agent records the current agent name so the
+	// status endpoint can report it.
+	telegramMu     sync.Mutex
+	telegram       *TelegramBot
+	telegramCancel context.CancelFunc
+	telegramAgent  string
+	telegramCtx    context.Context
+
 	scheduler *Scheduler
 	cfg       Config
 	startedAt time.Time
@@ -564,21 +575,18 @@ func (s *Server) Start(ctx context.Context) error {
 
 	go s.scheduler.Start(ctx)
 
-	// Start Telegram bot if configured (after meta-agents are injected).
-	if s.cfg.TelegramToken != "" {
-		agentName := s.cfg.TelegramAgent
-		if agentName == "" {
-			agentName = s.cfg.Orchestrator.Name // default to the orchestrator
-		}
-		tb, err := NewTelegramBot(s.cfg.TelegramToken, agentName, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
-			s.extractMemory(userID, agent, userMsg, response)
-		})
-		if err != nil {
+	// Stash the parent context so runtime restart calls can derive a
+	// child cancel-only ctx for the bot polling loop.
+	s.telegramMu.Lock()
+	s.telegramCtx = ctx
+	s.telegramMu.Unlock()
+
+	// Start Telegram bot if configured. Token resolution: env var first,
+	// then settings table (so runtime config persists across restarts).
+	if token := s.resolveTelegramToken(); token != "" {
+		agentName := s.resolveTelegramAgent()
+		if err := s.ConfigureTelegram(ctx, token, agentName); err != nil {
 			slog.Warn("telegram bot init failed", "error", err)
-		} else {
-			s.telegram = tb
-			go tb.Start(ctx)
-			slog.Info("telegram bot started", "agent", agentName)
 		}
 	}
 
@@ -731,6 +739,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("POST /api/config/upload", s.handleConfigUpload)
 	mux.HandleFunc("GET /api/identity", s.handleGetIdentity)
+	mux.HandleFunc("GET /api/integrations/telegram", s.handleTelegramStatus)
+	mux.HandleFunc("POST /api/integrations/telegram", s.handleTelegramConfigure)
+	mux.HandleFunc("DELETE /api/integrations/telegram", s.handleTelegramDisable)
+	mux.HandleFunc("GET /api/integrations/gmail", s.handleGmailStatus)
+	mux.HandleFunc("POST /api/integrations/gmail", s.handleGmailConfigure)
+	mux.HandleFunc("DELETE /api/integrations/gmail", s.handleGmailDisable)
 
 	// Reset
 	mux.HandleFunc("POST /api/reset", s.handleReset)

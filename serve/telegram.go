@@ -4,11 +4,140 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/everydev1618/govega/dsl"
 )
+
+// Settings keys for runtime-configured Telegram credentials. Values stored
+// here are used as a fallback when the env-based config is empty, and
+// they're written by the integrations API so the configuration persists
+// across server restarts.
+const (
+	telegramTokenSettingKey = "telegram:bot_token"
+	telegramAgentSettingKey = "telegram:agent_name"
+)
+
+func settingValue(s *Setting) string {
+	if s == nil {
+		return ""
+	}
+	return s.Value
+}
+
+// resolveTelegramToken returns the Telegram bot token from env first, then
+// from the settings table. Empty string means "not configured".
+func (s *Server) resolveTelegramToken() string {
+	if v := os.Getenv("TELEGRAM_BOT_TOKEN"); v != "" {
+		return v
+	}
+	if st, _ := s.store.GetSetting(telegramTokenSettingKey); settingValue(st) != "" {
+		return settingValue(st)
+	}
+	if s.cfg.TelegramToken != "" {
+		return s.cfg.TelegramToken
+	}
+	return ""
+}
+
+// resolveTelegramAgent returns the agent name configured for the Telegram
+// bridge: env var → settings table → cfg.TelegramAgent → orchestrator
+// (default).
+func (s *Server) resolveTelegramAgent() string {
+	if v := os.Getenv("TELEGRAM_AGENT"); v != "" {
+		return v
+	}
+	if st, _ := s.store.GetSetting(telegramAgentSettingKey); settingValue(st) != "" {
+		return settingValue(st)
+	}
+	if s.cfg.TelegramAgent != "" {
+		return s.cfg.TelegramAgent
+	}
+	return s.cfg.Orchestrator.Name
+}
+
+// TelegramStatus describes the current bot lifecycle state.
+type TelegramStatus struct {
+	Configured bool   `json:"configured"`
+	Running    bool   `json:"running"`
+	Agent      string `json:"agent,omitempty"`
+}
+
+// TelegramSnapshot returns the current bot state for the integrations API.
+func (s *Server) TelegramSnapshot() TelegramStatus {
+	s.telegramMu.Lock()
+	defer s.telegramMu.Unlock()
+	configured := s.resolveTelegramToken() != ""
+	return TelegramStatus{
+		Configured: configured,
+		Running:    s.telegram != nil,
+		Agent:      s.telegramAgent,
+	}
+}
+
+// ConfigureTelegram (re)starts the Telegram bot with the given token + agent.
+// Stops any existing bot first, then constructs and starts a fresh one
+// rooted at parent (typically the server's Start ctx). Returns the API
+// error from telegram bot construction (e.g. invalid token).
+func (s *Server) ConfigureTelegram(parent context.Context, token, agentName string) error {
+	if token == "" {
+		s.StopTelegram()
+		return nil
+	}
+	if agentName == "" {
+		agentName = s.cfg.Orchestrator.Name
+	}
+
+	s.telegramMu.Lock()
+	if parent == nil {
+		parent = s.telegramCtx
+	}
+	s.telegramMu.Unlock()
+
+	if parent == nil {
+		return fmt.Errorf("telegram: server not started yet")
+	}
+
+	bot, err := NewTelegramBot(token, agentName, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
+		s.extractMemory(userID, agent, userMsg, response)
+	})
+	if err != nil {
+		return err
+	}
+
+	// Swap in the new bot, cancelling any previous polling loop.
+	s.telegramMu.Lock()
+	if s.telegramCancel != nil {
+		s.telegramCancel()
+	}
+	botCtx, cancel := context.WithCancel(parent)
+	s.telegram = bot
+	s.telegramCancel = cancel
+	s.telegramAgent = agentName
+	s.telegramMu.Unlock()
+
+	go bot.Start(botCtx)
+	slog.Info("telegram bot started", "agent", agentName)
+	return nil
+}
+
+// StopTelegram cancels the polling loop and clears the bot. Safe to call
+// when the bot isn't running.
+func (s *Server) StopTelegram() {
+	s.telegramMu.Lock()
+	defer s.telegramMu.Unlock()
+	if s.telegramCancel != nil {
+		s.telegramCancel()
+		s.telegramCancel = nil
+	}
+	if s.telegram != nil {
+		slog.Info("telegram bot stopped")
+	}
+	s.telegram = nil
+	s.telegramAgent = ""
+}
 
 // TelegramBot handles incoming Telegram messages via long polling and routes
 // them to a vega agent, storing history in the same store as the HTTP chat API.
