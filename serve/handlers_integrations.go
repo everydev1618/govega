@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -31,6 +32,30 @@ func (s *Server) handleTelegramConfigure(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	agentName := req.Agent
+	if agentName == "" {
+		agentName = s.cfg.Orchestrator.Name
+	}
+
+	// Validate that the agent actually exists in the interpreter — the
+	// bot derives per-user clone names as "<agent>:<userid>" and clones
+	// from the base agent at runtime, so a bogus name produces a hard
+	// failure on every Telegram message.
+	doc := s.interp.Document()
+	if _, ok := doc.Agents[agentName]; !ok {
+		var names []string
+		for n, def := range doc.Agents {
+			if def.IsMeta && n != s.cfg.Orchestrator.Name {
+				continue // hide builder etc. from the public list
+			}
+			names = append(names, n)
+		}
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "agent " + strconv.Quote(agentName) + " does not exist; available: " + strings.Join(names, ", "),
+		})
+		return
+	}
+
 	// Persist before starting the bot so a process restart picks them up.
 	if err := s.store.UpsertSetting(Setting{
 		Key:       telegramTokenSettingKey,
@@ -39,10 +64,6 @@ func (s *Server) handleTelegramConfigure(w http.ResponseWriter, r *http.Request)
 	}); err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "save token: " + err.Error()})
 		return
-	}
-	agentName := req.Agent
-	if agentName == "" {
-		agentName = s.cfg.Orchestrator.Name
 	}
 	if err := s.store.UpsertSetting(Setting{
 		Key:   telegramAgentSettingKey,

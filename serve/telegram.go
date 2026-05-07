@@ -80,7 +80,7 @@ func (s *Server) TelegramSnapshot() TelegramStatus {
 // ConfigureTelegram (re)starts the Telegram bot with the given token + agent.
 // Stops any existing bot first, then constructs and starts a fresh one
 // rooted at parent (typically the server's Start ctx). Returns the API
-// error from telegram bot construction (e.g. invalid token).
+// error from telegram bot construction (e.g. invalid token, missing agent).
 func (s *Server) ConfigureTelegram(parent context.Context, token, agentName string) error {
 	if token == "" {
 		s.StopTelegram()
@@ -88,6 +88,14 @@ func (s *Server) ConfigureTelegram(parent context.Context, token, agentName stri
 	}
 	if agentName == "" {
 		agentName = s.cfg.Orchestrator.Name
+	}
+
+	// Validate the agent exists. The bot derives per-user clones as
+	// "<agent>:<userid>" and reaches for the base via doc.Agents, so a
+	// missing base produces hard failures on every incoming Telegram
+	// message. Better to refuse to start.
+	if _, ok := s.interp.Document().Agents[agentName]; !ok {
+		return fmt.Errorf("agent %q does not exist", agentName)
 	}
 
 	s.telegramMu.Lock()
