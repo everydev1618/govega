@@ -22,6 +22,14 @@ type Options struct {
 	// Effort sets output_config.effort on supported models.
 	// Empty defaults to "high" if the model supports effort.
 	Effort string
+
+	// OutputSchema is a JSON Schema enforced on the response via
+	// output_config.format. When set on a model that supports
+	// structured outputs, the API returns valid JSON conforming to
+	// the schema (no markdown fences, no invented fields). Silently
+	// dropped on unsupported models — caller falls back to ad-hoc
+	// JSON parsing in that case.
+	OutputSchema map[string]any
 }
 
 type optionsKey struct{}

@@ -128,11 +128,19 @@ type thinkingBlock struct {
 	Type string `json:"type"` // "adaptive"
 }
 
-// outputConfig carries the effort parameter (and future output controls
-// like task_budget). Sent only for models that support it — Sonnet 4.5
-// and Haiku 4.5 return 400.
+// outputConfig carries effort and structured-output controls. Each field
+// is gated separately by capability — effort errors on Sonnet 4.5 /
+// Haiku 4.5; format errors on models that don't support structured
+// outputs. Either field may appear without the other.
 type outputConfig struct {
-	Effort string `json:"effort,omitempty"` // "low" | "medium" | "high" | "xhigh" | "max"
+	Effort string        `json:"effort,omitempty"` // "low" | "medium" | "high" | "xhigh" | "max"
+	Format *outputFormat `json:"format,omitempty"`
+}
+
+// outputFormat enforces a JSON Schema on the model response.
+type outputFormat struct {
+	Type   string         `json:"type"` // "json_schema"
+	Schema map[string]any `json:"schema"`
 }
 
 // anthropicRequest is the API request format.
@@ -362,6 +370,16 @@ func (a *AnthropicLLM) buildRequestCtx(ctx context.Context, messages []Message, 
 			effort = "high"
 		}
 		req.OutputConfig = &outputConfig{Effort: effort}
+	}
+
+	if caps.SupportsStructuredOutputs && opts.OutputSchema != nil {
+		if req.OutputConfig == nil {
+			req.OutputConfig = &outputConfig{}
+		}
+		req.OutputConfig.Format = &outputFormat{
+			Type:   "json_schema",
+			Schema: opts.OutputSchema,
+		}
 	}
 
 	if caps.SupportsTemperature && opts.Temperature != nil {

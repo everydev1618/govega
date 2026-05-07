@@ -187,6 +187,11 @@ type ModelCapabilities struct {
 	// temperature/top_p/top_k are sent.
 	SupportsTemperature bool
 
+	// SupportsStructuredOutputs — model accepts output_config.format
+	// for JSON schema enforcement. Supported on Claude 4.5+ Opus,
+	// Sonnet 4.6, Haiku 4.5.
+	SupportsStructuredOutputs bool
+
 	// MaxOutputTokens is the streaming output ceiling for this model.
 	MaxOutputTokens int
 }
@@ -195,10 +200,10 @@ type ModelCapabilities struct {
 // resolve to the zero value (no thinking, no effort, conservative max
 // tokens) — safe default.
 var modelCapabilities = map[string]ModelCapabilities{
-	"claude-opus-4-7":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, MaxOutputTokens: 128000},
-	"claude-opus-4-6":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, MaxOutputTokens: 128000},
-	"claude-opus-4-5":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, MaxOutputTokens: 64000},
-	"claude-sonnet-4-6": {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, MaxOutputTokens: 64000},
+	"claude-opus-4-7":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	"claude-opus-4-6":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	"claude-opus-4-5":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, SupportsStructuredOutputs: true, MaxOutputTokens: 64000},
+	"claude-sonnet-4-6": {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, SupportsStructuredOutputs: true, MaxOutputTokens: 64000},
 
 	// Adaptive thinking + effort were introduced in 4.6. Older models
 	// don't support them — leave at zero value.

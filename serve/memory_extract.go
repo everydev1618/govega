@@ -18,6 +18,44 @@ type extractionResult struct {
 	NotesUpdates   map[string]any `json:"notes_updates"`
 }
 
+// extractionSchema is the JSON Schema that pins the shape of the
+// extraction response on models that support structured outputs.
+// Inner maps (profile_updates, notes_updates) are intentionally
+// permissive — the API enforces the top-level shape and the
+// topic_updates entries; arbitrary inner keys are allowed.
+var extractionSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"profile_updates": map[string]any{
+			"type": []string{"object", "null"},
+		},
+		"topic_updates": map[string]any{
+			"type": []string{"array", "null"},
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"topic":   map[string]any{"type": "string"},
+					"summary": map[string]any{"type": "string"},
+					"details": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+					},
+					"tags": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+					},
+				},
+				"required":             []string{"topic", "summary"},
+				"additionalProperties": false,
+			},
+		},
+		"notes_updates": map[string]any{
+			"type": []string{"object", "null"},
+		},
+	},
+	"additionalProperties": false,
+}
+
 // topicUpdate is a project/topic summary extracted from conversation.
 type topicUpdate struct {
 	Topic   string   `json:"topic"`
@@ -60,6 +98,14 @@ func (s *Server) extractMemory(userID, agent, userMsg, response string) {
 	messages := []llm.Message{
 		{Role: llm.RoleUser, Content: prompt},
 	}
+
+	// Enforce the response shape on supported models. The schema is
+	// permissive on the inner maps (profile_updates / notes_updates
+	// are open) — what we care about is the top-level structure and
+	// ruling out markdown-wrapped or otherwise malformed output. On
+	// older models this is silently dropped and we fall back to the
+	// fence-stripping parser below.
+	ctx = llm.ContextWithOptions(ctx, llm.Options{OutputSchema: extractionSchema})
 
 	resp, err := extractLLM.Generate(ctx, messages, nil)
 	if err != nil {
