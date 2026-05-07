@@ -293,7 +293,19 @@ func InjectIris(interp *Interpreter, cfg IrisConfig, channelBackend ChannelBacke
 	}
 
 	def := IrisAgent(cfg)
-	def.Tools = append([]string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "create_channel", "post_to_channel", "list_my_channels"}, extraTools...)
+	// Verification tools (read_file, fetch__fetch, exec) are intentional —
+	// the orchestrator must be able to verify deliverables ("does the
+	// app actually run?") rather than just relay claims from team members.
+	// Without these, the orchestrator hallucinates confident summaries
+	// from inbox reports it cannot validate.
+	def.Tools = append([]string{
+		"list_agents", "send_to_agent", "check_status",
+		"connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status",
+		"set_project", "list_projects",
+		"list_files", "read_file", "exec",
+		"fetch__fetch",
+		"create_channel", "post_to_channel", "list_my_channels",
+	}, extraTools...)
 
 	return interp.AddAgent(cfg.Name, def)
 }
