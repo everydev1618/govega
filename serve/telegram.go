@@ -2,100 +2,118 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"strconv"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/everydev1618/govega/dsl"
 )
 
-// Settings keys for runtime-configured Telegram credentials. Values stored
-// here are used as a fallback when the env-based config is empty, and
-// they're written by the integrations API so the configuration persists
-// across server restarts.
-const (
-	telegramTokenSettingKey = "telegram:bot_token"
-	telegramAgentSettingKey = "telegram:agent_name"
-)
+// telegramBotsSettingKey holds the JSON-encoded list of configured bots.
+// Persisting in a single setting keeps storage simple and lets us mark the
+// whole entry sensitive (since the tokens are sensitive).
+const telegramBotsSettingKey = "telegram:bots"
 
-func settingValue(s *Setting) string {
-	if s == nil {
+// TelegramBotConfig persists the user's choice for a single bot. ID is the
+// numeric prefix of the token ("123456789:AAEhBO..." → "123456789") which
+// is stable per bot and not sensitive on its own. Label is optional, lets
+// users distinguish e.g. "Personal" vs "Work" bots in the UI.
+type TelegramBotConfig struct {
+	ID    string `json:"id"`
+	Token string `json:"token"`
+	Agent string `json:"agent"`
+	Label string `json:"label,omitempty"`
+}
+
+// runningTelegramBot ties a configured bot to its live polling loop.
+type runningTelegramBot struct {
+	cfg    TelegramBotConfig
+	bot    *TelegramBot
+	cancel context.CancelFunc
+}
+
+// botIDFromToken extracts the bot's numeric id from a Telegram bot token.
+// Returns "" if the token isn't well-formed.
+func botIDFromToken(token string) string {
+	i := strings.Index(token, ":")
+	if i <= 0 {
 		return ""
 	}
-	return s.Value
+	id := token[:i]
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return id
 }
 
-// resolveTelegramToken returns the Telegram bot token from env first, then
-// from the settings table. Empty string means "not configured".
-func (s *Server) resolveTelegramToken() string {
-	if v := os.Getenv("TELEGRAM_BOT_TOKEN"); v != "" {
-		return v
+// loadPersistedTelegramBots reads the configured-bot list from settings.
+// Returns nil + nil error when nothing is stored.
+func (s *Server) loadPersistedTelegramBots() ([]TelegramBotConfig, error) {
+	st, err := s.store.GetSetting(telegramBotsSettingKey)
+	if err != nil || st == nil || st.Value == "" {
+		return nil, err
 	}
-	if st, _ := s.store.GetSetting(telegramTokenSettingKey); settingValue(st) != "" {
-		return settingValue(st)
+	var list []TelegramBotConfig
+	if err := json.Unmarshal([]byte(st.Value), &list); err != nil {
+		return nil, fmt.Errorf("decode telegram bots setting: %w", err)
 	}
-	if s.cfg.TelegramToken != "" {
-		return s.cfg.TelegramToken
-	}
-	return ""
+	return list, nil
 }
 
-// resolveTelegramAgent returns the agent name configured for the Telegram
-// bridge: env var → settings table → cfg.TelegramAgent → orchestrator
-// (default).
-func (s *Server) resolveTelegramAgent() string {
-	if v := os.Getenv("TELEGRAM_AGENT"); v != "" {
-		return v
+// savePersistedTelegramBots overwrites the bots list in settings.
+func (s *Server) savePersistedTelegramBots(list []TelegramBotConfig) error {
+	if len(list) == 0 {
+		return s.store.DeleteSetting(telegramBotsSettingKey)
 	}
-	if st, _ := s.store.GetSetting(telegramAgentSettingKey); settingValue(st) != "" {
-		return settingValue(st)
+	b, err := json.Marshal(list)
+	if err != nil {
+		return fmt.Errorf("encode telegram bots: %w", err)
 	}
-	if s.cfg.TelegramAgent != "" {
-		return s.cfg.TelegramAgent
-	}
-	return s.cfg.Orchestrator.Name
+	return s.store.UpsertSetting(Setting{
+		Key:       telegramBotsSettingKey,
+		Value:     string(b),
+		Sensitive: true,
+	})
 }
 
-// TelegramStatus describes the current bot lifecycle state.
-type TelegramStatus struct {
-	Configured bool   `json:"configured"`
-	Running    bool   `json:"running"`
-	Agent      string `json:"agent,omitempty"`
-}
-
-// TelegramSnapshot returns the current bot state for the integrations API.
-func (s *Server) TelegramSnapshot() TelegramStatus {
-	s.telegramMu.Lock()
-	defer s.telegramMu.Unlock()
-	configured := s.resolveTelegramToken() != ""
-	return TelegramStatus{
-		Configured: configured,
-		Running:    s.telegram != nil,
-		Agent:      s.telegramAgent,
+// startPersistedTelegramBots boots any bots saved in the settings table.
+// Failures (bad token, missing agent) are logged and skipped — the broken
+// entry is left in place so the user can fix it via the dashboard.
+func (s *Server) startPersistedTelegramBots(parent context.Context) {
+	list, err := s.loadPersistedTelegramBots()
+	if err != nil {
+		slog.Warn("failed to load persisted telegram bots", "error", err)
+		return
+	}
+	for _, cfg := range list {
+		if _, err := s.startTelegramBot(parent, cfg); err != nil {
+			slog.Warn("telegram bot init failed", "id", cfg.ID, "error", err)
+		}
 	}
 }
 
-// ConfigureTelegram (re)starts the Telegram bot with the given token + agent.
-// Stops any existing bot first, then constructs and starts a fresh one
-// rooted at parent (typically the server's Start ctx). Returns the API
-// error from telegram bot construction (e.g. invalid token, missing agent).
-func (s *Server) ConfigureTelegram(parent context.Context, token, agentName string) error {
-	if token == "" {
-		s.StopTelegram()
-		return nil
+// startTelegramBot constructs and starts a single bot under cfg, registering
+// it in s.telegrams. Returns the running entry on success.
+func (s *Server) startTelegramBot(parent context.Context, cfg TelegramBotConfig) (*runningTelegramBot, error) {
+	if cfg.Token == "" {
+		return nil, fmt.Errorf("token is required")
 	}
-	if agentName == "" {
-		agentName = s.cfg.Orchestrator.Name
+	if cfg.ID == "" {
+		cfg.ID = botIDFromToken(cfg.Token)
 	}
-
-	// Validate the agent exists. The bot derives per-user clones as
-	// "<agent>:<userid>" and reaches for the base via doc.Agents, so a
-	// missing base produces hard failures on every incoming Telegram
-	// message. Better to refuse to start.
-	if _, ok := s.interp.Document().Agents[agentName]; !ok {
-		return fmt.Errorf("agent %q does not exist", agentName)
+	if cfg.ID == "" {
+		return nil, fmt.Errorf("invalid telegram token format")
+	}
+	if cfg.Agent == "" {
+		cfg.Agent = s.cfg.Orchestrator.Name
+	}
+	if _, ok := s.interp.Document().Agents[cfg.Agent]; !ok {
+		return nil, fmt.Errorf("agent %q does not exist", cfg.Agent)
 	}
 
 	s.telegramMu.Lock()
@@ -103,49 +121,152 @@ func (s *Server) ConfigureTelegram(parent context.Context, token, agentName stri
 		parent = s.telegramCtx
 	}
 	s.telegramMu.Unlock()
-
 	if parent == nil {
-		return fmt.Errorf("telegram: server not started yet")
+		return nil, fmt.Errorf("telegram: server not started yet")
 	}
 
-	bot, err := NewTelegramBot(token, agentName, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
+	bot, err := NewTelegramBot(cfg.Token, cfg.Agent, s.interp, s.store, s.company, func(userID, agent, userMsg, response string) {
 		s.extractMemory(userID, agent, userMsg, response)
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Swap in the new bot, cancelling any previous polling loop.
 	s.telegramMu.Lock()
-	if s.telegramCancel != nil {
-		s.telegramCancel()
+	// Replace any existing bot under the same id (atomic reconfigure).
+	if existing, ok := s.telegrams[cfg.ID]; ok && existing.cancel != nil {
+		existing.cancel()
 	}
 	botCtx, cancel := context.WithCancel(parent)
-	s.telegram = bot
-	s.telegramCancel = cancel
-	s.telegramAgent = agentName
+	entry := &runningTelegramBot{cfg: cfg, bot: bot, cancel: cancel}
+	s.telegrams[cfg.ID] = entry
 	s.telegramMu.Unlock()
 
 	go bot.Start(botCtx)
-	slog.Info("telegram bot started", "agent", agentName)
-	return nil
+	slog.Info("telegram bot started", "id", cfg.ID, "agent", cfg.Agent, "label", cfg.Label)
+	return entry, nil
 }
 
-// StopTelegram cancels the polling loop and clears the bot. Safe to call
-// when the bot isn't running.
-func (s *Server) StopTelegram() {
+// AddTelegramBot validates and persists a new bot, then starts it.
+// reuseLabel determines what label to assign when the user didn't supply
+// one (e.g. "env" for the legacy env-var bot).
+func (s *Server) AddTelegramBot(parent context.Context, token, agent, label string) (*TelegramBotConfig, error) {
+	cfg := TelegramBotConfig{
+		Token: strings.TrimSpace(token),
+		Agent: strings.TrimSpace(agent),
+		Label: strings.TrimSpace(label),
+	}
+	cfg.ID = botIDFromToken(cfg.Token)
+	if cfg.ID == "" {
+		return nil, fmt.Errorf("invalid telegram token format (expected '<id>:<secret>')")
+	}
+
+	// Persist before starting so a crash mid-startup leaves a recoverable
+	// configuration. If startTelegramBot fails (bad token, missing agent),
+	// roll back the persisted entry.
+	list, err := s.loadPersistedTelegramBots()
+	if err != nil {
+		return nil, err
+	}
+	// Replace existing entry with same id, otherwise append.
+	replaced := false
+	for i, existing := range list {
+		if existing.ID == cfg.ID {
+			list[i] = cfg
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		list = append(list, cfg)
+	}
+	if err := s.savePersistedTelegramBots(list); err != nil {
+		return nil, err
+	}
+
+	if _, err := s.startTelegramBot(parent, cfg); err != nil {
+		// Roll back persistence — but only the new entry, leave others.
+		filtered := list[:0]
+		for _, e := range list {
+			if e.ID != cfg.ID {
+				filtered = append(filtered, e)
+			}
+		}
+		_ = s.savePersistedTelegramBots(filtered)
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// RemoveTelegramBot stops a bot and drops it from the persisted list.
+func (s *Server) RemoveTelegramBot(id string) error {
+	s.telegramMu.Lock()
+	if existing, ok := s.telegrams[id]; ok {
+		if existing.cancel != nil {
+			existing.cancel()
+		}
+		delete(s.telegrams, id)
+		slog.Info("telegram bot stopped", "id", id)
+	}
+	s.telegramMu.Unlock()
+
+	list, err := s.loadPersistedTelegramBots()
+	if err != nil {
+		return err
+	}
+	filtered := list[:0]
+	for _, e := range list {
+		if e.ID != id {
+			filtered = append(filtered, e)
+		}
+	}
+	return s.savePersistedTelegramBots(filtered)
+}
+
+// TelegramBotStatus is the public-safe view of a single bot — no token.
+type TelegramBotStatus struct {
+	ID      string `json:"id"`
+	Label   string `json:"label,omitempty"`
+	Agent   string `json:"agent"`
+	Running bool   `json:"running"`
+}
+
+// TelegramBotsSnapshot lists all configured bots (running or not) with
+// non-sensitive fields. The token is never returned.
+func (s *Server) TelegramBotsSnapshot() []TelegramBotStatus {
+	persisted, _ := s.loadPersistedTelegramBots()
+
 	s.telegramMu.Lock()
 	defer s.telegramMu.Unlock()
-	if s.telegramCancel != nil {
-		s.telegramCancel()
-		s.telegramCancel = nil
+
+	out := make([]TelegramBotStatus, 0, len(persisted))
+	seen := make(map[string]bool, len(persisted))
+	for _, cfg := range persisted {
+		_, running := s.telegrams[cfg.ID]
+		out = append(out, TelegramBotStatus{
+			ID:      cfg.ID,
+			Label:   cfg.Label,
+			Agent:   cfg.Agent,
+			Running: running,
+		})
+		seen[cfg.ID] = true
 	}
-	if s.telegram != nil {
-		slog.Info("telegram bot stopped")
+	// Include env-only bots that aren't in the persisted list.
+	for id, entry := range s.telegrams {
+		if seen[id] {
+			continue
+		}
+		out = append(out, TelegramBotStatus{
+			ID:      id,
+			Label:   entry.cfg.Label,
+			Agent:   entry.cfg.Agent,
+			Running: true,
+		})
 	}
-	s.telegram = nil
-	s.telegramAgent = ""
+	return out
 }
+
+// --- Single-bot type (unchanged from before) ---
 
 // TelegramBot handles incoming Telegram messages via long polling and routes
 // them to a vega agent, storing history in the same store as the HTTP chat API.
@@ -246,24 +367,22 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 		ctx = ContextWithDomainStore(ctx, ss)
 	}
 
-	response, err := t.interp.SendToAgent(ctx, name, text)
+	// Send to agent.
+	resp, err := t.interp.SendToAgent(ctx, name, text)
 	if err != nil {
-		slog.Error("telegram: agent error", "agent", name, "error", err)
+		slog.Warn("telegram: SendToAgent failed", "error", err)
 		t.bot.Send(tgbotapi.NewMessage(chatID, "Error: "+err.Error()))
 		return
 	}
 
-	// Persist assistant response.
-	if err := t.store.InsertChatMessage(name, "assistant", response); err != nil {
+	// Persist assistant response and reply.
+	if err := t.store.InsertChatMessage(name, "assistant", resp); err != nil {
 		slog.Warn("telegram: failed to insert assistant message", "error", err)
 	}
-
-	if _, err := t.bot.Send(tgbotapi.NewMessage(chatID, response)); err != nil {
-		slog.Warn("telegram: failed to send message", "error", err)
+	if _, err := t.bot.Send(tgbotapi.NewMessage(chatID, resp)); err != nil {
+		slog.Warn("telegram: failed to send reply", "error", err)
 	}
-
-	// Fire async memory extraction.
 	if t.onExchange != nil {
-		go t.onExchange(userID, t.agentName, text, response)
+		t.onExchange(userID, t.agentName, text, resp)
 	}
 }

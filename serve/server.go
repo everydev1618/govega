@@ -121,16 +121,13 @@ type Server struct {
 	sqliteStore *SQLiteStore // typed reference for domain tools
 	popClient *population.Client
 
-	// Telegram bot lifecycle. The bot is optional and restartable at
-	// runtime via the integrations API. ctx tracks the parent (Start)
-	// context so the bot dies with the server. cancel cancels just the
-	// bot's polling loop. agent records the current agent name so the
-	// status endpoint can report it.
-	telegramMu     sync.Mutex
-	telegram       *TelegramBot
-	telegramCancel context.CancelFunc
-	telegramAgent  string
-	telegramCtx    context.Context
+	// Telegram bots. Multi-bot — keyed by bot ID (the numeric prefix of
+	// the API token). Each bot has its own polling loop and cancel func.
+	// telegramCtx is the server's Start ctx, used as parent for every
+	// bot's polling ctx so they all die when the server stops.
+	telegramMu  sync.Mutex
+	telegrams   map[string]*runningTelegramBot
+	telegramCtx context.Context
 
 	scheduler *Scheduler
 	cfg       Config
@@ -576,17 +573,22 @@ func (s *Server) Start(ctx context.Context) error {
 	go s.scheduler.Start(ctx)
 
 	// Stash the parent context so runtime restart calls can derive a
-	// child cancel-only ctx for the bot polling loop.
+	// child cancel-only ctx for each bot's polling loop.
 	s.telegramMu.Lock()
 	s.telegramCtx = ctx
+	s.telegrams = make(map[string]*runningTelegramBot)
 	s.telegramMu.Unlock()
 
-	// Start Telegram bot if configured. Token resolution: env var first,
-	// then settings table (so runtime config persists across restarts).
-	if token := s.resolveTelegramToken(); token != "" {
-		agentName := s.resolveTelegramAgent()
-		if err := s.ConfigureTelegram(ctx, token, agentName); err != nil {
-			slog.Warn("telegram bot init failed", "error", err)
+	// Start any persisted Telegram bots, plus the env-var-configured bot
+	// (if any) for backward compatibility.
+	s.startPersistedTelegramBots(ctx)
+	if token := os.Getenv("TELEGRAM_BOT_TOKEN"); token != "" {
+		agent := os.Getenv("TELEGRAM_AGENT")
+		if agent == "" {
+			agent = s.cfg.Orchestrator.Name
+		}
+		if _, err := s.AddTelegramBot(ctx, token, agent, "env"); err != nil {
+			slog.Warn("env-configured telegram bot init failed", "error", err)
 		}
 	}
 
@@ -741,7 +743,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/identity", s.handleGetIdentity)
 	mux.HandleFunc("GET /api/integrations/telegram", s.handleTelegramStatus)
 	mux.HandleFunc("POST /api/integrations/telegram", s.handleTelegramConfigure)
-	mux.HandleFunc("DELETE /api/integrations/telegram", s.handleTelegramDisable)
+	mux.HandleFunc("DELETE /api/integrations/telegram/{id}", s.handleTelegramRemove)
 	mux.HandleFunc("GET /api/integrations/gmail", s.handleGmailStatus)
 	mux.HandleFunc("POST /api/integrations/gmail", s.handleGmailConfigure)
 	mux.HandleFunc("DELETE /api/integrations/gmail", s.handleGmailDisable)

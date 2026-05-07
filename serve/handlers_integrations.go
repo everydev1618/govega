@@ -8,17 +8,22 @@ import (
 	"strings"
 )
 
-// --- Telegram ---
+// --- Telegram (multi-bot) ---
 
 type telegramConfigureRequest struct {
 	Token string `json:"token"`
 	Agent string `json:"agent"`
+	Label string `json:"label,omitempty"`
 }
 
+// handleTelegramStatus returns the list of configured bots (running or not).
+// Tokens are never included.
 func (s *Server) handleTelegramStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.TelegramSnapshot())
+	writeJSON(w, http.StatusOK, s.TelegramBotsSnapshot())
 }
 
+// handleTelegramConfigure adds a new bot or replaces an existing one with
+// the same bot id (the numeric prefix of the token).
 func (s *Server) handleTelegramConfigure(w http.ResponseWriter, r *http.Request) {
 	var req telegramConfigureRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -27,6 +32,7 @@ func (s *Server) handleTelegramConfigure(w http.ResponseWriter, r *http.Request)
 	}
 	req.Token = strings.TrimSpace(req.Token)
 	req.Agent = strings.TrimSpace(req.Agent)
+	req.Label = strings.TrimSpace(req.Label)
 	if req.Token == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "token is required"})
 		return
@@ -37,16 +43,14 @@ func (s *Server) handleTelegramConfigure(w http.ResponseWriter, r *http.Request)
 		agentName = s.cfg.Orchestrator.Name
 	}
 
-	// Validate that the agent actually exists in the interpreter — the
-	// bot derives per-user clone names as "<agent>:<userid>" and clones
-	// from the base agent at runtime, so a bogus name produces a hard
-	// failure on every Telegram message.
+	// Validate the agent exists. The bot derives per-user clone names as
+	// "<agent>:<userid>" so a bogus base produces hard failures.
 	doc := s.interp.Document()
 	if _, ok := doc.Agents[agentName]; !ok {
 		var names []string
 		for n, def := range doc.Agents {
 			if def.IsMeta && n != s.cfg.Orchestrator.Name {
-				continue // hide builder etc. from the public list
+				continue
 			}
 			names = append(names, n)
 		}
@@ -56,41 +60,25 @@ func (s *Server) handleTelegramConfigure(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Persist before starting the bot so a process restart picks them up.
-	if err := s.store.UpsertSetting(Setting{
-		Key:       telegramTokenSettingKey,
-		Value:     req.Token,
-		Sensitive: true,
-	}); err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "save token: " + err.Error()})
-		return
-	}
-	if err := s.store.UpsertSetting(Setting{
-		Key:   telegramAgentSettingKey,
-		Value: agentName,
-	}); err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "save agent: " + err.Error()})
-		return
-	}
-
-	if err := s.ConfigureTelegram(nil, req.Token, agentName); err != nil {
-		// Roll back the persisted token so a bad value doesn't auto-revive
-		// the bot on next restart.
-		_ = s.store.DeleteSetting(telegramTokenSettingKey)
+	if _, err := s.AddTelegramBot(nil, req.Token, agentName, req.Label); err != nil {
 		writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: "telegram: " + err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, s.TelegramSnapshot())
+	writeJSON(w, http.StatusOK, s.TelegramBotsSnapshot())
 }
 
-func (s *Server) handleTelegramDisable(w http.ResponseWriter, r *http.Request) {
-	s.StopTelegram()
-	if err := s.store.DeleteSetting(telegramTokenSettingKey); err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "delete token: " + err.Error()})
+// handleTelegramRemove stops + drops one bot by id.
+func (s *Server) handleTelegramRemove(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "id is required"})
 		return
 	}
-	_ = s.store.DeleteSetting(telegramAgentSettingKey)
-	writeJSON(w, http.StatusOK, s.TelegramSnapshot())
+	if err := s.RemoveTelegramBot(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.TelegramBotsSnapshot())
 }
 
 // --- Gmail ---
