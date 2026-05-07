@@ -352,7 +352,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	dsl.RegisterSchedulerTools(s.interp, s.scheduler)
 
-	// Register inbox tools — ask_iris is available to all agents,
+	// Register inbox tools — ask_orchestrator (and ask_iris alias) are available to all agents,
 	// list_inbox and resolve_inbox are already in Iris's tool list.
 	inboxBack := &inboxAdapter{store: s.store}
 	dsl.RegisterInboxTools(s.interp, inboxBack)

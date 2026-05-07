@@ -107,7 +107,9 @@ func TestDefaultRegistryComplete(t *testing.T) {
 		if entry.Name != name {
 			t.Errorf("registry key %q != entry.Name %q", name, entry.Name)
 		}
-		if entry.Command == "" && entry.URL == "" {
+		// BuiltinGo entries are served in-process; they need neither
+		// Command nor URL.
+		if !entry.BuiltinGo && entry.Command == "" && entry.URL == "" {
 			t.Errorf("registry entry %q has neither Command nor URL", name)
 		}
 		if entry.Description == "" {

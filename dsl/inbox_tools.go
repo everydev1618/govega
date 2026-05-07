@@ -32,56 +32,74 @@ type InboxBackend interface {
 }
 
 // RegisterInboxTools registers the inbox tools on the interpreter.
-// ask_iris is available to all agents. list_inbox and resolve_inbox are
-// added to Iris's tool list by the caller.
+//
+// ask_orchestrator is the canonical name; ask_iris is registered as a
+// backward-compat alias for any yaml-defined or composed agent that
+// references the old name. Both call the same backing function.
+//
+// list_inbox and resolve_inbox are added to the orchestrator's tool
+// list by the caller (Iris/Apex).
 func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 	t := interp.Tools()
 
-	t.Register("ask_iris", tools.ToolDef{
-		Description: "Post a question or request to Iris's inbox. Iris triages the inbox periodically. Use this instead of asking the user directly.",
-		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
-			subject, _ := params["subject"].(string)
-			if subject == "" {
-				return "", fmt.Errorf("subject is required")
-			}
-			body, _ := params["body"].(string)
-			priority, _ := params["priority"].(string)
-			if priority == "" {
-				priority = "normal"
-			}
-			switch priority {
-			case "low", "normal", "urgent":
-			default:
-				return "", fmt.Errorf("priority must be low, normal, or urgent")
-			}
+	postFn := tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+		subject, _ := params["subject"].(string)
+		if subject == "" {
+			return "", fmt.Errorf("subject is required")
+		}
+		body, _ := params["body"].(string)
+		priority, _ := params["priority"].(string)
+		if priority == "" {
+			priority = "normal"
+		}
+		switch priority {
+		case "low", "normal", "urgent":
+		default:
+			return "", fmt.Errorf("priority must be low, normal, or urgent")
+		}
 
-			// Determine calling agent name from context.
-			fromAgent := "unknown"
-			if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
-				fromAgent = proc.Agent.Name
-			}
+		// Determine calling agent name from context.
+		fromAgent := "unknown"
+		if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
+			fromAgent = proc.Agent.Name
+		}
 
-			id, err := backend.InsertInboxItem(fromAgent, subject, body, priority)
-			if err != nil {
-				return "", fmt.Errorf("post to inbox: %w", err)
-			}
-			return fmt.Sprintf("Message posted to Iris's inbox (id=%d, priority=%s). Iris will review it shortly.", id, priority), nil
-		}),
-		Params: map[string]tools.ParamDef{
-			"subject": {
-				Type:        "string",
-				Description: "Short summary of the question or request",
-				Required:    true,
-			},
-			"body": {
-				Type:        "string",
-				Description: "Detailed explanation or context (optional)",
-			},
-			"priority": {
-				Type:        "string",
-				Description: "Priority level: low, normal, or urgent (default: normal)",
-			},
+		id, err := backend.InsertInboxItem(fromAgent, subject, body, priority)
+		if err != nil {
+			return "", fmt.Errorf("post to inbox: %w", err)
+		}
+		return fmt.Sprintf("Message posted to the orchestrator's inbox (id=%d, priority=%s). The orchestrator will review it shortly.", id, priority), nil
+	})
+
+	postParams := map[string]tools.ParamDef{
+		"subject": {
+			Type:        "string",
+			Description: "Short summary of the question or request",
+			Required:    true,
 		},
+		"body": {
+			Type:        "string",
+			Description: "Detailed explanation or context (optional)",
+		},
+		"priority": {
+			Type:        "string",
+			Description: "Priority level: low, normal, or urgent (default: normal)",
+		},
+	}
+
+	t.Register("ask_orchestrator", tools.ToolDef{
+		Description: "Post a question or request to the orchestrator's inbox. The orchestrator triages the inbox periodically. Use this instead of asking the user directly.",
+		Fn:          postFn,
+		Params:      postParams,
+	})
+
+	// Backward-compat alias. Same function, same params, same semantics.
+	// New agents should use ask_orchestrator; this exists so any yaml or
+	// composed agent that still lists "ask_iris" keeps working.
+	t.Register("ask_iris", tools.ToolDef{
+		Description: "Alias for ask_orchestrator. Post a question or request to the orchestrator's inbox.",
+		Fn:          postFn,
+		Params:      postParams,
 	})
 
 	t.Register("list_inbox", tools.ToolDef{
