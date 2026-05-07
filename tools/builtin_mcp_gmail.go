@@ -120,6 +120,46 @@ func gmailServer() *builtinMCPServer {
 					},
 				},
 			},
+			"send": {
+				Description: "Send an email immediately. The message goes out NOW — no draft, no review step. Prefer `draft` for anything substantive; reserve `send` for short, low-stakes responses (acknowledgments, scheduling confirmations, simple yes/no replies). Returns the sent message id and thread id.",
+				Fn:          ToolFunc(gmailSend),
+				Params: map[string]ParamDef{
+					"to": {
+						Type:        "string",
+						Description: "Recipient email address (or comma-separated list).",
+						Required:    true,
+					},
+					"subject": {
+						Type:        "string",
+						Description: "Subject line.",
+						Required:    true,
+					},
+					"body": {
+						Type:        "string",
+						Description: "Plain-text body of the email.",
+						Required:    true,
+					},
+					"thread_id": {
+						Type:        "string",
+						Description: "Optional Gmail thread id when sending a reply, so the message attaches to the existing thread.",
+					},
+					"in_reply_to": {
+						Type:        "string",
+						Description: "Optional Message-ID header value of the message being replied to (sets In-Reply-To and References headers).",
+					},
+				},
+			},
+			"send_draft": {
+				Description: "Send an existing draft by its draft id (e.g. one previously created with `draft`). Useful when you've drafted something and want to ship it without rebuilding the body.",
+				Fn:          ToolFunc(gmailSendDraft),
+				Params: map[string]ParamDef{
+					"draft_id": {
+						Type:        "string",
+						Description: "Draft id from a previous `draft` call.",
+						Required:    true,
+					},
+				},
+			},
 		},
 	}
 }
@@ -640,6 +680,60 @@ func gmailDraft(ctx context.Context, params map[string]any) (string, error) {
 	}
 	return fmt.Sprintf("Draft created (id=%s, message_id=%s, thread_id=%s). Visible in your Gmail Drafts folder for review and send.",
 		draft.ID, draft.Message.ID, draft.Message.ThreadID), nil
+}
+
+func gmailSend(ctx context.Context, params map[string]any) (string, error) {
+	to, _ := params["to"].(string)
+	subject, _ := params["subject"].(string)
+	body, _ := params["body"].(string)
+	threadID, _ := params["thread_id"].(string)
+	inReplyTo, _ := params["in_reply_to"].(string)
+
+	if to == "" || subject == "" || body == "" {
+		return "", fmt.Errorf("to, subject, and body are required")
+	}
+
+	rfc := buildRFC2822(to, subject, body, inReplyTo)
+	raw := base64.URLEncoding.EncodeToString([]byte(rfc))
+
+	payload := map[string]any{"raw": raw}
+	if threadID != "" {
+		payload["threadId"] = threadID
+	}
+
+	respBody, err := gmailRequest(ctx, http.MethodPost, "/messages/send", payload)
+	if err != nil {
+		return "", err
+	}
+	var sent struct {
+		ID       string `json:"id"`
+		ThreadID string `json:"threadId"`
+	}
+	if err := json.Unmarshal(respBody, &sent); err != nil {
+		return "", fmt.Errorf("gmail: decode send response: %w", err)
+	}
+	return fmt.Sprintf("Sent (message_id=%s, thread_id=%s).", sent.ID, sent.ThreadID), nil
+}
+
+func gmailSendDraft(ctx context.Context, params map[string]any) (string, error) {
+	draftID, _ := params["draft_id"].(string)
+	if draftID == "" {
+		return "", fmt.Errorf("draft_id is required")
+	}
+	respBody, err := gmailRequest(ctx, http.MethodPost, "/drafts/send", map[string]any{
+		"id": draftID,
+	})
+	if err != nil {
+		return "", err
+	}
+	var sent struct {
+		ID       string `json:"id"`
+		ThreadID string `json:"threadId"`
+	}
+	if err := json.Unmarshal(respBody, &sent); err != nil {
+		return "", fmt.Errorf("gmail: decode send-draft response: %w", err)
+	}
+	return fmt.Sprintf("Sent draft %s (message_id=%s, thread_id=%s).", draftID, sent.ID, sent.ThreadID), nil
 }
 
 func buildRFC2822(to, subject, body, inReplyTo string) string {
