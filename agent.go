@@ -59,8 +59,12 @@ type Agent struct {
 
 // Default configuration values
 const (
-	// DefaultMaxIterations is the default maximum tool call loop iterations
-	DefaultMaxIterations = 50
+	// DefaultMaxIterations is the default maximum tool call loop iterations.
+	// Engineering tasks (build, run, curl, fix, retry) routinely chain
+	// 50+ tool calls; the previous cap of 50 was hitting "maximum
+	// iterations exceeded" on real work. 100 is a more realistic
+	// default; agents that genuinely need more set Agent.MaxIterations.
+	DefaultMaxIterations = 100
 
 	// DefaultMaxContextTokens is the default context window size
 	DefaultMaxContextTokens = 100000
