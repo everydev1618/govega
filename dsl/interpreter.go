@@ -1440,14 +1440,75 @@ func (i *Interpreter) EnsureAgent(name string) (*vega.Process, error) {
 	return i.ensureAgent(name)
 }
 
+// ephemeralDelegationEnvVar toggles per-call ephemeral subagent processes.
+const ephemeralDelegationEnvVar = "VEGA_EPHEMERAL_DELEGATION"
+
+// ephemeralDelegationEnabled reports whether SendToAgent should use a fresh,
+// discardable process per delegation rather than reusing the long-lived
+// agent process. Default true.
+func ephemeralDelegationEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(ephemeralDelegationEnvVar)))
+	return v != "false" && v != "0" && v != "no"
+}
+
+// spawnEphemeralProcess returns a fresh, unregistered process for the named
+// agent. The caller is responsible for killing it (via orch.Kill) when done.
+//
+// The process is built from the same Agent config the long-lived process
+// uses — so the system prompt, tools, MCP enrichments and skills wrapper
+// are all preserved — but its message buffer starts empty and it is not
+// registered in i.agents.
+func (i *Interpreter) spawnEphemeralProcess(name string) (*vega.Process, error) {
+	base, err := i.ensureAgent(name)
+	if err != nil {
+		return nil, err
+	}
+	if base.Agent == nil {
+		return nil, fmt.Errorf("agent '%s' has no config", name)
+	}
+	proc, err := i.orch.Spawn(*base.Agent)
+	if err != nil {
+		return nil, fmt.Errorf("spawn ephemeral subagent '%s': %w", name, err)
+	}
+	return proc, nil
+}
+
 // SendToAgent sends a message to a specific agent and returns the response.
 // If the calling context carries an event sink (from a streaming parent),
 // SendToAgent uses streaming and forwards nested tool_start/tool_end events
 // to the parent sink so the UI can display sub-agent activity in real time.
+//
+// When invoked from inside another agent's tool loop (i.e. as a delegated
+// subagent call), the target runs in a fresh, ephemeral process spawned
+// from its definition. Each delegation thus starts with an empty message
+// buffer, preventing accumulated cross-conversation history from one
+// caller showing up in unrelated calls from another. Direct user-driven
+// chat sessions continue to use the long-lived process so multi-turn
+// conversations behave as users expect. Set
+// VEGA_EPHEMERAL_DELEGATION=false to opt back into the legacy
+// shared-process behavior.
 func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message string) (string, error) {
-	proc, err := i.ensureAgent(agentName)
-	if err != nil {
-		return "", err
+	useEphemeral := ephemeralDelegationEnabled() && vega.ProcessFromContext(ctx) != nil
+
+	var (
+		proc *vega.Process
+		err  error
+	)
+	if useEphemeral {
+		proc, err = i.spawnEphemeralProcess(agentName)
+		if err != nil {
+			return "", err
+		}
+		defer func() {
+			if killErr := i.orch.Kill(proc.ID); killErr != nil {
+				slog.Warn("failed to clean up ephemeral subagent process", "agent", agentName, "process_id", proc.ID, "error", killErr)
+			}
+		}()
+	} else {
+		proc, err = i.ensureAgent(agentName)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// Inject memory so the agent has context from prior conversations.
