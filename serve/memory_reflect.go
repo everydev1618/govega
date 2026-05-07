@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/llm"
 )
 
@@ -51,17 +52,26 @@ var reflectionSchema = map[string]any{
 	"additionalProperties": false,
 }
 
-// reflectionEnabled reports whether VEGA_REFLECTION is set to a truthy value.
-// The default is off so apps that don't want a per-turn reflection inference
-// don't suddenly start paying for one when they upgrade.
-func reflectionEnabled() bool {
+// agentReflectEnabled reports whether reflection should fire for an agent
+// whose YAML carries the supplied MemoryDef (nil if the agent has no memory
+// block). The global VEGA_REFLECTION env var still acts as an override:
+//
+//   - "false" / "0" / "no": reflection off for everyone (kill switch).
+//   - "true" / "1" / "yes": reflection on for everyone (global on).
+//   - unset or unrecognised: defer to the per-agent flag (default off).
+//
+// The kill-switch path is the safety valve operators reach for when an
+// agent under load is generating noisy reflection writes; the global-on
+// path is convenient during development before per-agent flags are tuned.
+func agentReflectEnabled(memoryDef *dsl.MemoryDef) bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("VEGA_REFLECTION")))
 	switch v {
+	case "false", "0", "no":
+		return false
 	case "true", "1", "yes":
 		return true
-	default:
-		return false
 	}
+	return memoryDef != nil && memoryDef.Reflect
 }
 
 // reflectionInsertStore is the subset of Store the reflection runner needs.
@@ -176,8 +186,12 @@ Rules:
 // runReflection in the background using the server's existing extract LLM
 // and store, with a hard timeout so a stuck inference can't pin a goroutine
 // forever. Failures are logged; nothing is propagated to the caller.
+//
+// The agent's per-agent memory config (if any) is consulted alongside the
+// global VEGA_REFLECTION env var to decide whether to fire — see
+// agentReflectEnabled for the resolution rules.
 func (s *Server) reflectMemory(userID, agent, userMsg, response string) {
-	if !reflectionEnabled() {
+	if !agentReflectEnabled(s.lookupAgentMemory(agent)) {
 		return
 	}
 	ll := s.getExtractLLM()
@@ -190,4 +204,24 @@ func (s *Server) reflectMemory(userID, agent, userMsg, response string) {
 	if err := runReflection(ctx, ll, s.store, userID, agent, userMsg, response); err != nil {
 		slog.Warn("reflection: run failed", "agent", agent, "error", err)
 	}
+}
+
+// lookupAgentMemory returns the parsed MemoryDef from the agent's YAML
+// definition, or nil if the agent has no memory block (or no entry in
+// the document, e.g. composed runtime agents that haven't been
+// re-parsed). The chat handler may pass an agent name with a session
+// suffix (e.g. "apex:abc"); the suffix is stripped before lookup.
+func (s *Server) lookupAgentMemory(agent string) *dsl.MemoryDef {
+	if i := strings.Index(agent, ":"); i >= 0 {
+		agent = agent[:i]
+	}
+	doc := s.interp.Document()
+	if doc == nil {
+		return nil
+	}
+	def, ok := doc.Agents[agent]
+	if !ok || def == nil {
+		return nil
+	}
+	return def.Memory
 }

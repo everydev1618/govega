@@ -77,12 +77,22 @@ type Agent struct {
 	CircuitBreaker *CircuitBreakerDef `yaml:"circuit_breaker"`
 	Skills         *SkillsDef         `yaml:"skills"`
 	Delegation     *DelegationDef     `yaml:"delegation"`
+	Memory         *MemoryDef         `yaml:"memory"`
 
 	// IsMeta marks an agent as a built-in meta-agent (e.g. orchestrator,
 	// builder). Meta-agents are filtered out of "team" / "channel member"
 	// listings and protected from runtime mutation. Set by Inject*-style
 	// constructors; not parsed from YAML.
 	IsMeta bool `yaml:"-" json:"-"`
+}
+
+// MemoryDef configures per-agent memory behavior.
+type MemoryDef struct {
+	// Reflect enables a small post-turn reflection inference that asks the
+	// model what is worth remembering and writes typed memories on the
+	// agent's behalf. Default false. The global VEGA_REFLECTION env var
+	// can override (false=kill switch, true=on for every agent).
+	Reflect bool `yaml:"reflect"`
 }
 
 // DelegationDef configures context-aware delegation for an agent.

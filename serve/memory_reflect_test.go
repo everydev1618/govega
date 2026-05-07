@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/llm"
 )
 
@@ -211,28 +212,48 @@ func TestReflection_PromptCarriesContext(t *testing.T) {
 	}
 }
 
-// TestReflectionEnabled_EnvVarGate guards the env-var toggle so flipping
-// VEGA_REFLECTION on at the OS level is the single hook the operator needs.
-func TestReflectionEnabled_EnvVarGate(t *testing.T) {
+// TestAgentReflectEnabled_Matrix covers the resolution rules between the
+// global VEGA_REFLECTION env var and the per-agent memory.reflect flag:
+//   - env="false"/"0"/"no" is a kill switch (always off, even if the agent
+//     opted in).
+//   - env="true"/"1"/"yes" is a global on (every agent reflects, even if
+//     they didn't opt in).
+//   - env unset / unrecognised defers to the per-agent flag.
+//
+// The kill-switch path is the safety valve operators reach for when an
+// agent under load is generating noisy reflection writes; the global-on
+// path is convenient during development before per-agent flags are tuned.
+func TestAgentReflectEnabled_Matrix(t *testing.T) {
+	reflectOn := &dsl.MemoryDef{Reflect: true}
+	reflectOff := &dsl.MemoryDef{Reflect: false}
+
 	cases := []struct {
-		val  string
-		want bool
+		name   string
+		env    string
+		memory *dsl.MemoryDef
+		want   bool
 	}{
-		{"", false},
-		{"true", true},
-		{"TRUE", true},
-		{"1", true},
-		{"yes", true},
-		{"false", false},
-		{"0", false},
-		{"no", false},
-		{"random", false},
+		{"env unset, no memory block", "", nil, false},
+		{"env unset, memory.reflect: true", "", reflectOn, true},
+		{"env unset, memory.reflect: false", "", reflectOff, false},
+		{"env unset, unrecognised", "maybe", reflectOn, true},
+
+		{"env=true, no memory block", "true", nil, true},
+		{"env=TRUE, memory.reflect: false", "TRUE", reflectOff, true},
+		{"env=1, no memory block", "1", nil, true},
+		{"env=yes, no memory block", "yes", nil, true},
+
+		{"env=false, memory.reflect: true (kill switch)", "false", reflectOn, false},
+		{"env=0, memory.reflect: true (kill switch)", "0", reflectOn, false},
+		{"env=no, memory.reflect: true (kill switch)", "no", reflectOn, false},
+		{"env=false, no memory block", "false", nil, false},
 	}
 	for _, c := range cases {
-		t.Run(c.val, func(t *testing.T) {
-			t.Setenv("VEGA_REFLECTION", c.val)
-			if got := reflectionEnabled(); got != c.want {
-				t.Errorf("reflectionEnabled() = %v for %q, want %v", got, c.val, c.want)
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("VEGA_REFLECTION", c.env)
+			if got := agentReflectEnabled(c.memory); got != c.want {
+				t.Errorf("agentReflectEnabled(%v) under VEGA_REFLECTION=%q = %v, want %v",
+					c.memory, c.env, got, c.want)
 			}
 		})
 	}
