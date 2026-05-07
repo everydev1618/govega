@@ -68,7 +68,7 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 		if err != nil {
 			return "", fmt.Errorf("post to inbox: %w", err)
 		}
-		return fmt.Sprintf("Message posted to the orchestrator's inbox (id=%d, priority=%s). The orchestrator will review it shortly.", id, priority), nil
+		return fmt.Sprintf("Message posted to the orchestrator's inbox (id=%d, priority=%s). It will be picked up the next time the orchestrator runs (heartbeat or user message). Do not promise a timeframe.", id, priority), nil
 	})
 
 	postParams := map[string]tools.ParamDef{
@@ -88,7 +88,7 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 	}
 
 	t.Register("ask_orchestrator", tools.ToolDef{
-		Description: "Post a question or request to the orchestrator's inbox. The orchestrator triages the inbox periodically. Use this instead of asking the user directly.",
+		Description: "Post a question or request to the orchestrator's inbox. The orchestrator triages the inbox when it next runs (heartbeat or user message) — there is no background processing. Use this instead of asking the user directly.",
 		Fn:          postFn,
 		Params:      postParams,
 	})
