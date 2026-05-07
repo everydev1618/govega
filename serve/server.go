@@ -101,6 +101,14 @@ type Config struct {
 	TelegramAgent string       // TELEGRAM_AGENT; defaults to first agent if empty
 	Company       *dsl.Company // optional company identity (env var overrides)
 
+	// PublicURL is the externally-reachable base URL of this server (no
+	// trailing slash), used to build OAuth redirect URIs that match what
+	// operators register in their identity-provider consoles. When empty,
+	// the redirect URI is inferred from the incoming request's Host header
+	// and X-Forwarded-Proto — which works for laptops but not behind some
+	// reverse proxies. Set this on any deployed instance.
+	PublicURL string
+
 	// Orchestrator/Builder identify the meta-agents used for routing,
 	// scheduling, and UI affordances. Default to "iris"/"hera" — apps
 	// embedding govega can override to rebrand.
@@ -147,6 +155,10 @@ type Server struct {
 	// from any particular SSE client connection.
 	streamsMu sync.Mutex
 	streams   map[string]*activeStream
+
+	// oauthStateCache holds short-lived CSRF state tokens issued during
+	// the OAuth start phase. See oauth_gmail.go.
+	oauthStateCache *oauthStateCache
 
 	// replyTargets binds an agent name to a channel-of-origin handle so
 	// async dispatch completions can be pushed back to the conversation
@@ -197,11 +209,12 @@ func New(interp *dsl.Interpreter, cfg Config) *Server {
 		}
 	}
 	return &Server{
-		interp:     interp,
-		broker:     NewEventBroker(),
-		cfg:        cfg,
-		streams:    make(map[string]*activeStream),
-		extractSem: make(chan struct{}, 1),
+		interp:          interp,
+		broker:          NewEventBroker(),
+		cfg:             cfg,
+		streams:         make(map[string]*activeStream),
+		extractSem:      make(chan struct{}, 1),
+		oauthStateCache: newOAuthStateCache(),
 	}
 }
 
@@ -252,6 +265,10 @@ func (s *Server) Start(ctx context.Context) error {
 	if err := store.Init(); err != nil {
 		return fmt.Errorf("init database: %w", err)
 	}
+
+	// Hydrate provider env vars from settings so a fresh container with a
+	// restored database boots ready to talk to those providers.
+	s.hydrateGmailRefreshToken()
 
 	// Resolve company identity.
 	s.company = s.resolveCompany()
@@ -728,6 +745,8 @@ func (s *Server) Start(ctx context.Context) error {
 // registerRoutes adds all API and frontend routes to the mux.
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// REST API
+	mux.HandleFunc("GET /auth/gmail/start", s.handleGmailAuthStart)
+	mux.HandleFunc("GET /auth/gmail/callback", s.handleGmailAuthCallback)
 	mux.HandleFunc("GET /api/company", s.handleGetCompany)
 	mux.HandleFunc("GET /api/processes", s.handleListProcesses)
 	mux.HandleFunc("GET /api/processes/{id}", s.handleGetProcess)
