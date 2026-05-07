@@ -12,6 +12,18 @@ import (
 	"github.com/everydev1618/govega/llm"
 )
 
+// llmCallContext returns ctx enriched with Agent-level overrides
+// (model, temperature, max_tokens, effort) for the LLM backend to read.
+// Empty / zero fields fall back to the backend's defaults.
+func (p *Process) llmCallContext(ctx context.Context) context.Context {
+	return llm.ContextWithOptions(ctx, llm.Options{
+		Model:       p.Agent.Model,
+		Temperature: p.Agent.Temperature,
+		MaxTokens:   p.Agent.MaxTokens,
+		Effort:      p.Agent.Effort,
+	})
+}
+
 // executeLLMLoop runs the LLM call loop, handling tool calls.
 func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, CallMetrics, error) {
 	metrics := CallMetrics{}
@@ -127,7 +139,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 		default:
 		}
 
-		eventCh, err := p.llm.GenerateStream(ctx, messages, toolSchemas)
+		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
 		}
@@ -270,7 +282,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		default:
 		}
 
-		eventCh, err := p.llm.GenerateStream(ctx, messages, toolSchemas)
+		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
 		}
@@ -443,7 +455,7 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		start := time.Now()
-		resp, err := p.llm.Generate(ctx, messages, tools)
+		resp, err := p.llm.Generate(p.llmCallContext(ctx), messages, tools)
 		latency := time.Since(start)
 
 		if err == nil {

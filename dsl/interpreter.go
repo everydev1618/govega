@@ -424,6 +424,12 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	if def.Temperature != nil {
 		agent.Temperature = def.Temperature
 	}
+	if def.MaxTokens > 0 {
+		agent.MaxTokens = def.MaxTokens
+	}
+	if def.Effort != "" {
+		agent.Effort = def.Effort
+	}
 
 	// Map DSL retry config to core retry policy
 	if def.Retry != nil {

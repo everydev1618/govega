@@ -141,6 +141,7 @@ type anthropicRequest struct {
 	Messages     []anthropicMsg  `json:"messages"`
 	System       any             `json:"system,omitempty"` // string or []systemBlock
 	MaxTokens    int             `json:"max_tokens"`
+	Temperature  *float64        `json:"temperature,omitempty"`
 	Tools        []anthropicTool `json:"tools,omitempty"`
 	Stream       bool            `json:"stream,omitempty"`
 	Thinking     *thinkingBlock  `json:"thinking,omitempty"`
@@ -219,7 +220,7 @@ func (a *AnthropicLLM) Generate(ctx context.Context, messages []Message, tools [
 	start := time.Now()
 
 	// Build request
-	req := a.buildRequest(messages, tools, false)
+	req := a.buildRequestCtx(ctx, messages, tools, false)
 
 	// Make request
 	resp, err := a.doRequest(ctx, req)
@@ -234,7 +235,7 @@ func (a *AnthropicLLM) Generate(ctx context.Context, messages []Message, tools [
 // GenerateStream sends a request and returns a channel of streaming events.
 func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
 	// Build request
-	req := a.buildRequest(messages, tools, true)
+	req := a.buildRequestCtx(ctx, messages, tools, true)
 
 	// Make streaming request
 	eventCh := make(chan StreamEvent, 100)
@@ -316,8 +317,20 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 // the model's full ceiling.
 const nonStreamMaxTokensCap = 16000
 
+// buildRequest is a thin wrapper that uses a background context — kept
+// for callers that don't need per-call overrides.
 func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stream bool) *anthropicRequest {
-	caps := CapabilitiesFor(a.model)
+	return a.buildRequestCtx(context.Background(), messages, tools, stream)
+}
+
+func (a *AnthropicLLM) buildRequestCtx(ctx context.Context, messages []Message, tools []ToolSchema, stream bool) *anthropicRequest {
+	opts := OptionsFromContext(ctx)
+
+	model := a.model
+	if opts.Model != "" {
+		model = opts.Model
+	}
+	caps := CapabilitiesFor(model)
 
 	maxTokens := 8192
 	if caps.MaxOutputTokens > 0 {
@@ -326,9 +339,12 @@ func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stre
 			maxTokens = min(maxTokens, nonStreamMaxTokensCap)
 		}
 	}
+	if opts.MaxTokens > 0 {
+		maxTokens = opts.MaxTokens
+	}
 
 	req := &anthropicRequest{
-		Model:     a.model,
+		Model:     model,
 		MaxTokens: maxTokens,
 		Stream:    stream,
 	}
@@ -338,11 +354,18 @@ func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stre
 	}
 
 	if caps.SupportsEffort {
-		effort := a.effort
+		effort := opts.Effort
+		if effort == "" {
+			effort = a.effort
+		}
 		if effort == "" {
 			effort = "high"
 		}
 		req.OutputConfig = &outputConfig{Effort: effort}
+	}
+
+	if caps.SupportsTemperature && opts.Temperature != nil {
+		req.Temperature = opts.Temperature
 	}
 
 	// Extract system message and convert others

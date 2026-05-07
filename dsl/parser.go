@@ -169,6 +169,12 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 	if v, ok := m["temperature"].(float64); ok {
 		agent.Temperature = &v
 	}
+	if v, ok := m["max_tokens"].(int); ok {
+		agent.MaxTokens = v
+	}
+	if v, ok := m["effort"].(string); ok {
+		agent.Effort = v
+	}
 	if v, ok := m["budget"].(string); ok {
 		agent.Budget = v
 	}

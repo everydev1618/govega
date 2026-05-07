@@ -182,6 +182,11 @@ type ModelCapabilities struct {
 	// Sonnet 4.5 and Haiku 4.5 return 400 if it's sent.
 	SupportsEffort bool
 
+	// SupportsTemperature — model accepts the temperature sampling
+	// parameter. Opus 4.7 removed sampling params and returns 400 if
+	// temperature/top_p/top_k are sent.
+	SupportsTemperature bool
+
 	// MaxOutputTokens is the streaming output ceiling for this model.
 	MaxOutputTokens int
 }
@@ -190,10 +195,10 @@ type ModelCapabilities struct {
 // resolve to the zero value (no thinking, no effort, conservative max
 // tokens) — safe default.
 var modelCapabilities = map[string]ModelCapabilities{
-	"claude-opus-4-7":   {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 128000},
-	"claude-opus-4-6":   {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 128000},
-	"claude-opus-4-5":   {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 64000},
-	"claude-sonnet-4-6": {AdaptiveThinking: true, SupportsEffort: true, MaxOutputTokens: 64000},
+	"claude-opus-4-7":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, MaxOutputTokens: 128000},
+	"claude-opus-4-6":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, MaxOutputTokens: 128000},
+	"claude-opus-4-5":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, MaxOutputTokens: 64000},
+	"claude-sonnet-4-6": {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, MaxOutputTokens: 64000},
 
 	// Adaptive thinking + effort were introduced in 4.6. Older models
 	// don't support them — leave at zero value.

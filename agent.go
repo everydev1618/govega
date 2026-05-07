@@ -47,11 +47,22 @@ type Agent struct {
 	// LLM is the backend to use (optional, uses default if not set)
 	LLM llm.LLM
 
-	// Temperature for generation (0.0-1.0, optional)
+	// Temperature for generation (0.0-1.0, optional). Silently dropped
+	// for backends/models that don't support sampling parameters
+	// (e.g. Claude Opus 4.7).
 	Temperature *float64
 
-	// MaxTokens limits response length (optional)
+	// MaxTokens limits response length (optional). 0 = use the
+	// backend's per-model default (capability table).
 	MaxTokens int
+
+	// Effort controls thinking depth and overall token spend on
+	// supported Claude models — "low" | "medium" | "high" | "xhigh"
+	// | "max". Empty means "high" by default. Use "xhigh" for
+	// agentic and coding workloads on Opus 4.7. "max" is Opus-tier
+	// only. Silently dropped for backends/models that don't support
+	// effort (e.g. Sonnet 4.5, Haiku 4.5).
+	Effort string
 
 	// MaxIterations limits tool call loop iterations (default: DefaultMaxIterations)
 	MaxIterations int

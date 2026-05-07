@@ -65,6 +65,8 @@ type Agent struct {
 	FallbackModel string            `yaml:"fallback_model"`
 	System        string            `yaml:"system"`
 	Temperature *float64          `yaml:"temperature"`
+	MaxTokens   int               `yaml:"max_tokens"`
+	Effort      string            `yaml:"effort"` // "low" | "medium" | "high" | "xhigh" | "max"
 	Budget      string            `yaml:"budget"` // e.g., "$0.50"
 	Tools       []string          `yaml:"tools"`
 	Knowledge   []string          `yaml:"knowledge"`
