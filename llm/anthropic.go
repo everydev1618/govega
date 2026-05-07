@@ -311,12 +311,20 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 	return eventCh, nil
 }
 
+// nonStreamMaxTokensCap bounds non-streaming output to keep the response
+// under the 5-minute SDK HTTP timeout. Streaming requests are allowed
+// the model's full ceiling.
+const nonStreamMaxTokensCap = 16000
+
 func (a *AnthropicLLM) buildRequest(messages []Message, tools []ToolSchema, stream bool) *anthropicRequest {
 	caps := CapabilitiesFor(a.model)
 
 	maxTokens := 8192
-	if caps.AdaptiveThinking {
-		maxTokens = 16000
+	if caps.MaxOutputTokens > 0 {
+		maxTokens = caps.MaxOutputTokens
+		if !stream {
+			maxTokens = min(maxTokens, nonStreamMaxTokensCap)
+		}
 	}
 
 	req := &anthropicRequest{
@@ -655,6 +663,12 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 		result.StopReason = StopReasonLength
 	case "stop_sequence":
 		result.StopReason = StopReasonStop
+	case "pause_turn":
+		result.StopReason = StopReasonPause
+	case "refusal":
+		result.StopReason = StopReasonRefusal
+	case "model_context_window_exceeded":
+		result.StopReason = StopReasonContextExceeded
 	}
 
 	// Parse content blocks

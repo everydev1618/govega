@@ -125,6 +125,44 @@ func TestBuildRequestSerializesAdaptiveAndEffort(t *testing.T) {
 	}
 }
 
+func TestBuildRequestMaxTokensFromCapability(t *testing.T) {
+	tests := []struct {
+		model        string
+		stream       bool
+		wantMaxTokens int
+	}{
+		// Streaming uses the model ceiling
+		{"claude-opus-4-7", true, 128000},
+		{"claude-opus-4-6", true, 128000},
+		{"claude-sonnet-4-6", true, 64000},
+
+		// Non-streaming caps at 16K to dodge SDK HTTP timeout
+		{"claude-opus-4-7", false, 16000},
+		{"claude-sonnet-4-6", false, 16000},
+
+		// Unknown model: conservative 8K
+		{"unknown-model", true, 8192},
+		{"unknown-model", false, 8192},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model+"-stream-"+boolStr(tt.stream), func(t *testing.T) {
+			a := newTestClient(WithModel(tt.model))
+			req := a.buildRequest([]Message{{Role: RoleUser, Content: "hi"}}, nil, tt.stream)
+			if req.MaxTokens != tt.wantMaxTokens {
+				t.Errorf("MaxTokens = %d, want %d", req.MaxTokens, tt.wantMaxTokens)
+			}
+		})
+	}
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
 func TestBuildRequestNoBudgetTokens(t *testing.T) {
 	// budget_tokens is removed on Opus 4.7 — must not be in any request.
 	a := newTestClient(WithModel("claude-opus-4-7"))

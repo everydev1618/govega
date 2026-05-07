@@ -73,6 +73,22 @@ const (
 	StopReasonLength   StopReason = "max_tokens"
 	StopReasonStop     StopReason = "stop_sequence"
 	StopReasonFiltered StopReason = "content_filter"
+
+	// StopReasonPause is set when a server-side tool sampling loop hit
+	// its iteration limit. Caller should re-send the assistant turn
+	// unchanged; the API resumes automatically.
+	StopReasonPause StopReason = "pause_turn"
+
+	// StopReasonRefusal is set when Claude declined to respond for
+	// safety reasons. Output may not match an expected schema. Do
+	// NOT retry the same prompt — surface to the user.
+	StopReasonRefusal StopReason = "refusal"
+
+	// StopReasonContextExceeded is set when the model's context
+	// window was exhausted (distinct from max_tokens, which is the
+	// per-response output cap). Caller should compact or split the
+	// conversation.
+	StopReasonContextExceeded StopReason = "model_context_window_exceeded"
 )
 
 // StreamEvent is an event from streaming generation.
