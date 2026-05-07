@@ -50,6 +50,7 @@ type Interpreter struct {
 	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
 	onDispatchStart    func(agentName string) // fires when a dispatched agent begins working
 	onDispatchComplete func(agentName, callerName, message, response string, err error) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty)
+	onDispatchEvent    func(agentName string, ev vega.ChatEvent)                        // fires for each ChatEvent from a dispatched run, so the serve layer can stream tool calls / text deltas back to the user via SSE
 	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
 	mu                sync.RWMutex
@@ -1482,12 +1483,30 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		if i.onDispatchStart != nil {
 			i.onDispatchStart(agentName)
 		}
-		// Detach from the caller's deadline/cancel (it will be closed) but
-		// preserve context values so domain-store, memory, etc. propagate.
-		// Strip the parent's event sink — it will be closed by the time this
-		// goroutine runs, and sending to it would panic.
-		detached := vega.ContextWithEventSink(context.WithoutCancel(ctx), nil)
+
+		// Detach from the caller's deadline/cancel (it will be closed)
+		// but preserve context values so domain-store, memory, etc.
+		// propagate. We CAN'T forward the parent's event sink (that one
+		// is tied to the parent chat's SSE stream and will be closed),
+		// but if a dispatch event callback is registered we attach a
+		// fresh sink and relay each event to it. This lets the serve
+		// layer broadcast tool calls / text deltas during dispatch to
+		// anyone watching /chat/<agent>.
+		var sink chan vega.ChatEvent
+		if i.onDispatchEvent != nil {
+			sink = make(chan vega.ChatEvent, 64)
+			eventCb := i.onDispatchEvent
+			go func() {
+				for ev := range sink {
+					eventCb(agentName, ev)
+				}
+			}()
+		}
+		detached := vega.ContextWithEventSink(context.WithoutCancel(ctx), sink)
 		resp, err := i.SendToAgent(detached, agentName, message)
+		if sink != nil {
+			close(sink) // ends the relay goroutine
+		}
 
 		// Post completion notification to inbox as pending so Iris triages it.
 		// Failed tasks are marked urgent.
@@ -1564,6 +1583,14 @@ func (i *Interpreter) SetDispatchStartCallback(fn func(agentName string)) {
 // their work in /chat/<agent>.
 func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName, callerName, message, response string, err error)) {
 	i.onDispatchComplete = fn
+}
+
+// SetDispatchEventCallback registers a callback that fires for every
+// ChatEvent (text delta, tool start/end, etc.) emitted during a
+// dispatched agent's run. The serve layer uses this to broadcast live
+// progress to anyone watching the dispatched agent's private chat.
+func (i *Interpreter) SetDispatchEventCallback(fn func(agentName string, ev vega.ChatEvent)) {
+	i.onDispatchEvent = fn
 }
 
 // truncateStr truncates a string to max characters, appending "..." if truncated.

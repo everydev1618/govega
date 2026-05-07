@@ -483,6 +483,21 @@ func (s *Server) Start(ctx context.Context) error {
 		})
 	})
 
+	// Stream dispatched-agent ChatEvents (tool starts/ends, text deltas)
+	// to the broker as "chat.event" events keyed on the agent. Frontends
+	// viewing /chat/<agent> use these to render live tool-call activity
+	// during dispatched runs (the same way direct chats render their
+	// own stream). Without this, the chat goes silent until the final
+	// response is persisted at dispatch-complete time.
+	s.interp.SetDispatchEventCallback(func(agentName string, ev vega.ChatEvent) {
+		s.broker.Publish(BrokerEvent{
+			Type:      "chat.event",
+			Agent:     agentName,
+			Data:      ev,
+			Timestamp: time.Now(),
+		})
+	})
+
 	// When a dispatched agent finishes, immediately poke the orchestrator
 	// to triage the inbox instead of waiting for the 15-minute heartbeat.
 	// Routes the orchestrator's response back to whichever conversation
