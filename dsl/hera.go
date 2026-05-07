@@ -304,7 +304,7 @@ func HeraAgent(cfg HeraConfig) *Agent {
 	if model == "" {
 		// Sonnet is the right size for agent-building reasoning.
 		// Override via cfg.Model (e.g. APEX_BUILDER_MODEL).
-		model = "claude-sonnet-4-20250514"
+		model = "claude-sonnet-4-6"
 	}
 	fallback := cfg.FallbackModel
 	if fallback == "" {

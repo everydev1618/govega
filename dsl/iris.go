@@ -227,8 +227,8 @@ func IrisAgent(cfg IrisConfig) *Agent {
 		// where Sonnet is ~3x faster and ~5x cheaper than Opus while
 		// retaining the reasoning quality that matters for "which agent
 		// should handle this?". Override per-instance via cfg.Model
-		// (e.g. APEX_ORCHESTRATOR_MODEL=claude-opus-4-20250514).
-		model = "claude-sonnet-4-20250514"
+		// (e.g. APEX_ORCHESTRATOR_MODEL=claude-opus-4-7).
+		model = "claude-sonnet-4-6"
 	}
 	fallback := cfg.FallbackModel
 	if fallback == "" {

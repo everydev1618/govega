@@ -329,10 +329,10 @@ func TestHeraListMCPRegistry(t *testing.T) {
 
 func TestHeraAgentDefaults(t *testing.T) {
 	def := HeraAgent(DefaultHeraConfig())
-	// Default is Sonnet — Opus is overkill for builder/orchestrator
+	// Default is current Sonnet — Opus is overkill for builder/orchestrator
 	// reasoning and is ~3x slower. Apps wanting Opus override via cfg.Model.
-	if def.Model != "claude-sonnet-4-20250514" {
-		t.Errorf("default model = %q, want claude-sonnet-4-20250514", def.Model)
+	if def.Model != "claude-sonnet-4-6" {
+		t.Errorf("default model = %q, want claude-sonnet-4-6", def.Model)
 	}
 
 	cfg := DefaultHeraConfig()
