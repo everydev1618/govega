@@ -65,7 +65,7 @@ tools:
 
 # Global settings (optional)
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
   sandbox: ./workspace
   budget: $10.00
 ```
@@ -79,7 +79,7 @@ settings:
 ```yaml
 agents:
   Coder:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You write clean, efficient code.
 ```
 
@@ -92,7 +92,7 @@ agents:
     name: Senior Developer
 
     # Model selection
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
 
     # System prompt (required)
     system: |
@@ -140,7 +140,7 @@ Agents can extend other agents:
 ```yaml
 agents:
   BaseAgent:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     temperature: 0.3
     supervision:
       strategy: restart
@@ -731,7 +731,7 @@ steps:
 ```yaml
 settings:
   # Default model for all agents
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
 
   # Default temperature
   default_temperature: 0.7
@@ -770,7 +770,7 @@ Reference environment variables anywhere:
 ```yaml
 agents:
   Coder:
-    model: ${MODEL_NAME:-claude-sonnet-4-20250514}
+    model: ${MODEL_NAME:-claude-sonnet-4-6}
     system: ${CODER_SYSTEM_PROMPT}
 
 settings:
@@ -888,7 +888,7 @@ name: Content Team
 description: A team that creates high-quality articles
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
   sandbox: ./workspace
   budget: $5.00
 

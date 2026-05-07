@@ -511,7 +511,7 @@ Sends email using stdlib `net/smtp`. Configuration is read from environment vari
 ```yaml
 agents:
   reporter:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You compile and email daily summaries.
     tools:
       - send_email

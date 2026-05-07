@@ -386,7 +386,7 @@ Budgets enforce spending limits at the agent and session level.
 ```go
 agent := vega.Agent{
     Name:  "Coder",
-    Model: "claude-sonnet-4-20250514",
+    Model: "claude-sonnet-4-6",
     Budget: &vega.Budget{
         Limit:    0.50,           // $0.50 per task
         OnExceed: vega.Block,     // Block, Warn, or Allow
@@ -445,7 +445,7 @@ Retry policies handle transient failures within a single operation. This is sepa
 ```go
 agent := vega.Agent{
     Name:  "APIClient",
-    Model: "claude-sonnet-4-20250514",
+    Model: "claude-sonnet-4-6",
     Retry: &vega.RetryPolicy{
         MaxAttempts: 3,
         Backoff: vega.ExponentialBackoff{
@@ -494,12 +494,12 @@ Rate limiting prevents overwhelming LLM APIs.
 ```go
 orch := vega.NewOrchestrator(
     vega.WithRateLimits(vega.RateLimits{
-        "claude-sonnet-4-20250514": {
+        "claude-sonnet-4-6": {
             RequestsPerMinute: 60,
             TokensPerMinute:   100000,
             Strategy:          vega.Queue,  // Queue, Reject, or Backpressure
         },
-        "claude-opus-4-20250514": {
+        "claude-opus-4-7": {
             RequestsPerMinute: 30,
             TokensPerMinute:   50000,
             Strategy:          vega.Queue,
@@ -665,7 +665,7 @@ Every agent call creates a span with:
 ```json
 {
   "vega.agent.name": "Coder",
-  "vega.agent.model": "claude-sonnet-4-20250514",
+  "vega.agent.model": "claude-sonnet-4-6",
   "vega.tokens.input": 150,
   "vega.tokens.output": 892,
   "vega.cost.usd": 0.0043,
@@ -974,7 +974,7 @@ result, err := router.Run(ctx, "Write unit tests for auth module")
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ANTHROPIC_API_KEY` | Claude API key | required |
-| `VEGA_MODEL` | Default model | `claude-sonnet-4-20250514` |
+| `VEGA_MODEL` | Default model | `claude-sonnet-4-6` |
 | `VEGA_MAX_TOKENS` | Default max tokens | `100000` |
 | `VEGA_TIMEOUT` | Default process timeout | `10m` |
 
@@ -983,7 +983,7 @@ result, err := router.Run(ctx, "Write unit tests for auth module")
 ```yaml
 # vega.yaml
 defaults:
-  model: claude-sonnet-4-20250514
+  model: claude-sonnet-4-6
   max_tokens: 100000
   timeout: 10m
 
@@ -1055,7 +1055,7 @@ func main() {
     // Define supervisor agent
     supervisor := vega.Agent{
         Name:  "Supervisor",
-        Model: "claude-sonnet-4-20250514",
+        Model: "claude-sonnet-4-6",
         System: vega.StaticPrompt("You coordinate a team of specialists."),
         Tools: tools,
         Memory: vega.NewFileMemory("memory.md", 7*24*time.Hour),

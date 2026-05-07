@@ -5,7 +5,7 @@ name: Supervision Demo
 description: Demonstrates fault tolerance patterns
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
   # Global supervision defaults
   supervision:
     strategy: restart
@@ -15,7 +15,7 @@ settings:
 agents:
   # A worker that might fail - will be automatically restarted
   flaky-worker:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a worker that processes tasks.
       Sometimes tasks are difficult and you might need multiple attempts.
@@ -29,7 +29,7 @@ agents:
 
   # A critical worker that stops on failure
   critical-worker:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a worker handling critical operations.
       Errors should be reported, not retried automatically.
@@ -38,7 +38,7 @@ agents:
 
   # A worker that escalates failures
   escalating-worker:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a worker that escalates failures to a supervisor.
     supervision:
@@ -46,7 +46,7 @@ agents:
 
   # The supervisor that handles escalated failures
   supervisor:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a supervisor agent. When workers fail:
       - Analyze the failure

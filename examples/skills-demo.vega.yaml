@@ -12,7 +12,7 @@
 name: Skills Demo
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
 
   skills:
     directories:
@@ -20,7 +20,7 @@ settings:
 
 agents:
   assistant:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a helpful software development assistant.
       You can help with coding, code review, documentation, and more.
@@ -29,7 +29,7 @@ agents:
       max_active: 3  # Inject up to 3 matching skills
 
   specialist:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a specialized assistant that only uses specific skills.
     skills:

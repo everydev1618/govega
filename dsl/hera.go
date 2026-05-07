@@ -496,7 +496,7 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 			},
 			"model": {
 				Type:        "string",
-				Description: "LLM model to use (e.g. claude-sonnet-4-20250514). Leave empty for server default.",
+				Description: "LLM model to use (e.g. claude-sonnet-4-6). Leave empty for server default.",
 			},
 			"system": {
 				Type:        "string",

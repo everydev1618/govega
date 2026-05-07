@@ -11,7 +11,7 @@
 name: MCP Demo
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
 
   mcp:
     servers:
@@ -29,7 +29,7 @@ settings:
 
 agents:
   analyzer:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a code analyzer. You can read files from the filesystem
       and store analysis results in memory for later retrieval.
@@ -46,7 +46,7 @@ agents:
       - memory__retrieve
 
   reporter:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a technical report writer. You retrieve analysis results
       from memory and create clear, actionable reports.

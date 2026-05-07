@@ -19,7 +19,7 @@ func generateCmd(args []string) {
 	from := fs.String("from", "", "Base persona from population (e.g., devops-lead, architect)")
 	skills := fs.String("skills", "", "Comma-separated skills to include (e.g., aws-devops,terraform)")
 	populationDir := fs.String("population-dir", "", "Path to vega-population repo")
-	model := fs.String("model", "", "Model to use for generation (default: claude-sonnet-4-20250514)")
+	model := fs.String("model", "", "Model to use for generation (default: claude-sonnet-4-6)")
 	list := fs.String("list", "", "List available components: personas, skills, profiles, or all")
 
 	fs.Usage = func() {
@@ -112,7 +112,7 @@ Examples:
 	}
 
 	// Build the generation prompt
-	genModel := "claude-sonnet-4-20250514"
+	genModel := "claude-sonnet-4-6"
 	if *model != "" {
 		genModel = *model
 	}

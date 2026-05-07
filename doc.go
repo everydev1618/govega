@@ -21,7 +21,7 @@
 //	// Define an agent
 //	agent := vega.Agent{
 //	    Name:   "assistant",
-//	    Model:  "claude-sonnet-4-20250514",
+//	    Model:  "claude-sonnet-4-6",
 //	    System: vega.StaticPrompt("You are a helpful assistant."),
 //	}
 //

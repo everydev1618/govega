@@ -87,7 +87,7 @@ func main() {
     // 4. Spawn an agent
     agent := vega.Agent{
         Name:   "assistant",
-        Model:  "claude-sonnet-4-20250514",
+        Model:  "claude-sonnet-4-6",
         System: vega.StaticPrompt("You are a helpful assistant."),
         Tools:  tools,
     }
@@ -109,7 +109,7 @@ An agent definition — the blueprint, not the running instance.
 ```go
 agent := vega.Agent{
     Name:        "researcher",
-    Model:       "claude-sonnet-4-20250514",
+    Model:       "claude-sonnet-4-6",
     System:      vega.StaticPrompt("You are a research agent."),
     Tools:       tools,          // What tools this agent can use
     Temperature: float64Ptr(0.7), // Optional
@@ -384,7 +384,7 @@ Corresponding YAML:
 ```yaml
 name: Code Review Team
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
 
 agents:
   reviewer:

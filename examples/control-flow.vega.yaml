@@ -6,15 +6,15 @@ description: Demonstrates DSL control flow features
 
 agents:
   processor:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You are a data processor. Process inputs as requested.
 
   validator:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You validate data and return "valid" or "invalid" with a reason.
 
   formatter:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You format output into clean, readable text.
 
 workflows:

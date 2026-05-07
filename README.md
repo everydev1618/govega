@@ -144,7 +144,7 @@ func main() {
     // Define an agent
     agent := vega.Agent{
         Name:   "assistant",
-        Model:  "claude-sonnet-4-20250514",
+        Model:  "claude-sonnet-4-6",
         System: vega.StaticPrompt("You are a helpful coding assistant."),
     }
 
@@ -181,7 +181,7 @@ name: Assistant
 
 agents:
   helper:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You are a helpful assistant.
 ```
 
@@ -329,7 +329,7 @@ Or in YAML:
 ```yaml
 agents:
   worker:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You process tasks reliably.
     supervision:
       strategy: restart
@@ -460,7 +460,7 @@ steps:
 orch := vega.NewOrchestrator(
     vega.WithLLM(anthropic),
     vega.WithRateLimits(map[string]vega.RateLimitConfig{
-        "claude-sonnet-4-20250514": {
+        "claude-sonnet-4-6": {
             RequestsPerMinute: 60,
             TokensPerMinute:   100000,
         },
@@ -742,7 +742,7 @@ settings:
 
 agents:
   coder:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You are a coding assistant.
     tools:
       - filesystem__*   # All tools from filesystem server
@@ -918,7 +918,7 @@ loader.Load(ctx)
 // Wrap system prompt with skills
 agent := vega.Agent{
     Name:   "assistant",
-    Model:  "claude-sonnet-4-20250514",
+    Model:  "claude-sonnet-4-6",
     System: vega.NewSkillsPrompt(
         vega.StaticPrompt("You are a helpful assistant."),
         loader,
@@ -961,7 +961,7 @@ settings:
 
 agents:
   reviewer:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You are a code reviewer.
     skills:
       include: [code-review, security-*]
@@ -1027,7 +1027,7 @@ vega run examples/code-review.vega.yaml --workflow review --task "Write a binary
 
 ```yaml
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
   sandbox: ./workspace              # Restrict file operations
   budget: "$100.00"                 # Global budget limit
 
@@ -1056,7 +1056,7 @@ settings:
 ```yaml
 agents:
   agent-name:
-    model: claude-sonnet-4-20250514    # Required
+    model: claude-sonnet-4-6    # Required
     system: |                           # Required
       Your system prompt here.
     temperature: 0.7                    # Optional (0.0-1.0)
@@ -1187,7 +1187,7 @@ const (
 // Anthropic defaults (defined in llm/anthropic.go)
 const (
     DefaultAnthropicTimeout = 5 * time.Minute
-    DefaultAnthropicModel   = "claude-sonnet-4-20250514"
+    DefaultAnthropicModel   = "claude-sonnet-4-6"
     DefaultAnthropicBaseURL = "https://api.anthropic.com"
 )
 ```

@@ -21,7 +21,7 @@ Create a file called `hello.vega.yaml`:
 ```yaml
 agents:
   Assistant:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You are a helpful assistant.
 
 workflows:
@@ -58,11 +58,11 @@ name: Code Team
 
 agents:
   Coder:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You write clean, simple code. Return only code, no explanations.
 
   Reviewer:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You review code for bugs and improvements.
       If the code is good, say "APPROVED".
@@ -204,7 +204,7 @@ Give agents the ability to read and write files:
 ```yaml
 agents:
   FileBot:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: You help users manage files.
     tools:
       - read_file

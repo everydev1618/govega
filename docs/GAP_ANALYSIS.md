@@ -99,7 +99,7 @@ results := vega.Batch(
 ```go
 orch := vega.NewOrchestrator(
     vega.WithRateLimits(vega.RateLimits{
-        "claude-sonnet-4-20250514": vega.TokenBucket{
+        "claude-sonnet-4-6": vega.TokenBucket{
             Rate:     60,           // requests per minute
             Burst:    10,           // burst capacity
             Strategy: vega.Queue,   // Queue, Reject, or Backpressure
@@ -279,7 +279,7 @@ agent := vega.Agent{
   "trace_id": "abc123",
   "span_id": "def456",
   "agent": "Coder",
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-4-6",
   "input_tokens": 150,
   "output_tokens": 892,
   "cost_usd": 0.0043,

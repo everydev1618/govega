@@ -14,7 +14,7 @@ type Agent struct {
 	// Name is a human-readable identifier for this agent
 	Name string
 
-	// Model is the LLM model ID (e.g., "claude-sonnet-4-20250514")
+	// Model is the LLM model ID (e.g., "claude-sonnet-4-6")
 	Model string
 
 	// FallbackModel is used when all retries with the primary model are exhausted (optional)

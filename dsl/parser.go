@@ -756,7 +756,7 @@ func (p *Parser) validate(doc *Document) error {
 			return &ValidationError{
 				Field:   fmt.Sprintf("agents.%s.model", name),
 				Message: "model is required",
-				Hint:    "Add 'model: claude-sonnet-4-20250514' or set default_model in settings",
+				Hint:    "Add 'model: claude-sonnet-4-6' or set default_model in settings",
 			}
 		}
 		if agent.System == "" {

@@ -15,7 +15,7 @@ company:
   location: Altoona, PA
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
   budget: "$10.00"
 
 # ─────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ agents:
   # --- Grace — Finance Director ---
   grace:
     title: Finance Director
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are Grace, the finance director for Summit Landscaping. You own
       budgets, job costing, P&L, cash flow forecasting, and margin analysis.
@@ -112,7 +112,7 @@ agents:
   # --- Walt — Estimating Lead ---
   walt:
     title: Estimating Lead
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are Walt, the estimating lead for Summit Landscaping. You own
       production rates, job pricing, material takeoffs, and proposals.
@@ -171,7 +171,7 @@ agents:
   # --- Hank — Operations Manager ---
   hank:
     title: Operations Manager
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are Hank, the operations manager for Summit Landscaping. You make
       sure the crew shows up and everything is ready — materials on site,
@@ -224,7 +224,7 @@ agents:
   # --- June — Scheduling Coordinator ---
   june:
     title: Scheduling Coordinator
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are June, the scheduling coordinator for Summit Landscaping. You
       manage the job calendar, assign crews, optimize routes, and keep
@@ -275,7 +275,7 @@ agents:
   # --- Devin — Invoicing Specialist ---
   devin:
     title: Invoicing Specialist
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are Devin, the invoicing specialist for Summit Landscaping. You
       handle invoices, payment tracking, AR aging, and collections.
@@ -323,7 +323,7 @@ agents:
   # --- Mara — Sales Lead ---
   mara:
     title: Sales Lead
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are Mara, the sales lead for Summit Landscaping. You manage the
       lead pipeline, follow-ups, close rate analytics, and customer

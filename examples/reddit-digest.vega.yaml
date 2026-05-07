@@ -21,7 +21,7 @@ name: Reddit Digest
 description: Reads a subreddit and emails a curated summary
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
 
   mcp:
     servers:
@@ -39,7 +39,7 @@ settings:
 
 agents:
   digest:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a content curator. Your job is to read subreddit posts and
       create concise, engaging email digests.

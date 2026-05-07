@@ -5,7 +5,7 @@ name: Development Team
 description: A full software development team with specialized roles
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
   sandbox: /tmp/vega-sandbox
   budget: "$25.00"
   rate_limit:
@@ -14,7 +14,7 @@ settings:
 agents:
   # The architect designs solutions
   architect:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a senior software architect. Your responsibilities:
       - Design system architecture and component interactions
@@ -27,7 +27,7 @@ agents:
 
   # The frontend developer builds UIs
   frontend:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a frontend developer specializing in:
       - React, Vue, and modern JavaScript/TypeScript
@@ -42,7 +42,7 @@ agents:
 
   # The backend developer builds APIs and services
   backend:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a backend developer specializing in:
       - REST and GraphQL APIs
@@ -58,7 +58,7 @@ agents:
 
   # The reviewer ensures quality
   reviewer:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a senior code reviewer and QA engineer.
       Review code for:
@@ -72,7 +72,7 @@ agents:
 
   # The PM coordinates and summarizes
   pm:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a technical project manager.
       - Summarize technical discussions for stakeholders

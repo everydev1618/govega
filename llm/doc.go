@@ -10,7 +10,7 @@
 //	llm := llm.NewAnthropic(llm.WithAPIKey("sk-..."))
 //
 //	// Or with custom model
-//	llm := llm.NewAnthropic(llm.WithModel("claude-opus-4-20250514"))
+//	llm := llm.NewAnthropic(llm.WithModel("claude-opus-4-7"))
 //
 // # Using with Orchestrator
 //
@@ -50,7 +50,7 @@
 //	orch := vega.NewOrchestrator(
 //	    vega.WithLLM(llm),
 //	    vega.WithRateLimits(map[string]vega.RateLimitConfig{
-//	        "claude-sonnet-4-20250514": {
+//	        "claude-sonnet-4-6": {
 //	            RequestsPerMinute: 60,
 //	            TokensPerMinute:   100000,
 //	        },

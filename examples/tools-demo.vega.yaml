@@ -6,7 +6,7 @@ description: Demonstrates custom tool definitions
 
 agents:
   worker:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a helpful assistant with access to various tools.
       Use the tools when needed to complete tasks.

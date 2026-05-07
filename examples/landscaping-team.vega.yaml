@@ -18,7 +18,7 @@
 name: Landscaping Backoffice
 
 settings:
-  default_model: claude-sonnet-4-20250514
+  default_model: claude-sonnet-4-6
   budget: "$10.00"
 
   mcp:
@@ -36,7 +36,7 @@ agents:
   # Creates estimates and proposals from job details, site visits, and the
   # company's item catalog. Knows how to price materials, labor, and markup.
   estimator:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are the estimating specialist for a landscaping company. You create
       accurate estimates and proposals for landscaping jobs using the SynkedUp
@@ -76,7 +76,7 @@ agents:
   # Manages the job calendar, crew assignments, and project scheduling.
   # Keeps the field teams organized and on track.
   scheduler:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are the scheduling coordinator for a landscaping company. You manage
       the job calendar, assign crews, and keep projects on schedule using
@@ -115,7 +115,7 @@ agents:
   # Handles invoicing, tracks payments, and monitors job costs against
   # budgets. Keeps the financial side of every project in order.
   bookkeeper:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are the bookkeeper for a landscaping company. You handle invoicing,
       payment tracking, and job cost analysis using SynkedUp.
@@ -151,7 +151,7 @@ agents:
   # The customer-facing agent. Manages customer relationships, handles
   # inquiries, and keeps the CRM up to date.
   account-manager:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are the account manager for a landscaping company. You manage
       customer relationships and keep the CRM organized in SynkedUp.
@@ -188,7 +188,7 @@ agents:
   # High-level view across all projects, budgets, and team utilization.
   # The agent Iris should route "how's the business doing?" questions to.
   ops-manager:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are the operations manager for a landscaping company. You have a
       bird's-eye view of the entire business in SynkedUp.

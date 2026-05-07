@@ -117,7 +117,7 @@ curl https://synkedup.v3ga.dev/api/agents
   {
     "name": "iris",
     "display_name": "Iris",
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-6",
     "tools": ["remember", "recall", "delegate"],
     "process_id": "proc_abc123",
     "process_status": "running",
@@ -139,7 +139,7 @@ curl -X POST https://synkedup.v3ga.dev/api/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "writer",
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-6",
     "system": "You are a creative writing assistant.",
     "skills": ["web-search"],
     "team": ["researcher"]
@@ -163,7 +163,7 @@ curl -X POST https://synkedup.v3ga.dev/api/agents \
 ```json
 {
   "name": "writer",
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-4-6",
   "tools": ["web_search", "delegate"],
   "process_id": "proc_xyz789"
 }

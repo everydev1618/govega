@@ -6,7 +6,7 @@ description: Write code and get it reviewed automatically
 
 agents:
   coder:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are an expert software developer. You write clean, well-documented code.
       Follow best practices and include error handling.
@@ -16,7 +16,7 @@ agents:
       - write_file
 
   reviewer:
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     system: |
       You are a senior code reviewer. You review code for:
       - Correctness and logic errors
