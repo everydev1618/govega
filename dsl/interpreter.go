@@ -1580,26 +1580,31 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 
 		// Detach from the caller's deadline/cancel (it will be closed)
 		// but preserve context values so domain-store, memory, etc.
-		// propagate. We CAN'T forward the parent's event sink (that one
-		// is tied to the parent chat's SSE stream and will be closed),
-		// but if a dispatch event callback is registered we attach a
-		// fresh sink and relay each event to it. This lets the serve
-		// layer broadcast tool calls / text deltas during dispatch to
-		// anyone watching /chat/<agent>.
-		var sink chan vega.ChatEvent
+		// propagate.
+		detached := context.WithoutCancel(ctx)
+
+		// Two paths depending on whether the serve layer wants live
+		// events: if onDispatchEvent is registered, we route through
+		// StreamToAgent so each tool call / text delta can be relayed
+		// to the broker for live UI streaming. Otherwise we use the
+		// non-streaming SendToAgent — saves the streaming overhead
+		// when nobody's listening.
+		var resp string
+		var err error
 		if i.onDispatchEvent != nil {
-			sink = make(chan vega.ChatEvent, 64)
-			eventCb := i.onDispatchEvent
-			go func() {
-				for ev := range sink {
+			stream, sErr := i.StreamToAgent(detached, agentName, message)
+			if sErr != nil {
+				err = sErr
+			} else {
+				eventCb := i.onDispatchEvent
+				for ev := range stream.Events() {
 					eventCb(agentName, ev)
 				}
-			}()
-		}
-		detached := vega.ContextWithEventSink(context.WithoutCancel(ctx), sink)
-		resp, err := i.SendToAgent(detached, agentName, message)
-		if sink != nil {
-			close(sink) // ends the relay goroutine
+				resp = stream.Response()
+				err = stream.Err()
+			}
+		} else {
+			resp, err = i.SendToAgent(detached, agentName, message)
 		}
 
 		// Post completion notification to inbox as pending so Iris triages it.
