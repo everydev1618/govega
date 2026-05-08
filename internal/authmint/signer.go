@@ -76,6 +76,17 @@ func (s *Signer) JWKS() ([]byte, error) {
 	return json.MarshalIndent(doc, "", "  ")
 }
 
+// Keyfunc returns a jwt.Keyfunc that resolves to this signer's public
+// key. Useful for verifying tokens that this same signer issued without
+// taking a JWKS round-trip (e.g. the control plane verifying its own
+// user/state tokens). Tenant backends use a JWKS-cached keyfunc instead
+// because they don't have direct access to the signer.
+func (s *Signer) Keyfunc() jwt.Keyfunc {
+	return func(_ *jwt.Token) (any, error) {
+		return &s.priv.PublicKey, nil
+	}
+}
+
 // JWKSHandler returns an http.HandlerFunc that serves the JWKS document.
 // Convenience for control plane HTTP servers and dev helpers.
 func (s *Signer) JWKSHandler() http.HandlerFunc {

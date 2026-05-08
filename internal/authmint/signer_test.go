@@ -97,6 +97,44 @@ func TestSigner_JWKSHandlerServesDoc(t *testing.T) {
 // same signer's published JWKS. This is the critical property — anything
 // else can be broken without breaking auth, but if this fails, tenant
 // backends will reject every token the control plane issues.
+func TestSigner_KeyfuncVerifiesOwnTokens(t *testing.T) {
+	// Direct in-process verification (no JWKS HTTP fetch) — the control
+	// plane uses this to verify user JWTs it issued and state/handoff
+	// tokens it issued, without going through its own JWKS endpoint.
+	s, _ := NewSigner()
+	tok, err := s.Sign(jwt.MapClaims{
+		"iss":     "https://auth.test",
+		"aud":     "acme",
+		"sub":     "user_1",
+		"exp":     time.Now().Add(time.Minute).Unix(),
+		"purpose": "test",
+	})
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+
+	parsed, err := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"})).Parse(tok, s.Keyfunc())
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !parsed.Valid {
+		t.Errorf("parsed token reports !Valid")
+	}
+}
+
+func TestSigner_KeyfuncRejectsForeignTokens(t *testing.T) {
+	// A token signed by a different signer must not validate against
+	// this signer's Keyfunc.
+	a, _ := NewSigner()
+	b, _ := NewSigner()
+	tok, _ := a.Sign(jwt.MapClaims{
+		"exp": time.Now().Add(time.Minute).Unix(),
+	})
+	if _, err := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"})).Parse(tok, b.Keyfunc()); err == nil {
+		t.Errorf("Keyfunc accepted a token signed by another signer")
+	}
+}
+
 func TestSigner_RoundTripThroughJWKS(t *testing.T) {
 	s, _ := NewSigner()
 	srv := httptest.NewServer(s.JWKSHandler())

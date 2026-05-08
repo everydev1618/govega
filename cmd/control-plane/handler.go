@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/everydev1618/govega/internal/authmint"
@@ -15,6 +16,23 @@ type Config struct {
 	Signer    *authmint.Signer
 	Issuer    string
 	DevSecret string
+
+	// Gmail OAuth (Phase 2E). When GoogleClientID is empty, the
+	// /oauth/gmail/* endpoints return 503.
+	GoogleClientID     string
+	GoogleClientSecret string
+	// GoogleRedirectURI is the redirect_uri registered with Google. Must
+	// be reachable at this control plane's public URL plus
+	// /oauth/gmail/callback.
+	GoogleRedirectURI string
+	// GoogleAuthURL / GoogleTokenURL are overridable for tests; default to
+	// Google's production endpoints in newHandler.
+	GoogleAuthURL  string
+	GoogleTokenURL string
+	// ReturnURLPattern (optional) restricts where the callback may
+	// redirect users back to. Production should set this to match the
+	// tenant subdomain pattern (e.g. ^https://[a-z0-9-]+\.apex\.io/.*$).
+	ReturnURLPattern *regexp.Regexp
 }
 
 // Default access-token TTL when /dev/mint is called without ttl_seconds.
@@ -39,6 +57,9 @@ func newHandler(cfg Config) http.Handler {
 	mux.Handle("GET /jwks", cfg.Signer.JWKSHandler())
 
 	mux.HandleFunc("POST /dev/mint", devMintHandler(cfg))
+
+	mux.HandleFunc("POST /oauth/gmail/init", gmailInitHandler(cfg))
+	mux.HandleFunc("GET /oauth/gmail/callback", gmailCallbackHandler(cfg))
 
 	return mux
 }
