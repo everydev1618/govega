@@ -93,7 +93,7 @@ const howItWorks = [
       <nav class="hidden md:flex items-center gap-8 text-sm text-zinc-400">
         <a href="#features" class="hover:text-white transition-colors">Features</a>
         <a href="#how-it-works" class="hover:text-white transition-colors">How it works</a>
-        <a href="#quickstart" class="hover:text-white transition-colors">Quick start</a>
+        <a href="#build" class="hover:text-white transition-colors">Build on Vega</a>
         <a href={`${BASE}getting-started`} class="hover:text-white transition-colors">Docs</a>
       </nav>
       <div class="flex items-center gap-3">
@@ -108,7 +108,7 @@ const howItWorks = [
     <div class="max-w-6xl mx-auto px-6 pt-28 pb-24 relative">
       <div class="max-w-3xl mx-auto text-center">
         <p class="inline-block text-xs font-mono text-indigo-400 border border-indigo-500/30 rounded-full px-4 py-1.5 mb-8 bg-indigo-500/5">
-          Multi-agent &middot; Go library &middot; YAML DSL &middot; MCP-native
+          HTTP API &middot; Go library &middot; YAML DSL &middot; MCP-native
         </p>
 
         <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-[1.1]">
@@ -117,9 +117,9 @@ const howItWorks = [
         </h1>
 
         <p class="text-lg md:text-xl text-zinc-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-          Vega is a fault-tolerant orchestration framework for AI agents.
+          Vega is a fault-tolerant orchestration runtime for AI agents.
           Erlang-style supervision, 850+ integrations via MCP, and a
-          Slack-like dashboard where you watch your agents collaborate.
+          typed HTTP + SSE API any frontend can drive.
         </p>
 
         <div class="flex items-center justify-center gap-4 flex-wrap mb-16">
@@ -338,12 +338,81 @@ const howItWorks = [
     </div>
   </section>
 
+  <!-- Build on Vega -->
+  <section id="build" class="max-w-6xl mx-auto px-6 py-24">
+    <div class="text-center mb-16">
+      <p class="section-label">Build on Vega</p>
+      <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">A platform you build on, not a library you fork</h2>
+      <p class="text-zinc-400 max-w-2xl mx-auto">
+        Drive Vega from any client. HTTP for actions, SSE for live state, generated TypeScript types so your code knows what's coming back.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- REST -->
+      <div class="gradient-border p-6">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-emerald-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+          </span>
+          <h3 class="font-semibold text-white">REST API</h3>
+        </div>
+        <div class="code-block text-xs leading-relaxed">
+          <p><span class="syn-comment">$</span> <span class="syn-str">curl</span> -X POST \</p>
+          <p class="pl-4">localhost:8081/api/v1/agents/sofia/chat \</p>
+          <p class="pl-4">-H <span class="syn-str">"Authorization: Bearer $TOKEN"</span> \</p>
+          <p class="pl-4">-d <span class="syn-str">'&#123;"message": "draft a post"&#125;'</span></p>
+          <p class="mt-2 text-zinc-500">&#x25B6; &#123; <span class="syn-key">"response"</span>: <span class="syn-str">"..."</span> &#125;</p>
+        </div>
+        <p class="text-xs text-zinc-500 mt-3">Every agent, channel, and process — fully addressable. OpenAPI spec included.</p>
+      </div>
+
+      <!-- SSE -->
+      <div class="gradient-border p-6">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-violet-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+          </span>
+          <h3 class="font-semibold text-white">SSE event stream</h3>
+        </div>
+        <div class="code-block text-xs leading-relaxed">
+          <p><span class="syn-key">const</span> <span class="syn-type">es</span> = <span class="syn-key">new</span> <span class="syn-fn">EventSource</span>(</p>
+          <p class="pl-4"><span class="syn-str">`/api/v1/events?access_token=$&#123;t&#125;`</span></p>
+          <p>)</p>
+          <p class="mt-2"><span class="syn-type">es</span>.<span class="syn-fn">addEventListener</span>(<span class="syn-str">'process.completed'</span>,</p>
+          <p class="pl-4">(e) =&gt; <span class="syn-fn">render</span>(<span class="syn-type">JSON</span>.<span class="syn-fn">parse</span>(e.data))</p>
+          <p>)</p>
+        </div>
+        <p class="text-xs text-zinc-500 mt-3">Live agent activity. No polling, no websockets to manage.</p>
+      </div>
+
+      <!-- Types -->
+      <div class="gradient-border p-6">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-cyan-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
+          </span>
+          <h3 class="font-semibold text-white">Type-safe client</h3>
+        </div>
+        <div class="code-block text-xs leading-relaxed">
+          <p><span class="syn-key">import</span> <span class="syn-fn">createClient</span> <span class="syn-key">from</span> <span class="syn-str">'openapi-fetch'</span></p>
+          <p><span class="syn-key">import type</span> &#123; paths &#125; <span class="syn-key">from</span> <span class="syn-str">'@vega/api-types'</span></p>
+          <p class="mt-2"><span class="syn-key">const</span> <span class="syn-type">api</span> = <span class="syn-fn">createClient</span>&lt;paths&gt;(&#123;</p>
+          <p class="pl-4">baseUrl: <span class="syn-str">'http://localhost:8081'</span>,</p>
+          <p>&#125;)</p>
+          <p class="mt-2"><span class="syn-key">const</span> &#123; data &#125; = <span class="syn-key">await</span> <span class="syn-type">api</span>.<span class="syn-fn">GET</span>(<span class="syn-str">'/api/v1/agents'</span>)</p>
+        </div>
+        <p class="text-xs text-zinc-500 mt-3">Generated from OpenAPI. Your editor knows the schema.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- CTA -->
   <section class="max-w-6xl mx-auto px-6 py-24">
     <div class="gradient-border p-12 md:p-16 text-center glow-sm">
-      <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Start building with Vega</h2>
+      <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Start building on Vega</h2>
       <p class="text-zinc-400 max-w-lg mx-auto mb-8">
-        Install the CLI, set your API key, and have your first AI agent running in under 5 minutes.
+        Spin up the dev stack, mint a token, and ship your first API call in under 10 minutes.
       </p>
       <div class="flex items-center justify-center gap-4 flex-wrap">
         <a href={`${BASE}getting-started`} class="btn-primary">
@@ -387,8 +456,8 @@ const howItWorks = [
       </div>
       <nav class="flex items-center gap-6">
         <a href={`${BASE}getting-started`} class="hover:text-white transition-colors">Docs</a>
+        <a href="#build" class="hover:text-white transition-colors">Build</a>
         <a href="#features" class="hover:text-white transition-colors">Features</a>
-        <a href="#how-it-works" class="hover:text-white transition-colors">How it works</a>
       </nav>
     </div>
   </footer>
