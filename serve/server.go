@@ -160,6 +160,21 @@ type Server struct {
 	// the OAuth start phase. See oauth_gmail.go.
 	oauthStateCache *oauthStateCache
 
+	// authCfg captures the JWT validation contract (set in Start from env).
+	// Handlers outside the /api/v1 middleware (e.g. Gmail handoff) call
+	// authCfg.Verify to validate signed tokens from the control plane.
+	authCfg AuthConfig
+
+	// controlPlaneURL is where /api/v1/integrations/gmail/start proxies init
+	// requests. Empty in self-hosted mode → /api/v1/integrations/gmail/start
+	// returns 503.
+	controlPlaneURL string
+
+	// consumedJTIs tracks Gmail handoff JTIs that have already been
+	// consumed, defending against replay of a leaked 60-second handoff.
+	// jti → unix expiry. Pruning is best-effort lazy.
+	consumedJTIs sync.Map
+
 	// replyTargets binds an agent name to a channel-of-origin handle so
 	// async dispatch completions can be pushed back to the conversation
 	// they came from (Telegram bot.Send, web SSE flush, etc.). See
@@ -705,6 +720,8 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load auth config: %w", err)
 	}
+	s.authCfg = authCfg
+	s.controlPlaneURL = strings.TrimRight(os.Getenv("APEX_CONTROL_PLANE_URL"), "/")
 
 	srv := &http.Server{
 		Handler: corsMiddleware(LoadCORSConfig())(authMiddleware(authCfg)(mux)),
@@ -846,6 +863,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/integrations/gmail", s.handleGmailStatus)
 	mux.HandleFunc("POST /api/v1/integrations/gmail", s.handleGmailConfigure)
 	mux.HandleFunc("DELETE /api/v1/integrations/gmail", s.handleGmailDisable)
+	// Cloud-mode flow (Phase 2E.3): start proxies to control plane,
+	// handoff consumes the signed JWT and persists tokens.
+	mux.HandleFunc("POST /api/v1/integrations/gmail/start", s.handleGmailIntegrationStart)
+	mux.HandleFunc("POST /api/v1/integrations/gmail/handoff", s.handleGmailIntegrationHandoff)
 
 	// Reset
 	mux.HandleFunc("POST /api/v1/reset", s.handleReset)
