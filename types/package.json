@@ -1,0 +1,22 @@
+{
+  "name": "@vega/api-types",
+  "version": "0.1.0",
+  "description": "TypeScript types for the Vega REST API, generated from docs/openapi.yaml.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./api.ts",
+  "types": "./api.ts",
+  "files": [
+    "api.ts",
+    "events.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "generate": "openapi-typescript ../docs/openapi.yaml -o api.ts",
+    "verify": "openapi-typescript ../docs/openapi.yaml -o /tmp/api.gen.ts && diff -u api.ts /tmp/api.gen.ts && echo 'types in sync'"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.0.0",
+    "typescript": "^5.0.0"
+  }
+}

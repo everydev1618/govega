@@ -1,4 +1,4 @@
-.PHONY: build frontend-build serve-dev test clean
+.PHONY: build frontend-build serve-dev test clean types types-verify
 
 # Build the vega binary with embedded frontend.
 build: frontend-build
@@ -20,6 +20,17 @@ serve-dev:
 # Run all Go tests.
 test:
 	go test ./...
+
+# Regenerate the @vega/api-types TypeScript package from docs/openapi.yaml.
+# Commit api.ts after running.
+types:
+	cd types && npm install --silent && npm run generate
+
+# Verify the committed types/api.ts matches a fresh generation.
+# Fails (non-zero exit) if the OpenAPI spec has changed without a corresponding
+# regen + commit. Wire into CI to prevent drift.
+types-verify:
+	cd types && npm install --silent && npm run verify
 
 # Remove build artifacts.
 clean:
