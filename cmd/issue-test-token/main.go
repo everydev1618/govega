@@ -1,5 +1,6 @@
 // Command issue-test-token mints a signed JWT and serves a matching JWKS so
-// govega's auth middleware can be exercised end-to-end without WorkOS.
+// govega's auth middleware can be exercised end-to-end without WorkOS or
+// the full control plane.
 //
 // Workflow:
 //
@@ -8,8 +9,9 @@
 //      It prints env vars + the token, then keeps a JWKS server running.
 //
 //   2. In another terminal, source the env and start your apex backend:
-//        eval "$(go run ./cmd/issue-test-token --quiet)"   # or copy/paste
-//        APEX_TENANT_ID=$APEX_TENANT_ID make run
+//        eval "$(go run ./cmd/issue-test-token --quiet | head -3)"
+//        export TEST_TOKEN=...    # paste from the helper's stderr output
+//        APEX_TENANT_ID=$APEX_TENANT_ID make run -C ../apexvega
 //
 //   3. Curl with the token:
 //        curl -H "Authorization: Bearer $TEST_TOKEN" http://localhost:8080/api/v1/stats
@@ -17,26 +19,21 @@
 // Use --tenant, --user, --ttl, --port to vary claims and listen address.
 //
 // This is a development aid, not a production tool. The signing key is
-// generated fresh on every run and discarded on shutdown.
+// generated fresh on every run and discarded on shutdown. For a long-
+// running issuer, see cmd/control-plane.
 package main
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"encoding/base64"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/everydev1618/govega/internal/authmint"
 	"github.com/golang-jwt/jwt/v5"
 )
-
-const kid = "test-key"
 
 func main() {
 	var (
@@ -49,15 +46,15 @@ func main() {
 	)
 	flag.Parse()
 
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	signer, err := authmint.NewSigner()
 	if err != nil {
-		log.Fatalf("rsa keygen: %v", err)
+		log.Fatalf("authmint: %v", err)
 	}
 
 	issuer := fmt.Sprintf("http://localhost:%d", *port)
 	jwksURL := issuer + "/jwks"
 
-	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+	tok, err := signer.Sign(jwt.MapClaims{
 		"iss":   issuer,
 		"aud":   *tenant,
 		"sub":   *user,
@@ -65,27 +62,16 @@ func main() {
 		"iat":   time.Now().Unix(),
 		"scope": *scope,
 	})
-	tok.Header["kid"] = kid
-	signed, err := tok.SignedString(priv)
 	if err != nil {
 		log.Fatalf("sign: %v", err)
 	}
 
-	jwks, err := buildJWKS(&priv.PublicKey, kid)
-	if err != nil {
-		log.Fatalf("build jwks: %v", err)
-	}
-
 	mux := http.NewServeMux()
-	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(jwks)
-	})
+	mux.Handle("/jwks", signer.JWKSHandler())
 
-	emitEnv(*quiet, *tenant, issuer, jwksURL, signed, *port)
+	emitEnv(*quiet, *tenant, issuer, jwksURL, tok, *port)
 
-	addr := fmt.Sprintf(":%d", *port)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), mux); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
@@ -113,20 +99,4 @@ curl -H "Authorization: Bearer $TEST_TOKEN" http://localhost:8080/api/v1/stats
 
 JWKS server listening on :%d (Ctrl-C to stop)
 `, port)
-}
-
-// buildJWKS encodes an RSA public key into a single-entry JWKS document
-// (RFC 7517). Modulus and exponent are base64url-encoded without padding.
-func buildJWKS(pub *rsa.PublicKey, kid string) ([]byte, error) {
-	doc := map[string]any{
-		"keys": []map[string]any{{
-			"kty": "RSA",
-			"use": "sig",
-			"alg": "RS256",
-			"kid": kid,
-			"n":   base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
-		}},
-	}
-	return json.MarshalIndent(doc, "", "  ")
 }

@@ -2,6 +2,7 @@
 /vega
 /tonycto
 /issue-test-token
+/control-plane
 *.exe
 *.exe~
 *.dll
