@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "govega",
+  "compatibility_date": "2026-05-08",
+  "assets": {
+    "directory": "./dist"
+  }
+}
