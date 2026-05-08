@@ -20,8 +20,8 @@ jobs:
     steps:
       - name: Confirm destruction
         run: |
-          if [ "${{ inputs.customer }}" != "${{ inputs.confirm }}" ]; then
-            echo "::error::Confirmation does not match. You typed '${{ inputs.confirm }}' but expected '${{ inputs.customer }}'"
+          if [ "${{ github.event.inputs.customer }}" != "${{ github.event.inputs.confirm }}" ]; then
+            echo "::error::Confirmation does not match. You typed '${{ github.event.inputs.confirm }}' but expected '${{ github.event.inputs.customer }}'"
             exit 1
           fi
 
@@ -45,7 +45,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=vega-tfstate-214057697325" \
-            -backend-config="key=${{ inputs.customer }}/terraform.tfstate" \
+            -backend-config="key=${{ github.event.inputs.customer }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
             -backend-config="dynamodb_table=vega-terraform-locks" \
             -backend-config="encrypt=true"
@@ -57,13 +57,13 @@ jobs:
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
         run: |
           terraform destroy \
-            -var-file="../customers/${{ inputs.customer }}/terraform.tfvars" \
+            -var-file="../customers/${{ github.event.inputs.customer }}/terraform.tfvars" \
             -var="ssh_public_key=${{ secrets.DEPLOY_SSH_PUBLIC_KEY }}" \
             -auto-approve
 
       - name: Delete SSM parameters
         run: |
-          aws ssm delete-parameter --name "/vega/${{ inputs.customer }}/env" 2>/dev/null || true
+          aws ssm delete-parameter --name "/vega/${{ github.event.inputs.customer }}/env" 2>/dev/null || true
 
       - name: Summary
-        run: echo "### Destroyed: ${{ inputs.customer }}" >> $GITHUB_STEP_SUMMARY
+        run: echo "### Destroyed: ${{ github.event.inputs.customer }}" >> $GITHUB_STEP_SUMMARY
