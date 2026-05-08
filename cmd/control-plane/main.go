@@ -100,7 +100,12 @@ func main() {
 		fmt.Printf("GmailCallback: GET  %s\n", cfg.GoogleRedirectURI)
 	}
 
-	if err := http.ListenAndServe(addr, newHandler(cfg)); err != nil {
+	cors := loadCORSConfig()
+	if len(cors) == 0 {
+		slog.Warn("CONTROL_PLANE_ALLOWED_ORIGINS unset — cross-origin SPA requests will be blocked by the browser")
+	}
+
+	if err := http.ListenAndServe(addr, corsMiddleware(cors)(newHandler(cfg))); err != nil {
 		slog.Error("listen", "err", err)
 		os.Exit(1)
 	}
