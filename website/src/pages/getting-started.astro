@@ -9,8 +9,8 @@ const BASE = import.meta.env.BASE_URL
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Getting Started - Vega</title>
-  <meta name="description" content="Install Vega, set your API key, and launch your first AI agent in under 5 minutes." />
+  <title>Building on Vega</title>
+  <meta name="description" content="From git clone to a real API call in 10 minutes. Build a frontend, integration, or product on top of Vega's HTTP + SSE API." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9733;</text></svg>" />
 </head>
 
@@ -25,7 +25,7 @@ const BASE = import.meta.env.BASE_URL
       </a>
       <nav class="hidden md:flex items-center gap-8 text-sm text-zinc-400">
         <a href={BASE} class="hover:text-white transition-colors">Home</a>
-        <span class="text-white">Getting Started</span>
+        <span class="text-white">Building on Vega</span>
       </nav>
     </div>
   </header>
@@ -34,11 +34,23 @@ const BASE = import.meta.env.BASE_URL
   <section class="max-w-3xl mx-auto px-6 pt-24 pb-12 text-center">
     <p class="section-label">Guide</p>
     <h1 class="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-      Getting <span class="gradient-text">started</span>
+      Building <span class="gradient-text">on Vega</span>
     </h1>
     <p class="text-lg text-zinc-400 max-w-xl mx-auto">
-      From zero to a running AI agent in under 5 minutes.
+      From <code class="text-base bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">git clone</code> to a real API call in about 10 minutes. For builders consuming Vega — frontends, integrations, mobile apps.
     </p>
+  </section>
+
+  <!-- The layering -->
+  <section class="max-w-3xl mx-auto px-6 pb-12">
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <p class="text-sm text-zinc-300 font-medium mb-3">The layering</p>
+      <div class="text-sm text-zinc-400 space-y-2 leading-relaxed">
+        <p><span class="text-amber-400 font-mono font-semibold">Vega</span> &middot; the platform. govega module + control plane + multi-tenant infra. Provides agents, runtime, identity (JWT/JWKS), persistence, SSE event stream.</p>
+        <p><span class="text-amber-400 font-mono font-semibold">Apex</span> &middot; a product built on Vega. Tenant backend (apexvega) + UI. Brand-bearing, customer-facing.</p>
+        <p><span class="text-amber-400 font-mono font-semibold">Your client</span> &middot; talks to the Vega API surface. Doesn't care how auth is wired underneath. The contract is the same whether you're building Apex's frontend, a partner integration, or a mobile app.</p>
+      </div>
+    </div>
   </section>
 
   <!-- Prerequisites -->
@@ -47,7 +59,8 @@ const BASE = import.meta.env.BASE_URL
       <p class="text-sm text-zinc-300 font-medium mb-2">Prerequisites</p>
       <ul class="text-sm text-zinc-400 space-y-1">
         <li>An <a href="https://console.anthropic.com/" target="_blank" class="text-indigo-400 hover:text-indigo-300 transition-colors">Anthropic API key</a></li>
-        <li>macOS, Linux, or Windows</li>
+        <li>Go 1.24+ and Node 20+</li>
+        <li>Access to the govega + apexvega repos &middot; <span class="text-zinc-500">currently private alpha</span></li>
       </ul>
     </div>
   </section>
@@ -56,70 +69,97 @@ const BASE = import.meta.env.BASE_URL
   <section class="max-w-3xl mx-auto px-6 pb-16">
     <div class="flex items-center gap-4 mb-5">
       <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">1</span>
-      <h2 class="text-xl font-semibold text-white">Install the CLI</h2>
+      <h2 class="text-xl font-semibold text-white">Spin up the dev stack</h2>
+    </div>
+    <p class="text-sm text-zinc-400 mb-5">Three processes, three terminals.</p>
+
+    <p class="text-xs text-zinc-500 font-mono mb-2">Terminal 1 &middot; control plane (mints tokens)</p>
+    <div class="code-block mb-5">
+      <p><span class="syn-comment">$</span> <span class="syn-str">cd</span> govega</p>
+      <p><span class="syn-comment">$</span> APEX_DEV_SECRET=shh <span class="syn-str">go run</span> ./cmd/control-plane</p>
+      <p class="text-zinc-500 mt-2">JWKS:    http://localhost:9001/jwks</p>
+      <p class="text-zinc-500">DevMint: http://localhost:9001/dev/mint</p>
     </div>
 
-    <div class="code-block mb-4">
-      <p class="syn-comment text-xs mb-2"># From source (Go 1.24+)</p>
-      <p><span class="syn-str">go install</span> github.com/everydev1618/govega/cmd/vega@latest</p>
+    <p class="text-xs text-zinc-500 font-mono mb-2">Terminal 2 &middot; tenant backend (your API surface)</p>
+    <div class="code-block mb-5">
+      <p><span class="syn-comment">$</span> <span class="syn-str">cd</span> apexvega</p>
+      <p><span class="syn-comment">$</span> <span class="syn-str">export</span> APEX_TENANT_ID=<span class="syn-val">"acme"</span></p>
+      <p><span class="syn-comment">$</span> <span class="syn-str">export</span> APEX_JWT_ISSUER=<span class="syn-val">"http://localhost:9001"</span></p>
+      <p><span class="syn-comment">$</span> <span class="syn-str">export</span> APEX_JWKS_URL=<span class="syn-val">"http://localhost:9001/jwks"</span></p>
+      <p><span class="syn-comment">$</span> <span class="syn-str">export</span> APEX_ALLOWED_ORIGINS=<span class="syn-val">"http://localhost:5173"</span></p>
+      <p><span class="syn-comment">$</span> <span class="syn-str">make run</span> PORT=<span class="syn-val">8081</span></p>
     </div>
 
+    <p class="text-xs text-zinc-500 font-mono mb-2">Terminal 3 &middot; your frontend dev server</p>
     <div class="code-block">
-      <p class="syn-comment text-xs mb-2"># Verify</p>
-      <p><span class="syn-str">vega version</span></p>
-      <p class="text-zinc-500 mt-1">vega v0.4.0 (go1.24)</p>
+      <p><span class="syn-comment">$</span> VITE_API_BASE_URL=http://localhost:8081 <span class="syn-str">npm run dev</span></p>
     </div>
-
-    <p class="text-xs text-zinc-500 mt-4">
-      Vega is currently in private alpha. Distribution channels are coming soon.
-    </p>
   </section>
 
   <!-- Step 2 -->
   <section class="max-w-3xl mx-auto px-6 pb-16">
     <div class="flex items-center gap-4 mb-5">
       <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">2</span>
-      <h2 class="text-xl font-semibold text-white">Set your API key</h2>
+      <h2 class="text-xl font-semibold text-white">Mint a token</h2>
     </div>
-
-    <div class="code-block mb-4">
-      <p class="syn-comment text-xs mb-2"># Create config directory and env file</p>
-      <p><span class="syn-str">mkdir -p</span> ~/.vega</p>
-      <p><span class="syn-str">echo</span> <span class="syn-val">'ANTHROPIC_API_KEY=sk-ant-...'</span> > ~/.vega/env</p>
-    </div>
-
-    <p class="text-sm text-zinc-500">
-      Or export directly: <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">export ANTHROPIC_API_KEY=sk-ant-...</code>
+    <p class="text-sm text-zinc-400 mb-4 leading-relaxed">
+      The control plane's <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">/dev/mint</code> endpoint signs JWTs in dev. In production this becomes a WorkOS-backed login flow + <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">/exchange</code> endpoint &mdash; your frontend code barely changes.
     </p>
+    <div class="code-block">
+      <p><span class="syn-comment">$</span> <span class="syn-str">curl</span> -s -H <span class="syn-val">"X-Dev-Secret: shh"</span> \</p>
+      <p class="pl-4">-H <span class="syn-val">"Content-Type: application/json"</span> \</p>
+      <p class="pl-4">-d <span class="syn-val">'&#123;"tenant":"acme","user":"alice","ttl_seconds":3600&#125;'</span> \</p>
+      <p class="pl-4">http://localhost:9001/dev/mint | jq -r .access_token</p>
+    </div>
+    <p class="text-xs text-zinc-500 mt-3">Save the result as <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">$TOKEN</code>.</p>
   </section>
 
   <!-- Step 3 -->
   <section class="max-w-3xl mx-auto px-6 pb-16">
     <div class="flex items-center gap-4 mb-5">
       <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">3</span>
-      <h2 class="text-xl font-semibold text-white">Launch the dashboard</h2>
+      <h2 class="text-xl font-semibold text-white">Make your first API call</h2>
     </div>
 
-    <div class="code-block mb-5">
-      <p><span class="syn-str">vega serve</span></p>
-      <p class="text-zinc-500 mt-2">Server started on :3001</p>
-      <p class="text-zinc-500">Dashboard: http://localhost:3001</p>
+    <div class="code-block text-sm leading-relaxed mb-5">
+      <p><span class="syn-key">const</span> <span class="syn-type">res</span> = <span class="syn-key">await</span> <span class="syn-fn">fetch</span>(<span class="syn-str">'http://localhost:8081/api/v1/identity'</span>, &#123;</p>
+      <p class="pl-4">headers: &#123; Authorization: <span class="syn-str">`Bearer &#36;&#123;token&#125;`</span> &#125;,</p>
+      <p>&#125;)</p>
+      <p class="mt-2"><span class="syn-key">const</span> <span class="syn-type">identity</span> = <span class="syn-key">await</span> <span class="syn-type">res</span>.<span class="syn-fn">json</span>()</p>
+      <p class="text-zinc-500 mt-1"><span class="syn-comment">// &#123; orchestrator: ..., builder: ..., product_name: ... &#125;</span></p>
     </div>
 
-    <p class="text-sm text-zinc-400 leading-relaxed mb-4">
-      Open <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">http://localhost:3001</code> in your browser.
-      Two agents are ready to go:
-    </p>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <div class="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
-        <p class="font-mono text-sm text-violet-400 font-semibold mb-1">Iris</p>
-        <p class="text-xs text-zinc-400">Your chief of staff. Routes messages, manages MCP connections, triages agent requests.</p>
-      </div>
-      <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-        <p class="font-mono text-sm text-amber-400 font-semibold mb-1">Hera</p>
-        <p class="text-xs text-zinc-400">The agent builder. Creates agents, teams, and channels on the fly via chat.</p>
-      </div>
+    <p class="text-sm text-zinc-400 mb-4">Other endpoints worth poking at first:</p>
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm overflow-x-auto">
+      <table class="w-full text-zinc-400">
+        <tbody class="divide-y divide-zinc-800">
+          <tr>
+            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/identity</td>
+            <td class="py-2">Orchestrator + builder display names</td>
+          </tr>
+          <tr>
+            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/agents</td>
+            <td class="py-2">All agents in this tenant</td>
+          </tr>
+          <tr>
+            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/processes</td>
+            <td class="py-2">Running + recent processes</td>
+          </tr>
+          <tr>
+            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/channels</td>
+            <td class="py-2">Channels (group conversations)</td>
+          </tr>
+          <tr>
+            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/inbox</td>
+            <td class="py-2">Inbox items waiting for review</td>
+          </tr>
+          <tr>
+            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">POST /api/v1/agents/&lcub;name&rcub;/chat</td>
+            <td class="py-2">DM an agent &mdash; returns the response</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -127,58 +167,80 @@ const BASE = import.meta.env.BASE_URL
   <section class="max-w-3xl mx-auto px-6 pb-16">
     <div class="flex items-center gap-4 mb-5">
       <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">4</span>
-      <h2 class="text-xl font-semibold text-white">Build something</h2>
+      <h2 class="text-xl font-semibold text-white">Subscribe to live events</h2>
     </div>
-
-    <p class="text-sm text-zinc-400 leading-relaxed mb-5">
-      Talk to Iris in the dashboard. She'll figure out what you need and have Hera build it.
+    <p class="text-sm text-zinc-400 mb-4 leading-relaxed">
+      <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">EventSource</code> can't send a bearer header, so the access token rides as a query param (RFC 6750 §2.3):
     </p>
-
     <div class="code-block text-sm leading-relaxed mb-5">
-      <p><span class="text-violet-400">You:</span> <span class="text-zinc-300">I need someone who can research topics and write blog posts about them</span></p>
-      <p class="mt-3"><span class="text-indigo-400">Iris:</span> <span class="text-zinc-300">I'll have Hera set that up for you.</span></p>
-      <p class="mt-3"><span class="text-amber-400">Hera:</span> <span class="text-zinc-300">Done, love. Meet Sofia -- she's your Content Writer. You can find her in the sidebar.</span></p>
+      <p><span class="syn-key">const</span> <span class="syn-type">url</span> = <span class="syn-str">`http://localhost:8081/api/v1/events?access_token=&#36;&#123;<span class="syn-fn">encodeURIComponent</span>(token)&#125;`</span></p>
+      <p><span class="syn-key">const</span> <span class="syn-type">es</span>  = <span class="syn-key">new</span> <span class="syn-fn">EventSource</span>(<span class="syn-type">url</span>)</p>
+      <p class="mt-2"><span class="syn-type">es</span>.<span class="syn-fn">addEventListener</span>(<span class="syn-str">'process.completed'</span>, (e) =&gt; &#123;</p>
+      <p class="pl-4"><span class="syn-key">const</span> ev = <span class="syn-type">JSON</span>.<span class="syn-fn">parse</span>(e.data)</p>
+      <p class="pl-4"><span class="syn-comment">// dispatch to your store / queries</span></p>
+      <p>&#125;)</p>
     </div>
-
-    <p class="text-sm text-zinc-400 leading-relaxed">
-      Or define agents in YAML for reproducible setups:
+    <p class="text-sm text-zinc-400 mb-2">Event types:</p>
+    <p class="text-xs text-zinc-500 font-mono leading-relaxed">
+      process.started &middot; process.completed &middot; process.failed<br/>
+      workflow.completed &middot; workflow.failed<br/>
+      agent.created &middot; agent.deleted<br/>
+      chat.update &middot; chat.event<br/>
+      channel.message &middot; channel.thread_reply
     </p>
-
-    <div class="code-block text-sm leading-relaxed mt-4">
-      <p><span class="syn-key">name</span>: MyApp</p>
-      <p class="mt-2"><span class="syn-key">agents</span>:</p>
-      <p class="pl-4"><span class="syn-type">sofia</span>:</p>
-      <p class="pl-6"><span class="syn-key">model</span>: claude-sonnet-4-20250514</p>
-      <p class="pl-6"><span class="syn-key">system</span>: <span class="syn-str">You write engaging blog posts. Keep them concise and practical.</span></p>
-      <p class="pl-6"><span class="syn-key">tools</span>: [read_file, write_file]</p>
-    </div>
-
-    <div class="code-block mt-3">
-      <p><span class="syn-str">vega serve</span> myapp.vega.yaml</p>
-    </div>
+    <p class="text-xs text-zinc-500 mt-4 leading-relaxed">
+      Per-agent live progress (token deltas, tool calls) lives on a separate stream:
+      <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">GET/POST /api/v1/agents/&lcub;name&rcub;/chat/stream</code>.
+      Channels have an analogous pair.
+    </p>
   </section>
 
   <!-- Step 5 -->
   <section class="max-w-3xl mx-auto px-6 pb-16">
     <div class="flex items-center gap-4 mb-5">
       <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">5</span>
-      <h2 class="text-xl font-semibold text-white">Add integrations</h2>
+      <h2 class="text-xl font-semibold text-white">Type-safe with @vega/api-types</h2>
     </div>
-
-    <p class="text-sm text-zinc-400 leading-relaxed mb-5">
-      Connect external services via MCP. Talk to Iris or add them to your YAML:
+    <p class="text-sm text-zinc-400 mb-4 leading-relaxed">
+      Generated from the OpenAPI spec. Pair with <a href="https://openapi-ts.dev/openapi-fetch/" target="_blank" class="text-indigo-400 hover:text-indigo-300 transition-colors">openapi-fetch</a> for fully type-inferred client calls:
     </p>
-
-    <div class="code-block text-sm leading-relaxed mb-4">
-      <p><span class="text-violet-400">You:</span> <span class="text-zinc-300">Connect Composio so my agents can use Slack and Gmail</span></p>
-      <p class="mt-2"><span class="text-indigo-400">Iris:</span> <span class="text-zinc-300">I'll need your Composio API key.</span></p>
-      <p class="mt-2"><span class="text-violet-400">You:</span> <span class="text-zinc-300">It's cmp_xxx...</span></p>
-      <p class="mt-2"><span class="text-indigo-400">Iris:</span> <span class="text-zinc-300">Connected. 47 tools now available. Your agents can use Slack, Gmail, and more.</span></p>
+    <div class="code-block text-sm leading-relaxed">
+      <p><span class="syn-key">import</span> <span class="syn-fn">createClient</span> <span class="syn-key">from</span> <span class="syn-str">'openapi-fetch'</span></p>
+      <p><span class="syn-key">import type</span> &#123; paths &#125; <span class="syn-key">from</span> <span class="syn-str">'@vega/api-types'</span></p>
+      <p class="mt-2"><span class="syn-key">const</span> <span class="syn-type">client</span> = <span class="syn-fn">createClient</span>&lt;paths&gt;(&#123;</p>
+      <p class="pl-4">baseUrl: <span class="syn-str">'http://localhost:8081'</span>,</p>
+      <p>&#125;)</p>
+      <p class="mt-2"><span class="syn-key">const</span> &#123; data, error &#125; = <span class="syn-key">await</span> <span class="syn-type">client</span>.<span class="syn-fn">GET</span>(<span class="syn-str">'/api/v1/identity'</span>, &#123;</p>
+      <p class="pl-4">headers: &#123; Authorization: <span class="syn-str">`Bearer &#36;&#123;token&#125;`</span> &#125;,</p>
+      <p>&#125;)</p>
+      <p class="text-zinc-500 mt-1"><span class="syn-comment">// data is fully typed; error too</span></p>
     </div>
-
-    <p class="text-sm text-zinc-500">
-      Connections persist across restarts. No need to reconnect.
+    <p class="text-xs text-zinc-500 mt-3 leading-relaxed">
+      Until <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">@vega/api-types</code> is published to npm, vendor or path-import from the govega repo.
     </p>
+  </section>
+
+  <!-- Auth contract -->
+  <section class="max-w-3xl mx-auto px-6 pb-16">
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <p class="text-sm text-zinc-300 font-medium mb-3">Auth contract</p>
+      <div class="text-sm text-zinc-400 space-y-2 leading-relaxed">
+        <p><span class="font-mono text-xs text-zinc-300">JWT, RS256</span> signed by control plane. Tenant backend validates locally via JWKS (cached hourly).</p>
+        <p><span class="font-mono text-xs text-zinc-300">Authorization: Bearer &lt;token&gt;</span> on fetch. <span class="font-mono text-xs text-zinc-300">?access_token=&lt;token&gt;</span> on SSE (header alternative not available).</p>
+        <p>Required claims: <span class="font-mono text-xs text-zinc-300">iss</span> (control plane URL), <span class="font-mono text-xs text-zinc-300">aud</span> (tenant id), <span class="font-mono text-xs text-zinc-300">sub</span> (user id), <span class="font-mono text-xs text-zinc-300">exp</span>.</p>
+        <p>15-minute lifetime by default &mdash; refresh before expiry. <span class="text-zinc-500">401 = re-login. 403 = wrong tenant.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Self-hosted -->
+  <section class="max-w-3xl mx-auto px-6 pb-16">
+    <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-5">
+      <p class="text-sm text-amber-400 font-medium mb-2">Self-hosted mode</p>
+      <p class="text-sm text-zinc-300 leading-relaxed">
+        Drop <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">APEX_TENANT_ID</code> and the auth env vars and the auth middleware becomes a no-op. The embedded Vega dashboard is then served at <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">http://localhost:8080</code>. Useful for very early dev or single-binary deploys.
+      </p>
+    </div>
   </section>
 
   <!-- What's next -->
@@ -187,11 +249,15 @@ const BASE = import.meta.env.BASE_URL
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <a href={`${BASE}#features`} class="feature-card group block">
         <h3 class="font-semibold text-white mb-1 group-hover:text-indigo-300 transition-colors">Features</h3>
-        <p class="text-sm text-zinc-400">What Vega does: supervision, integrations, teams, streaming</p>
+        <p class="text-sm text-zinc-400">Supervision, integrations, teams, streaming</p>
       </a>
       <a href={`${BASE}#how-it-works`} class="feature-card group block">
         <h3 class="font-semibold text-white mb-1 group-hover:text-indigo-300 transition-colors">How it works</h3>
         <p class="text-sm text-zinc-400">Iris, Hera, and the supervision model in four steps</p>
+      </a>
+      <a href={`${BASE}#build`} class="feature-card group block">
+        <h3 class="font-semibold text-white mb-1 group-hover:text-indigo-300 transition-colors">Build on Vega</h3>
+        <p class="text-sm text-zinc-400">REST, SSE, and type-safe client snippets at a glance</p>
       </a>
     </div>
   </section>
@@ -205,6 +271,7 @@ const BASE = import.meta.env.BASE_URL
       </div>
       <nav class="flex items-center gap-6">
         <a href={BASE} class="hover:text-white transition-colors">Home</a>
+        <a href={`${BASE}#build`} class="hover:text-white transition-colors">Build</a>
         <a href={`${BASE}#features`} class="hover:text-white transition-colors">Features</a>
       </nav>
     </div>
