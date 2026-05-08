@@ -1,5 +1,7 @@
 version: 2
 
+project_name: vega
+
 before:
   hooks:
     # Build the frontend so it gets embedded into the binary.
