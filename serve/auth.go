@@ -111,6 +111,12 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			raw := bearerFrom(r.Header.Get("Authorization"))
 			if raw == "" {
+				// EventSource can't send custom headers; allow the token via
+				// ?access_token=... per RFC 6750 §2.3. Header-bearer is preferred
+				// when present.
+				raw = r.URL.Query().Get("access_token")
+			}
+			if raw == "" {
 				http.Error(w, "missing bearer token", http.StatusUnauthorized)
 				return
 			}

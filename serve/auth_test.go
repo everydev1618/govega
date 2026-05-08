@@ -288,6 +288,58 @@ func TestAuthMiddleware_NoneAlg_Rejected(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_QueryParamFallback_ForSSE(t *testing.T) {
+	// EventSource can't send custom headers, so the auth middleware must
+	// also accept the token via ?access_token=... (RFC 6750 §2.3). Used
+	// only for SSE endpoints in practice; benign for everything else.
+	f := newTestAuth(t, "acme")
+	tok := f.mintToken(t, validClaims("acme"))
+
+	mw := authMiddleware(f.cfg)
+	srv := httptest.NewServer(mw(downstream()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/events?access_token="+tok, nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("status %d, want 200 (query-param token must work)", res.StatusCode)
+	}
+	if got := readAll(t, res); got != "user_123" {
+		t.Errorf("downstream saw %q, want \"user_123\"", got)
+	}
+}
+
+func TestAuthMiddleware_HeaderTakesPrecedenceOverQuery(t *testing.T) {
+	// If both header and query-param tokens are present, the header wins.
+	// Prevents a leaked-URL attack from upgrading itself to a header-class
+	// request by also setting the header to a forged value.
+	f := newTestAuth(t, "acme")
+	headerTok := f.mintToken(t, validClaims("acme"))
+	// Query-param token signed with a different key — should be ignored.
+	otherKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	bad := jwt.NewWithClaims(jwt.SigningMethodRS256, validClaims("acme"))
+	queryTok, _ := bad.SignedString(otherKey)
+
+	mw := authMiddleware(f.cfg)
+	srv := httptest.NewServer(mw(downstream()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/stats?access_token="+queryTok, nil)
+	req.Header.Set("Authorization", "Bearer "+headerTok)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("status %d, want 200 (header-token must take precedence over bad query token)", res.StatusCode)
+	}
+}
+
 func TestClaimsFrom_AbsentReturnsFalse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats", nil)
 	if _, ok := ClaimsFrom(req.Context()); ok {
