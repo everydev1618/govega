@@ -13,11 +13,11 @@ Multi-user support: pass `X-Auth-User: <user-id>` header to scope chat history a
 ### Send a message (non-streaming)
 
 ```
-POST /api/agents/{name}/chat
+POST /api/v1/agents/{name}/chat
 ```
 
 ```bash
-curl -X POST https://your-vega.example.com/api/agents/iris/chat \
+curl -X POST https://your-vega.example.com/api/v1/agents/iris/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "What can you help me with?"}'
 ```
@@ -35,13 +35,13 @@ curl -X POST https://your-vega.example.com/api/agents/iris/chat \
 ### Send a message (streaming)
 
 ```
-POST /api/agents/{name}/chat/stream
+POST /api/v1/agents/{name}/chat/stream
 ```
 
 Returns a Server-Sent Events stream. Each event has a `type` and JSON `data`.
 
 ```bash
-curl -N -X POST https://your-vega.example.com/api/agents/iris/chat/stream \
+curl -N -X POST https://your-vega.example.com/api/v1/agents/iris/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "Build me a landing page"}'
 ```
@@ -61,7 +61,7 @@ curl -N -X POST https://your-vega.example.com/api/agents/iris/chat/stream \
 ### Reconnect to an active stream
 
 ```
-GET /api/agents/{name}/chat/stream
+GET /api/v1/agents/{name}/chat/stream
 ```
 
 Replays all buffered events, then continues with live events. Returns `{"streaming": false}` if no active stream.
@@ -71,7 +71,7 @@ Replays all buffered events, then continues with live events. Returns `{"streami
 ### Check stream status
 
 ```
-GET /api/agents/{name}/chat/status
+GET /api/v1/agents/{name}/chat/status
 ```
 
 **Response:** `{"streaming": true}`
@@ -81,7 +81,7 @@ GET /api/agents/{name}/chat/status
 ### Get chat history
 
 ```
-GET /api/agents/{name}/chat
+GET /api/v1/agents/{name}/chat
 ```
 
 **Response:** Array of `{"role": "user"|"assistant", "content": "..."}`
@@ -91,7 +91,7 @@ GET /api/agents/{name}/chat
 ### Clear chat history
 
 ```
-DELETE /api/agents/{name}/chat
+DELETE /api/v1/agents/{name}/chat
 ```
 
 Clears persisted messages and resets the agent's in-memory process.
@@ -103,11 +103,11 @@ Clears persisted messages and resets the agent's in-memory process.
 ### List agents
 
 ```
-GET /api/agents
+GET /api/v1/agents
 ```
 
 ```bash
-curl https://your-vega.example.com/api/agents
+curl https://your-vega.example.com/api/v1/agents
 ```
 
 **Response:** Array of agent objects:
@@ -131,11 +131,11 @@ curl https://your-vega.example.com/api/agents
 ### Create an agent
 
 ```
-POST /api/agents
+POST /api/v1/agents
 ```
 
 ```bash
-curl -X POST https://your-vega.example.com/api/agents \
+curl -X POST https://your-vega.example.com/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "writer",
@@ -174,7 +174,7 @@ curl -X POST https://your-vega.example.com/api/agents \
 ### Update an agent
 
 ```
-PUT /api/agents/{name}
+PUT /api/v1/agents/{name}
 ```
 
 All fields optional. Only provided fields are updated.
@@ -192,7 +192,7 @@ All fields optional. Only provided fields are updated.
 ### Delete an agent
 
 ```
-DELETE /api/agents/{name}
+DELETE /api/v1/agents/{name}
 ```
 
 ---
@@ -200,7 +200,7 @@ DELETE /api/agents/{name}
 ### Export agent as template
 
 ```
-GET /api/agents/{name}/template
+GET /api/v1/agents/{name}/template
 ```
 
 Returns a portable JSON template that can be imported on another instance.
@@ -210,7 +210,7 @@ Returns a portable JSON template that can be imported on another instance.
 ### Import agent from template
 
 ```
-POST /api/agents/import
+POST /api/v1/agents/import
 ```
 
 Body is the template JSON from the export endpoint. Required fields: `name`, `model`, `system`.
@@ -224,7 +224,7 @@ Slack-style group conversations where multiple agents collaborate.
 ### List channels
 
 ```
-GET /api/channels
+GET /api/v1/channels
 ```
 
 ---
@@ -232,7 +232,7 @@ GET /api/channels
 ### Create a channel
 
 ```
-POST /api/channels
+POST /api/v1/channels
 ```
 
 | Field         | Type     | Required | Description          |
@@ -246,7 +246,7 @@ POST /api/channels
 ### Get a channel
 
 ```
-GET /api/channels/{name}
+GET /api/v1/channels/{name}
 ```
 
 ---
@@ -254,7 +254,7 @@ GET /api/channels/{name}
 ### Delete a channel
 
 ```
-DELETE /api/channels/{name}
+DELETE /api/v1/channels/{name}
 ```
 
 ---
@@ -262,7 +262,7 @@ DELETE /api/channels/{name}
 ### Update channel team
 
 ```
-PUT /api/channels/{name}/team
+PUT /api/v1/channels/{name}/team
 ```
 
 Body: `{"team": ["agent1", "agent2"]}`
@@ -272,7 +272,7 @@ Body: `{"team": ["agent1", "agent2"]}`
 ### List channel messages
 
 ```
-GET /api/channels/{name}/messages?limit=100
+GET /api/v1/channels/{name}/messages?limit=100
 ```
 
 ---
@@ -280,7 +280,7 @@ GET /api/channels/{name}/messages?limit=100
 ### List thread replies
 
 ```
-GET /api/channels/{name}/messages/{id}/thread
+GET /api/v1/channels/{name}/messages/{id}/thread
 ```
 
 ---
@@ -288,7 +288,7 @@ GET /api/channels/{name}/messages/{id}/thread
 ### Post to a channel (non-streaming)
 
 ```
-POST /api/channels/{name}/messages
+POST /api/v1/channels/{name}/messages
 ```
 
 | Field       | Type   | Required | Description                        |
@@ -304,7 +304,7 @@ Agent response is async. Returns `{"message_id": 1, "thread_id": 1}`.
 ### Post to a channel (streaming)
 
 ```
-POST /api/channels/{name}/stream
+POST /api/v1/channels/{name}/stream
 ```
 
 Same request body as non-streaming. Returns SSE with channel events:
@@ -315,7 +315,7 @@ Same request body as non-streaming. Returns SSE with channel events:
 ### Reconnect to channel stream
 
 ```
-GET /api/channels/{name}/stream
+GET /api/v1/channels/{name}/stream
 ```
 
 ---
@@ -325,7 +325,7 @@ GET /api/channels/{name}/stream
 ### List all processes
 
 ```
-GET /api/processes
+GET /api/v1/processes
 ```
 
 ---
@@ -333,7 +333,7 @@ GET /api/processes
 ### Get process detail
 
 ```
-GET /api/processes/{id}
+GET /api/v1/processes/{id}
 ```
 
 Includes full conversation `messages` array.
@@ -343,7 +343,7 @@ Includes full conversation `messages` array.
 ### Kill a process
 
 ```
-DELETE /api/processes/{id}
+DELETE /api/v1/processes/{id}
 ```
 
 ---
@@ -353,7 +353,7 @@ DELETE /api/processes/{id}
 ### List workflows
 
 ```
-GET /api/workflows
+GET /api/v1/workflows
 ```
 
 ---
@@ -361,7 +361,7 @@ GET /api/workflows
 ### Run a workflow
 
 ```
-POST /api/workflows/{name}/run
+POST /api/v1/workflows/{name}/run
 ```
 
 Body: `{"inputs": {"key": "value"}}`
@@ -375,7 +375,7 @@ Returns `202 Accepted` with `{"run_id": "abc12345", "status": "running"}`. Execu
 ### Get agent memory
 
 ```
-GET /api/agents/{name}/memory?user=default
+GET /api/v1/agents/{name}/memory?user=default
 ```
 
 Returns memory layers (profile, topics, notes) for the given user-agent pair.
@@ -385,7 +385,7 @@ Returns memory layers (profile, topics, notes) for the given user-agent pair.
 ### Delete agent memory
 
 ```
-DELETE /api/agents/{name}/memory?user=default
+DELETE /api/v1/agents/{name}/memory?user=default
 ```
 
 ---
@@ -395,7 +395,7 @@ DELETE /api/agents/{name}/memory?user=default
 ### List connected servers
 
 ```
-GET /api/mcp/servers
+GET /api/v1/mcp/servers
 ```
 
 ---
@@ -403,7 +403,7 @@ GET /api/mcp/servers
 ### List MCP registry
 
 ```
-GET /api/mcp/registry
+GET /api/v1/mcp/registry
 ```
 
 Returns available integrations with required/optional env keys and connection status.
@@ -413,7 +413,7 @@ Returns available integrations with required/optional env keys and connection st
 ### Connect a server
 
 ```
-POST /api/mcp/servers
+POST /api/v1/mcp/servers
 ```
 
 | Field       | Type              | Required | Description                    |
@@ -432,7 +432,7 @@ POST /api/mcp/servers
 ### Get server config
 
 ```
-GET /api/mcp/servers/{name}/config
+GET /api/v1/mcp/servers/{name}/config
 ```
 
 ---
@@ -440,7 +440,7 @@ GET /api/mcp/servers/{name}/config
 ### Update a server
 
 ```
-PUT /api/mcp/servers/{name}
+PUT /api/v1/mcp/servers/{name}
 ```
 
 Same body as connect. Disconnects, applies changes, reconnects.
@@ -450,7 +450,7 @@ Same body as connect. Disconnects, applies changes, reconnects.
 ### Refresh a server
 
 ```
-POST /api/mcp/servers/{name}/refresh
+POST /api/v1/mcp/servers/{name}/refresh
 ```
 
 Disconnects and reconnects using persisted config.
@@ -460,7 +460,7 @@ Disconnects and reconnects using persisted config.
 ### Duplicate a server
 
 ```
-POST /api/mcp/servers/{name}/duplicate
+POST /api/v1/mcp/servers/{name}/duplicate
 ```
 
 Body: `{"new_name": "my-copy"}`
@@ -470,7 +470,7 @@ Body: `{"new_name": "my-copy"}`
 ### Enable/disable a server
 
 ```
-PUT /api/mcp/servers/{name}/disable
+PUT /api/v1/mcp/servers/{name}/disable
 ```
 
 Body: `{"disabled": true}` or `{"disabled": false}`
@@ -480,7 +480,7 @@ Body: `{"disabled": true}` or `{"disabled": false}`
 ### Disconnect a server
 
 ```
-DELETE /api/mcp/servers/{name}
+DELETE /api/v1/mcp/servers/{name}
 ```
 
 ---
@@ -490,7 +490,7 @@ DELETE /api/mcp/servers/{name}
 ### List directory
 
 ```
-GET /api/files?path=subdir
+GET /api/v1/files?path=subdir
 ```
 
 Returns array of `FileEntry` objects. Omit `path` for workspace root.
@@ -500,7 +500,7 @@ Returns array of `FileEntry` objects. Omit `path` for workspace root.
 ### Read file
 
 ```
-GET /api/files/read?path=report.md
+GET /api/v1/files/read?path=report.md
 ```
 
 Returns content as UTF-8 text or base64 (for binary). Max 10 MB.
@@ -510,7 +510,7 @@ Returns content as UTF-8 text or base64 (for binary). Max 10 MB.
 ### Delete file
 
 ```
-DELETE /api/files?path=old-file.txt
+DELETE /api/v1/files?path=old-file.txt
 ```
 
 ---
@@ -518,7 +518,7 @@ DELETE /api/files?path=old-file.txt
 ### List file metadata
 
 ```
-GET /api/files/metadata?agent=writer
+GET /api/v1/files/metadata?agent=writer
 ```
 
 Returns files written by agents, with the list of distinct agent names.
@@ -530,7 +530,7 @@ Returns files written by agents, with the list of distinct agent names.
 ### List schedules
 
 ```
-GET /api/schedules
+GET /api/v1/schedules
 ```
 
 ---
@@ -538,7 +538,7 @@ GET /api/schedules
 ### Delete a schedule
 
 ```
-DELETE /api/schedules/{name}
+DELETE /api/v1/schedules/{name}
 ```
 
 ---
@@ -546,7 +546,7 @@ DELETE /api/schedules/{name}
 ### Toggle a schedule
 
 ```
-PUT /api/schedules/{name}
+PUT /api/v1/schedules/{name}
 ```
 
 Body: `{"enabled": true}`
@@ -560,7 +560,7 @@ Agent-posted messages to Iris's inbox.
 ### List inbox items
 
 ```
-GET /api/inbox?status=pending&limit=50
+GET /api/v1/inbox?status=pending&limit=50
 ```
 
 ---
@@ -568,7 +568,7 @@ GET /api/inbox?status=pending&limit=50
 ### Clear resolved items
 
 ```
-DELETE /api/inbox/resolved
+DELETE /api/v1/inbox/resolved
 ```
 
 Returns `{"deleted": 5}`.
@@ -582,7 +582,7 @@ Key-value configuration store. Sensitive values are masked in list responses.
 ### List settings
 
 ```
-GET /api/settings
+GET /api/v1/settings
 ```
 
 ---
@@ -590,7 +590,7 @@ GET /api/settings
 ### Create/update a setting
 
 ```
-PUT /api/settings
+PUT /api/v1/settings
 ```
 
 Body: `{"key": "OPENAI_API_KEY", "value": "sk-...", "sensitive": true}`
@@ -600,7 +600,7 @@ Body: `{"key": "OPENAI_API_KEY", "value": "sk-...", "sensitive": true}`
 ### Delete a setting
 
 ```
-DELETE /api/settings/{key}
+DELETE /api/v1/settings/{key}
 ```
 
 ---
@@ -612,7 +612,7 @@ Prompts sent to Iris, preserved across resets.
 ### List prompt history
 
 ```
-GET /api/prompt-history?limit=100
+GET /api/v1/prompt-history?limit=100
 ```
 
 ---
@@ -620,7 +620,7 @@ GET /api/prompt-history?limit=100
 ### Search prompt history
 
 ```
-GET /api/prompt-history/search?q=landing+page&limit=50
+GET /api/v1/prompt-history/search?q=landing+page&limit=50
 ```
 
 ---
@@ -628,7 +628,7 @@ GET /api/prompt-history/search?q=landing+page&limit=50
 ### Delete a prompt history entry
 
 ```
-DELETE /api/prompt-history/{id}
+DELETE /api/v1/prompt-history/{id}
 ```
 
 ---
@@ -638,7 +638,7 @@ DELETE /api/prompt-history/{id}
 ### Get company info
 
 ```
-GET /api/company
+GET /api/v1/company
 ```
 
 ---
@@ -646,7 +646,7 @@ GET /api/company
 ### Get system stats
 
 ```
-GET /api/stats
+GET /api/v1/stats
 ```
 
 Returns aggregate token counts, costs, process counts, and uptime.
@@ -656,7 +656,7 @@ Returns aggregate token counts, costs, process counts, and uptime.
 ### Get spawn tree
 
 ```
-GET /api/spawn-tree
+GET /api/v1/spawn-tree
 ```
 
 Hierarchical view of parent-child process relationships.
@@ -666,7 +666,7 @@ Hierarchical view of parent-child process relationships.
 ### Global SSE event stream
 
 ```
-GET /api/events
+GET /api/v1/events
 ```
 
 Real-time Server-Sent Events for process lifecycle, agent status, and workflow completions. Heartbeat every 30 seconds.
@@ -676,7 +676,7 @@ Real-time Server-Sent Events for process lifecycle, agent status, and workflow c
 ### Full system reset
 
 ```
-POST /api/reset
+POST /api/v1/reset
 ```
 
 Kills all processes, disconnects MCP servers, clears database (except prompt history), and removes workspace files.
@@ -690,7 +690,7 @@ Registry of installable personas, skills, and profiles.
 ### Search population
 
 ```
-GET /api/population/search?q=writer&kind=persona
+GET /api/v1/population/search?q=writer&kind=persona
 ```
 
 ---
@@ -698,7 +698,7 @@ GET /api/population/search?q=writer&kind=persona
 ### Get population item info
 
 ```
-GET /api/population/info/{kind}/{name}
+GET /api/v1/population/info/{kind}/{name}
 ```
 
 Kind: `persona`, `skill`, or `profile`.
@@ -708,7 +708,7 @@ Kind: `persona`, `skill`, or `profile`.
 ### Install a population item
 
 ```
-POST /api/population/install
+POST /api/v1/population/install
 ```
 
 Body: `{"name": "@writer"}` (personas prefixed with `@`, profiles with `+`).
@@ -718,7 +718,7 @@ Body: `{"name": "@writer"}` (personas prefixed with `@`, profiles with `+`).
 ### List installed items
 
 ```
-GET /api/population/installed?kind=persona
+GET /api/v1/population/installed?kind=persona
 ```
 
 ---
@@ -728,7 +728,7 @@ GET /api/population/installed?kind=persona
 ### Get current config
 
 ```
-GET /api/config
+GET /api/v1/config
 ```
 
 Returns the running configuration: team name, all agents (with source: `yaml`, `composed`, or `builtin`), connected MCP servers, and settings.
@@ -738,13 +738,13 @@ Returns the running configuration: team name, all agents (with source: `yaml`, `
 ### Upload a team YAML
 
 ```
-POST /api/config/upload
+POST /api/v1/config/upload
 ```
 
 Upload a `.vega.yaml` file to create or update agents and connect MCP servers at runtime. Changes persist across restarts.
 
 ```bash
-curl -X POST https://your-vega.example.com/api/config/upload \
+curl -X POST https://your-vega.example.com/api/v1/config/upload \
   -F "file=@my-team.vega.yaml"
 ```
 

@@ -90,7 +90,7 @@ const placeholderHTML = `<!DOCTYPE html>
     <h1>Vega Dashboard</h1>
     <p>The frontend has not been built yet. The REST API is available.</p>
     <p>Build the frontend: <code>cd serve/frontend && npm install && npm run build</code></p>
-    <a class="api-link" href="/api/stats">View API Stats →</a>
+    <a class="api-link" href="/api/v1/stats">View API Stats →</a>
   </div>
 </body>
 </html>
