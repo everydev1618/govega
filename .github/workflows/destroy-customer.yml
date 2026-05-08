@@ -66,4 +66,5 @@ jobs:
           aws ssm delete-parameter --name "/vega/${{ github.event.inputs.customer }}/env" 2>/dev/null || true
 
       - name: Summary
-        run: echo "### Destroyed: ${{ github.event.inputs.customer }}" >> $GITHUB_STEP_SUMMARY
+        run: |
+          echo "### Destroyed: ${{ github.event.inputs.customer }}" >> $GITHUB_STEP_SUMMARY
