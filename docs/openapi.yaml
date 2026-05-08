@@ -1314,6 +1314,308 @@ paths:
         "503":
           description: Too many subscribers
 
+  # ── Identity / Config ─────────────────────────────────────────────────
+  /api/v1/identity:
+    get:
+      tags: [System]
+      summary: Get orchestrator/builder identities + product name
+      operationId: getIdentity
+      responses:
+        "200":
+          description: Identity info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityResponse"
+
+  /api/v1/config:
+    get:
+      tags: [System]
+      summary: Get the running configuration (agents, MCP servers, settings)
+      operationId: getConfig
+      responses:
+        "200":
+          description: Current config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
+
+  /api/v1/config/upload:
+    post:
+      tags: [System]
+      summary: Upload a .vega.yaml file and apply its agents + MCP servers
+      operationId: uploadConfig
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: A .vega.yaml or .vega.yml file (max 2MB)
+      responses:
+        "200":
+          description: Apply result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigUploadResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          description: Invalid YAML
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Chat read receipts ────────────────────────────────────────────────
+  /api/v1/chat/unread:
+    get:
+      tags: [Chat]
+      summary: Unread message counts per agent (DM)
+      operationId: chatUnreadCounts
+      parameters:
+        - $ref: "#/components/parameters/XAuthUser"
+      responses:
+        "200":
+          description: Map of agent name → unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: integer
+
+  /api/v1/agents/{name}/chat/read:
+    post:
+      tags: [Chat]
+      summary: Mark all DM messages from an agent as read
+      operationId: markChatRead
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/XAuthUser"
+      responses:
+        "200":
+          description: Marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+
+  /api/v1/channels/{name}/read:
+    post:
+      tags: [Channels]
+      summary: Mark all messages in a channel as read
+      operationId: markChannelRead
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+        - $ref: "#/components/parameters/XAuthUser"
+      responses:
+        "200":
+          description: Marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Integrations: Telegram ────────────────────────────────────────────
+  /api/v1/integrations/telegram:
+    get:
+      tags: [Integrations]
+      summary: List configured Telegram bots (no tokens)
+      operationId: listTelegramBots
+      responses:
+        "200":
+          description: Bots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TelegramBotStatus"
+    post:
+      tags: [Integrations]
+      summary: Add or replace a Telegram bot
+      operationId: configureTelegramBot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramConfigureRequest"
+      responses:
+        "200":
+          description: Updated bot list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TelegramBotStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          description: Telegram API error
+
+  /api/v1/integrations/telegram/{id}:
+    delete:
+      tags: [Integrations]
+      summary: Stop and drop a Telegram bot by id
+      operationId: removeTelegramBot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Bot id (numeric prefix of the bot token)
+      responses:
+        "200":
+          description: Updated bot list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TelegramBotStatus"
+
+  # ── Integrations: Gmail ───────────────────────────────────────────────
+  /api/v1/integrations/gmail:
+    get:
+      tags: [Integrations]
+      summary: Gmail connection status (no secrets)
+      operationId: getGmailStatus
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailStatus"
+    post:
+      tags: [Integrations]
+      summary: Manual paste — store Client ID + Client Secret + Refresh Token
+      description: |
+        Self-hosted operators bring their own OAuth client. For cloud-mode
+        end users, prefer POST /api/v1/integrations/gmail/start which mediates
+        through the control plane's shared OAuth client.
+      operationId: configureGmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GmailConfigureRequest"
+      responses:
+        "200":
+          description: Status (post-config)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          description: Failed to connect Gmail MCP server with given creds
+    delete:
+      tags: [Integrations]
+      summary: Disconnect Gmail and remove stored credentials
+      operationId: disableGmail
+      responses:
+        "200":
+          description: Status (post-disconnect)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailStatus"
+
+  /api/v1/integrations/gmail/start:
+    post:
+      tags: [Integrations]
+      summary: Cloud-mode initiate — proxy to control plane's /oauth/gmail/init
+      description: |
+        Returns Google's authorize URL. The SPA navigates to it; after
+        Google authorization the control plane redirects the browser back
+        to <return>?gmail_handoff=<jwt> which the SPA passes to
+        POST /api/v1/integrations/gmail/handoff.
+
+        Returns 503 when the tenant has no APEX_CONTROL_PLANE_URL configured;
+        callers should fall back to the manual paste flow (POST /api/v1/integrations/gmail).
+      operationId: startGmailConnect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [return]
+              properties:
+                return:
+                  type: string
+                  format: uri
+                  description: URL to redirect the user to after Google auth completes
+      responses:
+        "200":
+          description: Authorize URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorize_url]
+                properties:
+                  authorize_url:
+                    type: string
+                    format: uri
+        "503":
+          description: Cloud-mode Gmail OAuth not configured on this tenant
+        "502":
+          description: Control plane unreachable
+
+  /api/v1/integrations/gmail/handoff:
+    post:
+      tags: [Integrations]
+      summary: Cloud-mode complete — consume a control-plane handoff JWT
+      description: |
+        Validates a 60-second JWT signed by the control plane (purpose=gmail-handoff,
+        aud=this tenant, sub=authenticated user, jti for replay protection),
+        persists the embedded refresh token to settings, and exports
+        GMAIL_REFRESH_TOKEN. The SPA invokes this when it lands at a URL
+        containing ?gmail_handoff=<jwt> after the OAuth round-trip.
+      operationId: consumeGmailHandoff
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handoff_token]
+              properties:
+                handoff_token:
+                  type: string
+                  description: Control-plane-signed JWT, purpose=gmail-handoff
+      responses:
+        "200":
+          description: Persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+        "400":
+          description: Invalid handoff (bad signature, expired, wrong purpose, replay, missing refresh token)
+        "403":
+          description: Handoff sub does not match authenticated user
+
 # ═══════════════════════════════════════════════════════════════════════
 components:
   parameters:
@@ -2262,3 +2564,165 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    # ── Identity / Config ─────────────────────────────────────────────
+    AgentIdentity:
+      type: object
+      required: [id, display_name]
+      properties:
+        id:
+          type: string
+        display_name:
+          type: string
+        title:
+          type: string
+
+    IdentityResponse:
+      type: object
+      required: [orchestrator, builder, product_name]
+      properties:
+        orchestrator:
+          $ref: "#/components/schemas/AgentIdentity"
+        builder:
+          $ref: "#/components/schemas/AgentIdentity"
+        product_name:
+          type: string
+
+    ConfigAgentInfo:
+      type: object
+      required: [name, model, source]
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        model:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        team:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+          enum: [yaml, composed, builtin]
+
+    ConfigMCPInfo:
+      type: object
+      required: [name, connected]
+      properties:
+        name:
+          type: string
+        connected:
+          type: boolean
+        transport:
+          type: string
+
+    ConfigSettingsInfo:
+      type: object
+      properties:
+        default_model:
+          type: string
+
+    ConfigResponse:
+      type: object
+      required: [name, agents, mcp_servers]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigAgentInfo"
+        mcp_servers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigMCPInfo"
+        settings:
+          $ref: "#/components/schemas/ConfigSettingsInfo"
+
+    ConfigUploadResult:
+      type: object
+      properties:
+        name:
+          type: string
+        agents_created:
+          type: array
+          items:
+            type: string
+        agents_updated:
+          type: array
+          items:
+            type: string
+        agents_skipped:
+          type: array
+          items:
+            type: string
+        mcp_connected:
+          type: array
+          items:
+            type: string
+        mcp_failed:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+    # ── Integrations ──────────────────────────────────────────────────
+    TelegramBotStatus:
+      type: object
+      required: [id, agent, running]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        agent:
+          type: string
+        running:
+          type: boolean
+
+    TelegramConfigureRequest:
+      type: object
+      required: [token, agent]
+      properties:
+        token:
+          type: string
+          description: Bot token from @BotFather
+        agent:
+          type: string
+          description: Agent name to bind the bot to (defaults to orchestrator)
+        label:
+          type: string
+
+    GmailStatus:
+      type: object
+      required: [connected, has_client_id, has_client_secret, has_refresh_token]
+      properties:
+        connected:
+          type: boolean
+        has_client_id:
+          type: boolean
+        has_client_secret:
+          type: boolean
+        has_refresh_token:
+          type: boolean
+
+    GmailConfigureRequest:
+      type: object
+      required: [client_id, client_secret, refresh_token]
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        refresh_token:
+          type: string
