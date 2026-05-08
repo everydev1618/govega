@@ -37,8 +37,26 @@ const BASE = import.meta.env.BASE_URL
       Building <span class="gradient-text">on Vega</span>
     </h1>
     <p class="text-lg text-zinc-400 max-w-xl mx-auto">
-      From <code class="text-base bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">git clone</code> to a real API call in about 10 minutes. For builders consuming Vega — frontends, integrations, mobile apps.
+      Two paths in: <a href="#quick-start" class="text-indigo-400 hover:text-indigo-300 transition-colors">install the binary and play</a>, or <a href="#dev-stack" class="text-indigo-400 hover:text-indigo-300 transition-colors">spin up the multi-tenant dev stack</a> to build on the API.
     </p>
+  </section>
+
+  <!-- Quick start -->
+  <section id="quick-start" class="max-w-3xl mx-auto px-6 pb-12">
+    <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6">
+      <p class="text-sm text-amber-400 font-medium mb-2">Quick start &middot; self-hosted mode</p>
+      <p class="text-sm text-zinc-300 leading-relaxed mb-4">
+        Just want to play with Vega? Install the binary, run <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">vega serve</code>, and open the dashboard. No control plane, no auth.
+      </p>
+      <div class="code-block mb-4">
+        <p><span class="syn-comment">$</span> <span class="syn-str">brew install</span> everydev1618/tap/vega</p>
+        <p class="mt-1"><span class="syn-comment">$</span> <span class="syn-str">vega serve</span></p>
+        <p class="text-zinc-500 mt-1">&#x25B6; Dashboard ready at http://localhost:8080</p>
+      </div>
+      <p class="text-xs text-zinc-500 leading-relaxed">
+        Talk to <span class="text-violet-400 font-mono">Iris</span> in the dashboard &mdash; she's your chief of staff. Tell her what you need; <span class="text-amber-400 font-mono">Hera</span> builds agents on the fly. To go further (multi-tenant, JWT auth, hosted deployments), keep reading.
+      </p>
+    </div>
   </section>
 
   <!-- The layering -->
@@ -66,7 +84,7 @@ const BASE = import.meta.env.BASE_URL
   </section>
 
   <!-- Step 1 -->
-  <section class="max-w-3xl mx-auto px-6 pb-16">
+  <section id="dev-stack" class="max-w-3xl mx-auto px-6 pb-16">
     <div class="flex items-center gap-4 mb-5">
       <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">1</span>
       <h2 class="text-xl font-semibold text-white">Spin up the dev stack</h2>
@@ -230,16 +248,6 @@ const BASE = import.meta.env.BASE_URL
         <p>Required claims: <span class="font-mono text-xs text-zinc-300">iss</span> (control plane URL), <span class="font-mono text-xs text-zinc-300">aud</span> (tenant id), <span class="font-mono text-xs text-zinc-300">sub</span> (user id), <span class="font-mono text-xs text-zinc-300">exp</span>.</p>
         <p>15-minute lifetime by default &mdash; refresh before expiry. <span class="text-zinc-500">401 = re-login. 403 = wrong tenant.</span></p>
       </div>
-    </div>
-  </section>
-
-  <!-- Self-hosted -->
-  <section class="max-w-3xl mx-auto px-6 pb-16">
-    <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-5">
-      <p class="text-sm text-amber-400 font-medium mb-2">Self-hosted mode</p>
-      <p class="text-sm text-zinc-300 leading-relaxed">
-        Drop <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">APEX_TENANT_ID</code> and the auth env vars and the auth middleware becomes a no-op. The embedded Vega dashboard is then served at <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">http://localhost:8080</code>. Useful for very early dev or single-binary deploys.
-      </p>
     </div>
   </section>
 
