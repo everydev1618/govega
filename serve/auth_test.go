@@ -340,6 +340,97 @@ func TestAuthMiddleware_HeaderTakesPrecedenceOverQuery(t *testing.T) {
 	}
 }
 
+func TestAuthConfig_Verify_ValidHandoffToken(t *testing.T) {
+	// Verify is the seam by which non-/api/v1 handlers (e.g. Gmail handoff)
+	// validate JWTs from the control plane. Same Keyfunc + iss + aud as
+	// the middleware; adds an optional purpose-claim check.
+	f := newTestAuth(t, "acme")
+	claims := jwt.MapClaims{
+		"iss":     "https://auth.test",
+		"aud":     "acme",
+		"sub":     "user_123",
+		"exp":     time.Now().Add(time.Minute).Unix(),
+		"purpose": "gmail-handoff",
+		"jti":     "abc123",
+	}
+	tok := f.mintToken(t, claims)
+
+	got, err := f.cfg.Verify(tok, "gmail-handoff")
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if got["sub"] != "user_123" {
+		t.Errorf("sub=%v, want user_123", got["sub"])
+	}
+	if got["jti"] != "abc123" {
+		t.Errorf("jti=%v, want abc123", got["jti"])
+	}
+}
+
+func TestAuthConfig_Verify_WrongPurpose_Rejected(t *testing.T) {
+	f := newTestAuth(t, "acme")
+	claims := validClaims("acme")
+	claims["purpose"] = "user-access" // not "gmail-handoff"
+	tok := f.mintToken(t, claims)
+
+	_, err := f.cfg.Verify(tok, "gmail-handoff")
+	if err == nil {
+		t.Errorf("Verify accepted token with wrong purpose")
+	}
+}
+
+func TestAuthConfig_Verify_MissingPurpose_RejectedWhenRequired(t *testing.T) {
+	// When requirePurpose != "", a missing purpose claim is a rejection —
+	// prevents an attacker from substituting a regular access token.
+	f := newTestAuth(t, "acme")
+	tok := f.mintToken(t, validClaims("acme")) // no purpose claim
+
+	_, err := f.cfg.Verify(tok, "gmail-handoff")
+	if err == nil {
+		t.Errorf("Verify accepted token with missing purpose")
+	}
+}
+
+func TestAuthConfig_Verify_EmptyPurposeArg_AcceptsAnyPurpose(t *testing.T) {
+	// requirePurpose="" disables the check (e.g. for plain access-token
+	// validation outside the middleware).
+	f := newTestAuth(t, "acme")
+	tok := f.mintToken(t, validClaims("acme"))
+
+	if _, err := f.cfg.Verify(tok, ""); err != nil {
+		t.Errorf("Verify(_, \"\") rejected a valid access token: %v", err)
+	}
+}
+
+func TestAuthConfig_Verify_WrongAudience_Rejected(t *testing.T) {
+	f := newTestAuth(t, "acme")
+	tok := f.mintToken(t, validClaims("globex")) // different tenant
+
+	if _, err := f.cfg.Verify(tok, ""); err == nil {
+		t.Errorf("Verify accepted token with wrong audience")
+	}
+}
+
+func TestAuthConfig_Verify_Expired_Rejected(t *testing.T) {
+	f := newTestAuth(t, "acme")
+	claims := validClaims("acme")
+	claims["exp"] = time.Now().Add(-time.Minute).Unix()
+	tok := f.mintToken(t, claims)
+
+	if _, err := f.cfg.Verify(tok, ""); err == nil {
+		t.Errorf("Verify accepted expired token")
+	}
+}
+
+func TestAuthConfig_Verify_NoAuthDisabled(t *testing.T) {
+	// Self-hosted mode (no TenantID) — Verify always returns an error so
+	// callers can't accidentally treat unauth contexts as authenticated.
+	cfg := AuthConfig{}
+	if _, err := cfg.Verify("any.token.here", ""); err == nil {
+		t.Errorf("Verify on zero-value AuthConfig returned nil error")
+	}
+}
+
 func TestClaimsFrom_AbsentReturnsFalse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats", nil)
 	if _, ok := ClaimsFrom(req.Context()); ok {

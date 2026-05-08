@@ -87,6 +87,45 @@ func ClaimsFrom(ctx context.Context) (AuthClaims, bool) {
 	return c, ok
 }
 
+// Verify validates a JWT against this AuthConfig's issuer/audience/key
+// expectations and returns its claims. It is the seam for handlers that
+// live outside the /api/v1 middleware (e.g. the Gmail OAuth handoff,
+// which arrives via redirect with a query-param token).
+//
+// requirePurpose, if non-empty, additionally requires the token's
+// "purpose" claim to match exactly. Pass "" to skip the check (e.g. for
+// plain access-token validation).
+//
+// Returns an error on any validation failure, including when called on a
+// zero-valued AuthConfig (self-hosted mode) — callers must not treat an
+// unconfigured Verify as success.
+func (cfg AuthConfig) Verify(token, requirePurpose string) (jwt.MapClaims, error) {
+	if cfg.TenantID == "" || cfg.Keyfunc == nil {
+		return nil, errors.New("auth not configured")
+	}
+	parser := jwt.NewParser(
+		jwt.WithIssuer(cfg.Issuer),
+		jwt.WithAudience(cfg.TenantID),
+		jwt.WithExpirationRequired(),
+		jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}),
+	)
+	parsed, err := parser.Parse(token, cfg.Keyfunc)
+	if err != nil {
+		return nil, err
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok || !parsed.Valid {
+		return nil, errors.New("invalid claims")
+	}
+	if requirePurpose != "" {
+		got, _ := claims["purpose"].(string)
+		if got != requirePurpose {
+			return nil, fmt.Errorf("purpose=%q, want %q", got, requirePurpose)
+		}
+	}
+	return claims, nil
+}
+
 // authMiddleware enforces JWT auth on /api/v1/* paths. Other paths pass
 // through unauthenticated. If cfg.TenantID is empty, the middleware is a
 // no-op pass-through — used for self-hosted deployments.
