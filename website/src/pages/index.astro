@@ -357,8 +357,7 @@ const howItWorks = [
         </div>
         <div class="code-block text-xs leading-relaxed">
           <p><span class="syn-comment">$</span> <span class="syn-str">curl</span> -X POST \</p>
-          <p class="pl-4">localhost:8081/api/v1/agents/sofia/chat \</p>
-          <p class="pl-4">-H <span class="syn-str">"Authorization: Bearer $TOKEN"</span> \</p>
+          <p class="pl-4">localhost:8080/api/v1/agents/sofia/chat \</p>
           <p class="pl-4">-d <span class="syn-str">'&#123;"message": "draft a post"&#125;'</span></p>
           <p class="mt-2 text-zinc-500">&#x25B6; &#123; <span class="syn-key">"response"</span>: <span class="syn-str">"..."</span> &#125;</p>
         </div>
@@ -375,7 +374,7 @@ const howItWorks = [
         </div>
         <div class="code-block text-xs leading-relaxed">
           <p><span class="syn-key">const</span> <span class="syn-type">es</span> = <span class="syn-key">new</span> <span class="syn-fn">EventSource</span>(</p>
-          <p class="pl-4"><span class="syn-str">`/api/v1/events?access_token=$&#123;t&#125;`</span></p>
+          <p class="pl-4"><span class="syn-str">'http://localhost:8080/api/v1/events'</span></p>
           <p>)</p>
           <p class="mt-2"><span class="syn-type">es</span>.<span class="syn-fn">addEventListener</span>(<span class="syn-str">'process.completed'</span>,</p>
           <p class="pl-4">(e) =&gt; <span class="syn-fn">render</span>(<span class="syn-type">JSON</span>.<span class="syn-fn">parse</span>(e.data))</p>
@@ -396,7 +395,7 @@ const howItWorks = [
           <p><span class="syn-key">import</span> <span class="syn-fn">createClient</span> <span class="syn-key">from</span> <span class="syn-str">'openapi-fetch'</span></p>
           <p><span class="syn-key">import type</span> &#123; paths &#125; <span class="syn-key">from</span> <span class="syn-str">'@vega/api-types'</span></p>
           <p class="mt-2"><span class="syn-key">const</span> <span class="syn-type">api</span> = <span class="syn-fn">createClient</span>&lt;paths&gt;(&#123;</p>
-          <p class="pl-4">baseUrl: <span class="syn-str">'http://localhost:8081'</span>,</p>
+          <p class="pl-4">baseUrl: <span class="syn-str">'http://localhost:8080'</span>,</p>
           <p>&#125;)</p>
           <p class="mt-2"><span class="syn-key">const</span> &#123; data &#125; = <span class="syn-key">await</span> <span class="syn-type">api</span>.<span class="syn-fn">GET</span>(<span class="syn-str">'/api/v1/agents'</span>)</p>
         </div>
