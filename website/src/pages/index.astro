@@ -1,7 +1,6 @@
 ---
 import '../styles/global.css'
 
-const GITHUB = 'https://github.com/everydev1618/govega'
 const BASE = import.meta.env.BASE_URL
 
 const features = [
@@ -98,11 +97,6 @@ const howItWorks = [
         <a href={`${BASE}getting-started`} class="hover:text-white transition-colors">Docs</a>
       </nav>
       <div class="flex items-center gap-3">
-        <a href={GITHUB} target="_blank" class="text-zinc-400 hover:text-white transition-colors">
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
-          </svg>
-        </a>
         <a href={`${BASE}getting-started`} class="btn-primary text-xs px-4 py-2">Get started</a>
       </div>
     </div>
@@ -114,7 +108,7 @@ const howItWorks = [
     <div class="max-w-6xl mx-auto px-6 pt-28 pb-24 relative">
       <div class="max-w-3xl mx-auto text-center">
         <p class="inline-block text-xs font-mono text-indigo-400 border border-indigo-500/30 rounded-full px-4 py-1.5 mb-8 bg-indigo-500/5">
-          Open source &middot; Go library &middot; YAML DSL &middot; MIT License
+          Multi-agent &middot; Go library &middot; YAML DSL &middot; MCP-native
         </p>
 
         <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-[1.1]">
@@ -132,25 +126,24 @@ const howItWorks = [
           <a href={`${BASE}getting-started`} class="btn-primary">
             Get started
           </a>
-          <a href={GITHUB} target="_blank" class="btn-secondary">
-            View on GitHub
-          </a>
         </div>
 
-        <!-- Install snippet -->
+        <!-- DSL preview -->
         <div class="max-w-lg mx-auto">
           <div class="code-block text-left text-sm glow-sm">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-zinc-500 text-xs font-mono">Install</span>
+              <span class="text-zinc-500 text-xs font-mono">Define an agent</span>
               <div class="flex gap-1.5">
                 <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
                 <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
                 <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
               </div>
             </div>
-            <p><span class="syn-comment">$</span> <span class="syn-str">brew install</span> everydev1618/tap/vega</p>
-            <p class="mt-1"><span class="syn-comment">$</span> <span class="syn-str">vega serve</span></p>
-            <p class="text-zinc-500 mt-1">&#x25B6; Dashboard ready at http://localhost:3001</p>
+            <p><span class="syn-key">agents</span>:</p>
+            <p class="pl-4"><span class="syn-type">sofia</span>:</p>
+            <p class="pl-6"><span class="syn-key">model</span>: claude-sonnet-4-20250514</p>
+            <p class="pl-6"><span class="syn-key">system</span>: <span class="syn-str">You write blog posts.</span></p>
+            <p class="pl-6"><span class="syn-key">tools</span>: [<span class="syn-fn">read_file</span>, <span class="syn-fn">write_file</span>]</p>
           </div>
         </div>
       </div>
@@ -356,9 +349,6 @@ const howItWorks = [
         <a href={`${BASE}getting-started`} class="btn-primary">
           Get started
         </a>
-        <a href={GITHUB} target="_blank" class="btn-secondary">
-          Star on GitHub
-        </a>
       </div>
     </div>
   </section>
@@ -394,13 +384,11 @@ const howItWorks = [
       <div class="flex items-center gap-2 font-mono">
         <span class="text-amber-400">&#9733;</span>
         <span class="gradient-text font-semibold">Vega</span>
-        <span>&middot; MIT License</span>
       </div>
       <nav class="flex items-center gap-6">
-        <a href={GITHUB} target="_blank" class="hover:text-white transition-colors">GitHub</a>
         <a href={`${BASE}getting-started`} class="hover:text-white transition-colors">Docs</a>
-        <a href={`${GITHUB}/tree/main/examples`} target="_blank" class="hover:text-white transition-colors">Examples</a>
-        <a href={`${GITHUB}/releases`} target="_blank" class="hover:text-white transition-colors">Releases</a>
+        <a href="#features" class="hover:text-white transition-colors">Features</a>
+        <a href="#how-it-works" class="hover:text-white transition-colors">How it works</a>
       </nav>
     </div>
   </footer>
