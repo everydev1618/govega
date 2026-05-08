@@ -701,8 +701,13 @@ func (s *Server) Start(ctx context.Context) error {
 	baseURL := fmt.Sprintf("http://localhost:%s", port)
 	s.interp.SetServerBaseURL(baseURL)
 
+	authCfg, err := LoadAuthConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("load auth config: %w", err)
+	}
+
 	srv := &http.Server{
-		Handler: corsMiddleware(mux),
+		Handler: corsMiddleware(LoadCORSConfig())(authMiddleware(authCfg)(mux)),
 	}
 
 	// Start server in goroutine.
@@ -937,22 +942,6 @@ func (s *Server) wireCallbacks() {
 
 		// Snapshot final state.
 		s.store.(*SQLiteStore).snapshotProcess(processToResponse(p))
-	})
-}
-
-// corsMiddleware adds permissive CORS headers for development.
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Auth-User")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		next.ServeHTTP(w, r)
 	})
 }
 
