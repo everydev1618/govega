@@ -99,13 +99,16 @@ func (s *Server) extractMemory(userID, agent, userMsg, response string) {
 		{Role: llm.RoleUser, Content: prompt},
 	}
 
-	// Enforce the response shape on supported models. The schema is
-	// permissive on the inner maps (profile_updates / notes_updates
-	// are open) — what we care about is the top-level structure and
-	// ruling out markdown-wrapped or otherwise malformed output. On
-	// older models this is silently dropped and we fall back to the
-	// fence-stripping parser below.
-	ctx = llm.ContextWithOptions(ctx, llm.Options{OutputSchema: extractionSchema})
+	// Note: we used to pass extractionSchema as OutputSchema for strict-mode
+	// JSON enforcement. The Anthropic API now requires every object type
+	// in a structured-output schema to have additionalProperties: false —
+	// which conflicts with profile_updates and notes_updates, where the
+	// LLM extracts arbitrary keys. Rather than convert those to
+	// array-of-pairs (which complicates downstream merge logic) or
+	// enumerate every possible profile field, we rely on the prompt
+	// instructions and the fence-stripping parser. parseExtractionResult
+	// is robust to typical LLM output (with or without ```json fences).
+	// extractionSchema is kept as documentation of the expected shape.
 
 	resp, err := extractLLM.Generate(ctx, messages, nil)
 	if err != nil {
