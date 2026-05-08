@@ -2,6 +2,18 @@
 
 Releases are automated via [GoReleaser](https://goreleaser.com/) and GitHub Actions.
 
+## Distribution model
+
+govega is private. Public distribution flows through two public sister repos:
+
+| Repo | Visibility | Holds |
+|---|---|---|
+| `everydev1618/govega` | Private | Source code |
+| `everydev1618/vega-releases` | **Public** | Built binaries (release artifacts only, no source) |
+| `everydev1618/homebrew-tap` | **Public** | Homebrew formula (one file per release) |
+
+End-user install: `brew install everydev1618/tap/vega`. Brew downloads the binary tarball from `vega-releases` (public, no auth) and the formula from `homebrew-tap`.
+
 ## How to release
 
 Tag and push:
@@ -11,29 +23,46 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Actions will automatically:
+GitHub Actions (in govega) will automatically:
 
 1. Build the React frontend (`serve/frontend/`)
 2. Cross-compile binaries for macOS (arm64/amd64), Linux (arm64/amd64), Windows (amd64)
 3. Inject the version into the binary (`vega version` prints the tag)
-4. Create a GitHub Release with tarballs, zips, and checksums
-5. Push a Homebrew formula to `everydev1618/homebrew-tap`
+4. Create a GitHub Release on **`everydev1618/vega-releases`** with tarballs, zips, and checksums
+5. Push an updated Homebrew formula to **`everydev1618/homebrew-tap`** (`Formula/vega.rb`)
 
 ## One-time setup
 
-### Homebrew tap repo
+### Public sister repos
 
-Create an empty repo at `github.com/everydev1618/homebrew-tap`. GoReleaser pushes a formula there on each release.
+Create the two public repos (one-time):
+
+```bash
+gh repo create everydev1618/vega-releases --public \
+  --description "Public release artifacts for Vega. Source lives at v3ga.dev."
+
+gh repo create everydev1618/homebrew-tap --public \
+  --description "Homebrew tap for everydev1618 tools. brew install everydev1618/tap/vega"
+```
 
 ### GitHub secrets
 
-In the govega repo settings (Settings > Secrets and variables > Actions), add:
+`GITHUB_TOKEN` (auto-provided by Actions) only has access to the govega repo, so we override it with a fine-grained PAT that can push to the two public repos.
 
-| Secret | Purpose |
+Mint a fine-grained PAT (Settings > Developer settings > Personal access tokens > Fine-grained):
+
+- **Resource owner:** `everydev1618`
+- **Repository access:** Only select repositories → `vega-releases`, `homebrew-tap`
+- **Permissions:** `Contents: Read and write`
+
+Add to govega repo secrets (Settings > Secrets and variables > Actions):
+
+| Secret | Value |
 |---|---|
-| `HOMEBREW_TAP_TOKEN` | Personal Access Token with `repo` scope. Used by GoReleaser to push the formula to the tap repo. |
+| `RELEASES_TOKEN` | The PAT (used by goreleaser to publish releases to vega-releases) |
+| `HOMEBREW_TAP_TOKEN` | The same PAT (used by goreleaser to push the formula to homebrew-tap) |
 
-`GITHUB_TOKEN` is provided automatically by GitHub Actions.
+A single PAT works for both since the scopes overlap. They're named separately so we can rotate independently if needed later.
 
 ## Testing a release locally
 

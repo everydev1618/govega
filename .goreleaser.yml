@@ -51,9 +51,9 @@ brews:
     repository:
       owner: everydev1618
       name: homebrew-tap
-      token: "{{ if .Env.HOMEBREW_TAP_TOKEN }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ else }}{{ .Env.GITHUB_TOKEN }}{{ end }}"
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/everydev1618/govega
+    homepage: https://v3ga.dev
     description: AI Agent Orchestration CLI
     license: MIT
     install: |
@@ -64,7 +64,7 @@ brews:
 release:
   github:
     owner: everydev1618
-    name: govega
+    name: vega-releases
   draft: false
   prerelease: auto
   name_template: "v{{.Version}}"

@@ -35,5 +35,8 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with Contents:Write on everydev1618/vega-releases.
+          # Default GITHUB_TOKEN is scoped to govega and can't push to the releases repo.
+          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          # PAT with Contents:Write on everydev1618/homebrew-tap.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
