@@ -1,7 +1,10 @@
 package serve
 
 import (
+	"errors"
 	"testing"
+
+	vega "github.com/everydev1618/govega"
 )
 
 // TestListChatMessages_IncludesIDAndTimestamp covers the #48 contract:
@@ -45,5 +48,34 @@ func TestListChatMessages_IncludesIDAndTimestamp(t *testing.T) {
 	}
 	if msgs[1].Role != "assistant" || msgs[1].Content != "second" {
 		t.Errorf("msg 1 wrong: %+v", msgs[1])
+	}
+}
+
+// TestChatEventErrorCode covers the #48 ask: SSE error events should carry
+// a structured `code` so the frontend can show the right recovery
+// affordance instead of substring-matching the prose. Maps from vega's
+// existing ErrorClass classifier.
+func TestChatEventErrorCode(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want vega.ChatEventCode
+	}{
+		{"rate limited", errors.New("rate limit reached: 429"), vega.ChatEventCodeRateLimit},
+		{"overloaded", errors.New("upstream overloaded 503"), vega.ChatEventCodeOverloaded},
+		{"timeout", errors.New("operation timeout"), vega.ChatEventCodeTimeout},
+		{"unauthorized", errors.New("unauthorized: invalid api key"), vega.ChatEventCodeAuthentication},
+		{"bad request", errors.New("invalid request: missing field"), vega.ChatEventCodeInvalidRequest},
+		{"budget", vega.ErrBudgetExceeded, vega.ChatEventCodeBudgetExceeded},
+		{"unclassified", errors.New("something weird happened"), vega.ChatEventCodeTemporary},
+		{"nil", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := vega.ChatEventCodeFromError(tc.err)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

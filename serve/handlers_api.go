@@ -686,7 +686,11 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 
 		if streamErr != nil {
 			_, friendlyMsg := classifyHTTPError(streamErr)
-			errData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventError, Error: friendlyMsg})
+			errData, _ := json.Marshal(vega.ChatEvent{
+				Type:  vega.ChatEventError,
+				Error: friendlyMsg,
+				Code:  vega.ChatEventCodeFromError(streamErr),
+			})
 			fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
 		}
 		doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone, Metrics: doneMetrics})
@@ -709,7 +713,11 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 
 				if streamErr != nil {
 					_, friendlyMsg := classifyHTTPError(streamErr)
-					errData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventError, Error: friendlyMsg})
+					errData, _ := json.Marshal(vega.ChatEvent{
+						Type:  vega.ChatEventError,
+						Error: friendlyMsg,
+						Code:  vega.ChatEventCodeFromError(streamErr),
+					})
 					fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
 					flusher.Flush()
 				}

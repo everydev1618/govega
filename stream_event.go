@@ -16,6 +16,47 @@ const (
 	ChatEventDone      ChatEventType = "done"
 )
 
+// ChatEventCode is a stable string discriminator carried on chat error
+// events. Lets callers switch on the cause (rate limit vs auth vs
+// invalid request) without substring-matching the prose `error` field.
+// Mirrors ErrorClass — same categories, exposed as strings on the wire.
+type ChatEventCode string
+
+const (
+	ChatEventCodeRateLimit       ChatEventCode = "rate_limit"
+	ChatEventCodeOverloaded      ChatEventCode = "overloaded"
+	ChatEventCodeTimeout         ChatEventCode = "timeout"
+	ChatEventCodeTemporary       ChatEventCode = "temporary"
+	ChatEventCodeInvalidRequest  ChatEventCode = "invalid_request"
+	ChatEventCodeAuthentication  ChatEventCode = "authentication"
+	ChatEventCodeBudgetExceeded  ChatEventCode = "budget_exceeded"
+)
+
+// ChatEventCodeFromError classifies an error into a ChatEventCode for
+// inclusion on SSE error events. Returns "" for nil so the field omits
+// when there's no error to classify.
+func ChatEventCodeFromError(err error) ChatEventCode {
+	if err == nil {
+		return ""
+	}
+	switch ClassifyError(err) {
+	case ErrClassRateLimit:
+		return ChatEventCodeRateLimit
+	case ErrClassOverloaded:
+		return ChatEventCodeOverloaded
+	case ErrClassTimeout:
+		return ChatEventCodeTimeout
+	case ErrClassInvalidRequest:
+		return ChatEventCodeInvalidRequest
+	case ErrClassAuthentication:
+		return ChatEventCodeAuthentication
+	case ErrClassBudgetExceeded:
+		return ChatEventCodeBudgetExceeded
+	default:
+		return ChatEventCodeTemporary
+	}
+}
+
 // ChatEventMetrics holds token/cost/duration stats for a completed response.
 type ChatEventMetrics struct {
 	InputTokens  int     `json:"input_tokens"`
@@ -36,6 +77,9 @@ type ChatEvent struct {
 	Result      string            `json:"result,omitempty"`
 	DurationMs  int64             `json:"duration_ms,omitempty"`
 	Error       string            `json:"error,omitempty"`
+	// Code is a stable error classifier — only set on Type=="error" events.
+	// Lets callers switch on the cause without substring-matching `error`.
+	Code        ChatEventCode     `json:"code,omitempty"`
 	NestedAgent string            `json:"nested_agent,omitempty"`
 	Metrics     *ChatEventMetrics `json:"metrics,omitempty"`
 }

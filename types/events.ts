@@ -93,6 +93,20 @@ export type ChatEventType =
   | 'done'
 
 /**
+ * Stable error classifier on `ChatStreamEvent.code` when type === 'error'.
+ * Switch on this instead of substring-matching the prose `error` field.
+ * Mirrors ErrorClass in govega/agent.go.
+ */
+export type ChatEventCode =
+  | 'rate_limit'
+  | 'overloaded'
+  | 'timeout'
+  | 'temporary'
+  | 'invalid_request'
+  | 'authentication'
+  | 'budget_exceeded'
+
+/**
  * Token-level metrics for a completed response (only present on the
  * final 'done' event of a streaming run).
  */
@@ -117,6 +131,8 @@ export interface ChatStreamEvent {
   result?: string
   duration_ms?: number
   error?: string
+  /** Only set when type === 'error'. */
+  code?: ChatEventCode
   nested_agent?: string
   metrics?: ChatEventMetrics
 }
