@@ -2229,12 +2229,25 @@ components:
 
     ChatMessage:
       type: object
+      required: [id, role, content, created_at]
       properties:
+        id:
+          type: integer
+          format: int64
+          description: |
+            Stable, monotonically-increasing message id. Use this as the
+            React key, for per-message addressing (edits, reactions,
+            deep-links), and for ordering. Unique across the
+            chat_messages table, not just within a single agent.
         role:
           type: string
           enum: [user, assistant]
         content:
           type: string
+        created_at:
+          type: string
+          format: date-time
+          description: When the message was persisted (RFC 3339).
 
     ChatStatusResponse:
       type: object

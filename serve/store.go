@@ -251,8 +251,10 @@ type UserMemory struct {
 
 // ChatMessage is a persisted chat message.
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	ID        int64     `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // StoreEvent is a persisted orchestration event.

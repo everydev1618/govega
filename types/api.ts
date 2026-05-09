@@ -1346,9 +1346,22 @@ export interface components {
             message: string;
         };
         ChatMessage: {
+            /**
+             * Format: int64
+             * @description Stable, monotonically-increasing message id. Use this as the
+             *     React key, for per-message addressing (edits, reactions,
+             *     deep-links), and for ordering. Unique across the
+             *     chat_messages table, not just within a single agent.
+             */
+            id: number;
             /** @enum {string} */
-            role?: "user" | "assistant";
-            content?: string;
+            role: "user" | "assistant";
+            content: string;
+            /**
+             * Format: date-time
+             * @description When the message was persisted (RFC 3339).
+             */
+            created_at: string;
         };
         ChatStatusResponse: {
             streaming?: boolean;

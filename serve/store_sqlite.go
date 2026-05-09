@@ -512,7 +512,7 @@ func (s *SQLiteStore) InsertChatMessage(agent, role, content string) error {
 // ListChatMessages returns all chat messages for an agent, oldest first.
 func (s *SQLiteStore) ListChatMessages(agent string) ([]ChatMessage, error) {
 	rows, err := s.db.Query(
-		`SELECT role, content FROM chat_messages WHERE agent = ? ORDER BY id ASC`, agent,
+		`SELECT id, role, content, created_at FROM chat_messages WHERE agent = ? ORDER BY id ASC`, agent,
 	)
 	if err != nil {
 		return nil, err
@@ -522,7 +522,7 @@ func (s *SQLiteStore) ListChatMessages(agent string) ([]ChatMessage, error) {
 	var msgs []ChatMessage
 	for rows.Next() {
 		var m ChatMessage
-		if err := rows.Scan(&m.Role, &m.Content); err != nil {
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)
