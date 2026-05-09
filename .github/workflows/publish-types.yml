@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
@@ -50,13 +49,17 @@ jobs:
           fi
           echo "Tag matches package.json: $PKG_VERSION"
 
+      # Note: --provenance is omitted because govega is a private GitHub
+      # repo. npm rejects provenance bundles whose source repo is private
+      # (only public source repos are verifiable). If govega ever goes
+      # public, add --provenance and `id-token: write` back to permissions.
       - name: Publish to npm
         working-directory: types
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            npm publish --access public --provenance --dry-run
+            npm publish --access public --dry-run
           else
-            npm publish --access public --provenance
+            npm publish --access public
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
