@@ -292,8 +292,33 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	// Promote-on-first-PUT: if the agent isn't in composed_agents but is
+	// defined in YAML, hydrate a ComposedAgent from the YAML def and treat
+	// this PUT as the first edit. The YAML stays as the conceptual base;
+	// runtime edits layer on top via composed_agents (refs #42).
 	if existing == nil {
-		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("composed agent %q not found", name)})
+		if def, ok := s.interp.Document().Agents[name]; ok {
+			now := time.Now().UTC()
+			hydrated := ComposedAgent{
+				Name:           name,
+				DisplayName:    def.DisplayName,
+				Title:          def.Title,
+				Avatar:         def.Avatar,
+				Icon:           def.Icon,
+				AvatarGradient: def.AvatarGradient,
+				Model:          def.Model,
+				System:         def.System,
+				Tools:          def.Tools,
+				Team:           def.Team,
+				Temperature:    def.Temperature,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			existing = &hydrated
+		}
+	}
+	if existing == nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("agent %q not found", name)})
 		return
 	}
 

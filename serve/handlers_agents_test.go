@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -360,6 +361,135 @@ func TestReportsTo_Inversion(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHandleUpdateAgent_PromotesYAMLAgent verifies the central #42 contract:
+// a PUT against an agent that's defined in YAML (present in doc.Agents but
+// absent from composed_agents) succeeds, gets promoted to composed_agents,
+// and stamps an updated_at timestamp the frontend can render.
+func TestHandleUpdateAgent_PromotesYAMLAgent(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"aria": {
+			Name:        "aria",
+			DisplayName: "Aria",
+			Title:       "Orchestrator",
+			Model:       "claude-sonnet-4-6",
+			System:      "You are Aria, the orchestrator.",
+		},
+	})
+
+	// Confirm precondition: aria isn't in composed_agents yet.
+	composed, _ := s.store.ListComposedAgents()
+	for _, a := range composed {
+		if a.Name == "aria" {
+			t.Fatalf("aria already in composed_agents; test invariant broken")
+		}
+	}
+
+	newSystem := "You are Aria, the orchestrator. Edited by user."
+	body := mustJSON(t, UpdateAgentRequest{System: &newSystem})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agents/aria", bytes.NewReader(body))
+	req.SetPathValue("name", "aria")
+	w := httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Aria must now be in composed_agents with the new system prompt and
+	// the YAML metadata (display_name, title) preserved.
+	composed, _ = s.store.ListComposedAgents()
+	var found *ComposedAgent
+	for i := range composed {
+		if composed[i].Name == "aria" {
+			found = &composed[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("aria not promoted to composed_agents")
+	}
+	if found.System != newSystem {
+		t.Errorf("system = %q, want %q", found.System, newSystem)
+	}
+	if found.DisplayName != "Aria" {
+		t.Errorf("display_name not preserved from YAML: %q", found.DisplayName)
+	}
+	if found.Title != "Orchestrator" {
+		t.Errorf("title not preserved from YAML: %q", found.Title)
+	}
+	if found.Model != "claude-sonnet-4-6" {
+		t.Errorf("model not preserved from YAML: %q", found.Model)
+	}
+	if found.UpdatedAt.IsZero() {
+		t.Error("updated_at not stamped on promote")
+	}
+}
+
+// TestHandleUpdateAgent_SecondPUTAfterPromote confirms that once promoted,
+// a YAML agent behaves identically to a composed one — subsequent PUTs work
+// without re-promote logic firing.
+func TestHandleUpdateAgent_SecondPUTAfterPromote(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"aria": {Name: "aria", Model: "claude-sonnet-4-6", System: "v1"},
+	})
+
+	first := "v2"
+	body := mustJSON(t, UpdateAgentRequest{System: &first})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agents/aria", bytes.NewReader(body))
+	req.SetPathValue("name", "aria")
+	s.handleUpdateAgent(httptest.NewRecorder(), req)
+
+	second := "v3"
+	body = mustJSON(t, UpdateAgentRequest{System: &second})
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/agents/aria", bytes.NewReader(body))
+	req.SetPathValue("name", "aria")
+	w := httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("second PUT status = %d, body = %s", w.Code, w.Body.String())
+	}
+	composed, _ := s.store.ListComposedAgents()
+	for _, a := range composed {
+		if a.Name == "aria" && a.System != "v3" {
+			t.Errorf("system = %q after second PUT, want v3", a.System)
+		}
+	}
+}
+
+// TestHandleUpdateAgent_BuilderStill403 confirms promote-on-PUT doesn't
+// accidentally widen the door — builder still can't be updated even
+// though it's a YAML agent that "doesn't exist in composed_agents."
+func TestHandleUpdateAgent_BuilderStill403(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"hera": {Name: "hera", Model: "claude-sonnet-4-6"},
+	})
+	newSystem := "hijack attempt"
+	body := mustJSON(t, UpdateAgentRequest{System: &newSystem})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agents/hera", bytes.NewReader(body))
+	req.SetPathValue("name", "hera")
+	w := httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403; body = %s", w.Code, w.Body.String())
+	}
+}
+
+// TestHandleUpdateAgent_TrueUnknownStill404 confirms agents that exist in
+// neither YAML nor composed_agents still return 404.
+func TestHandleUpdateAgent_TrueUnknownStill404(t *testing.T) {
+	s := agentTestServer(t, nil)
+	newSystem := "edit"
+	body := mustJSON(t, UpdateAgentRequest{System: &newSystem})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agents/ghost", bytes.NewReader(body))
+	req.SetPathValue("name", "ghost")
+	w := httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404; body = %s", w.Code, w.Body.String())
 	}
 }
 

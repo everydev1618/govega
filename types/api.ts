@@ -95,7 +95,17 @@ export interface paths {
          *     endpoint cannot be used to probe for internal agents.
          */
         get: operations["getAgent"];
-        /** Update an existing composed agent */
+        /**
+         * Update an agent (composed or YAML-defined)
+         * @description Updates the named agent. Works on both API-composed agents and
+         *     YAML-defined agents — the latter are silently promoted to a
+         *     composed override on first edit (the YAML remains as the
+         *     conceptual base; edits layer on top in storage).
+         *
+         *     404 fires only when the name is unknown to *both* the composed
+         *     store and the YAML document. The builder meta-agent is
+         *     protected (403) regardless.
+         */
         put: operations["updateAgent"];
         post?: never;
         /** Delete an agent */
