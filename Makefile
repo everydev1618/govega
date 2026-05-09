@@ -21,7 +21,7 @@ serve-dev:
 test:
 	go test ./...
 
-# Regenerate the @vega/api-types TypeScript package from docs/openapi.yaml.
+# Regenerate the @govega/api-types TypeScript package from docs/openapi.yaml.
 # Commit api.ts after running.
 types:
 	cd types && npm install --silent && npm run generate

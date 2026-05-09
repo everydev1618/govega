@@ -1,19 +1,43 @@
 {
-  "name": "@vega/api-types",
+  "name": "@govega/api-types",
   "version": "0.1.0",
   "description": "TypeScript types for the Vega REST API, generated from docs/openapi.yaml.",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/everydev1618/govega.git",
+    "directory": "types"
+  },
+  "homepage": "https://github.com/everydev1618/govega/tree/main/types",
+  "bugs": {
+    "url": "https://github.com/everydev1618/govega/issues"
+  },
   "main": "./api.ts",
   "types": "./api.ts",
+  "exports": {
+    ".": {
+      "types": "./api.ts",
+      "default": "./api.ts"
+    },
+    "./events": {
+      "types": "./events.ts",
+      "default": "./events.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "api.ts",
     "events.ts",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "generate": "openapi-typescript ../docs/openapi.yaml -o api.ts",
-    "verify": "openapi-typescript ../docs/openapi.yaml -o /tmp/api.gen.ts && diff -u api.ts /tmp/api.gen.ts && echo 'types in sync'"
+    "verify": "openapi-typescript ../docs/openapi.yaml -o /tmp/api.gen.ts && diff -u api.ts /tmp/api.gen.ts && echo 'types in sync'",
+    "prepublishOnly": "npm run verify"
   },
   "devDependencies": {
     "openapi-typescript": "^7.0.0",
