@@ -387,6 +387,12 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wire inbox backend so DispatchToAgent can post completion notifications.
 	s.interp.SetInboxBackend(inboxBack)
 
+	// Register kanban task tools. All agents get them registered; only the
+	// orchestrator is taught (in irisToolNames + system prompt) to actually
+	// use them for triage. Workers can claim/comment/update too — their
+	// prompt decides whether they should.
+	dsl.RegisterTaskTools(s.interp, &taskAdapter{store: s.store})
+
 	// Wire memory injector so agents get their memories + project context during delegated tasks.
 	s.interp.SetMemoryInjector(func(proc *vega.Process, agentName string) {
 		var memText string
@@ -665,7 +671,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Name:      s.cfg.Orchestrator.Name + "-heartbeat",
 		Cron:      "*/15 * * * *",
 		AgentName: s.cfg.Orchestrator.Name,
-		Message:   "Heartbeat: Check your inbox (list_inbox) for pending questions from agents. Triage and resolve what you can.",
+		Message:   "Heartbeat: (1) Check list_inbox for pending agent questions and triage. (2) Check list_unassigned_tasks for the kanban routing queue and assign_task each one to the right agent. Resolve what you can; escalate only if a human decision is required.",
 		Enabled:   true,
 	})
 
@@ -829,6 +835,15 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Inbox
 	mux.HandleFunc("GET /api/v1/inbox", s.handleListInbox)
 	mux.HandleFunc("DELETE /api/v1/inbox/resolved", s.handleClearResolvedInbox)
+
+	// Tasks (kanban-style work tracking — independent of Process lifecycle)
+	mux.HandleFunc("GET /api/v1/tasks", s.handleListTasks)
+	mux.HandleFunc("POST /api/v1/tasks", s.handleCreateTask)
+	mux.HandleFunc("GET /api/v1/tasks/{id}", s.handleGetTask)
+	mux.HandleFunc("PATCH /api/v1/tasks/{id}", s.handleUpdateTask)
+	mux.HandleFunc("DELETE /api/v1/tasks/{id}", s.handleDeleteTask)
+	mux.HandleFunc("POST /api/v1/tasks/{id}/comments", s.handleAddTaskComment)
+	mux.HandleFunc("POST /api/v1/tasks/{id}/processes", s.handleLinkTaskProcess)
 
 	// Settings
 	mux.HandleFunc("GET /api/v1/settings", s.handleListSettings)
@@ -1220,7 +1235,7 @@ func (s *Server) injectHera() {
 
 // injectIris adds the orchestrator (default: Iris) to the interpreter.
 func (s *Server) injectIris() {
-	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox"); err != nil {
+	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox", "list_unassigned_tasks", "list_my_tasks", "assign_task", "create_task", "update_task_status", "comment_on_task"); err != nil {
 		slog.Warn("failed to inject Iris agent", "error", err)
 	}
 }
@@ -1274,6 +1289,101 @@ func (a *inboxAdapter) ListInboxItems(status string, limit int) ([]dsl.InboxItem
 
 func (a *inboxAdapter) ResolveInboxItem(id int64, resolution string) error {
 	return a.store.ResolveInboxItem(id, resolution)
+}
+
+// taskAdapter bridges serve.Store to dsl.TaskBackend by translating
+// between serve.Task and dsl.Task. Mirrors inboxAdapter above.
+type taskAdapter struct {
+	store Store
+}
+
+func toDSLTask(t Task) dsl.Task {
+	return dsl.Task{
+		ID:          t.ID,
+		Title:       t.Title,
+		Description: t.Description,
+		Status:      t.Status,
+		Priority:    t.Priority,
+		Assignee:    t.Assignee,
+		Tags:        t.Tags,
+		CreatedBy:   t.CreatedBy,
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+		DueAt:       t.DueAt,
+	}
+}
+
+func fromDSLTask(t dsl.Task) Task {
+	return Task{
+		ID:          t.ID,
+		Title:       t.Title,
+		Description: t.Description,
+		Status:      t.Status,
+		Priority:    t.Priority,
+		Assignee:    t.Assignee,
+		Tags:        t.Tags,
+		CreatedBy:   t.CreatedBy,
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+		DueAt:       t.DueAt,
+	}
+}
+
+func (a *taskAdapter) InsertTask(t dsl.Task) error {
+	return a.store.InsertTask(fromDSLTask(t))
+}
+
+func (a *taskAdapter) GetTask(id string) (*dsl.Task, error) {
+	t, err := a.store.GetTask(id)
+	if err != nil || t == nil {
+		return nil, err
+	}
+	dt := toDSLTask(*t)
+	return &dt, nil
+}
+
+func (a *taskAdapter) ListMyTasks(assignee string, status []string, limit int) ([]dsl.Task, error) {
+	tasks, err := a.store.ListMyTasks(assignee, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dsl.Task, len(tasks))
+	for i, t := range tasks {
+		out[i] = toDSLTask(t)
+	}
+	return out, nil
+}
+
+func (a *taskAdapter) ListUnassignedTasks(limit int) ([]dsl.Task, error) {
+	tasks, err := a.store.ListUnassignedTasks(limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dsl.Task, len(tasks))
+	for i, t := range tasks {
+		out[i] = toDSLTask(t)
+	}
+	return out, nil
+}
+
+func (a *taskAdapter) UpdateTaskStatus(id, status string) error {
+	return a.store.UpdateTaskStatus(id, status)
+}
+
+func (a *taskAdapter) AssignTask(id, assignee string) error {
+	return a.store.AssignTask(id, assignee)
+}
+
+func (a *taskAdapter) ClaimTask(id, assignee string) error {
+	return a.store.ClaimTask(id, assignee)
+}
+
+func (a *taskAdapter) AddTaskComment(taskID, author, content string) (int64, error) {
+	return a.store.AddTaskComment(taskID, author, content)
+}
+
+func (a *taskAdapter) LinkTaskProcess(taskID, processID string) error {
+	return a.store.LinkTaskProcess(taskID, processID)
 }
 
 func truncate(s string, max int) string {

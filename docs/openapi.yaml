@@ -1148,6 +1148,178 @@ paths:
                     type: integer
                     format: int64
 
+  # ── Tasks (kanban work tracking) ─────────────────────────────────────
+  /api/v1/tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      operationId: listTasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: CSV of statuses to include — todo,doing,blocked,done,canceled
+        - name: assignee
+          in: query
+          schema:
+            type: string
+          description: CSV of agent names to filter by
+        - name: tag
+          in: query
+          schema:
+            type: string
+          description: CSV of tags; matches if a task has any of them
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Array of tasks (newest-updated first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      tags: [Tasks]
+      summary: Create a task
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/v1/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Tasks]
+      summary: Get a task with its activity feed and linked processes
+      operationId: getTask
+      responses:
+        "200":
+          description: Task detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Tasks]
+      summary: Update a task (partial — any combination of fields)
+      operationId: updateTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskRequest"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Tasks]
+      summary: Delete a task (cascades to comments and process links)
+      operationId: deleteTask
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tasks/{id}/comments:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Tasks]
+      summary: Add a comment to a task's activity feed
+      operationId: addTaskComment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTaskCommentRequest"
+      responses:
+        "201":
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskComment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tasks/{id}/processes:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Tasks]
+      summary: Link a process to a task (idempotent — re-linking is a no-op)
+      operationId: linkTaskProcess
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkTaskProcessRequest"
+      responses:
+        "200":
+          description: Linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── Settings ──────────────────────────────────────────────────────────
   /api/v1/settings:
     get:
@@ -2516,6 +2688,142 @@ components:
         resolved_at:
           type: string
           format: date-time
+
+    # ── Tasks ─────────────────────────────────────────────────────────
+    Task:
+      type: object
+      required: [id, title, status, priority, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [todo, doing, blocked, done, canceled]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        assignee:
+          type: string
+          description: Agent name; empty string means the task is in the orchestrator's routing queue
+        tags:
+          type: string
+          description: Comma-separated tag list
+        created_by:
+          type: string
+          description: '"user" if created via REST/UI, agent name if filed by an agent'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        due_at:
+          type: string
+          format: date-time
+
+    TaskComment:
+      type: object
+      required: [id, task_id, content, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        task_id:
+          type: string
+        author:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TaskDetail:
+      allOf:
+        - $ref: "#/components/schemas/Task"
+        - type: object
+          required: [comments, processes]
+          properties:
+            comments:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskComment"
+            processes:
+              type: array
+              items:
+                type: string
+              description: Process IDs linked to this task (oldest first)
+
+    CreateTaskRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [todo, doing, blocked, done, canceled]
+          description: Defaults to todo
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+          description: Defaults to normal
+        assignee:
+          type: string
+          description: Agent name; leave empty for orchestrator routing
+        tags:
+          type: string
+        created_by:
+          type: string
+          description: Defaults to "user"
+        due_at:
+          type: string
+          format: date-time
+
+    UpdateTaskRequest:
+      type: object
+      description: Partial update — include only the fields you want to change
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [todo, doing, blocked, done, canceled]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        assignee:
+          type: string
+        tags:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+
+    AddTaskCommentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        author:
+          type: string
+          description: Defaults to "user"
+
+    LinkTaskProcessRequest:
+      type: object
+      required: [process_id]
+      properties:
+        process_id:
+          type: string
 
     # ── Settings ──────────────────────────────────────────────────────
     Setting:

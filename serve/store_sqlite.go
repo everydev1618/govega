@@ -266,6 +266,10 @@ func (s *SQLiteStore) Init() error {
 	// databases; CREATE IF NOT EXISTS handles the upgrade case.
 	s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_memory_items_dedup ON memory_items(user_id, agent, type, content)`)
 
+	if err := s.initTaskSchema(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -841,6 +845,9 @@ func (s *SQLiteStore) ResetData() error {
 		"workspace_files",
 		"channel_read_cursors",
 		"chat_read_cursors",
+		"task_processes",
+		"task_comments",
+		"tasks",
 	}
 	for _, t := range tables {
 		if err := s.DeleteAllFromTable(t); err != nil {

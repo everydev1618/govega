@@ -2,20 +2,16 @@ import { useState, useEffect, useRef } from 'react'
 import { useAPI } from '../hooks/useAPI'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
-import { KanbanBoard } from '../components/KanbanBoard'
+import { Modal } from '../components/Modal'
 import { StatusBadge } from '../components/StatusBadge'
 import type { ProcessResponse, ProcessDetailResponse } from '../lib/types'
-
-type ViewMode = 'list' | 'kanban'
 
 export function ProcessExplorer() {
   const { data: processes, loading, refetch } = useAPI(() => api.getProcesses())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<ProcessDetailResponse | null>(null)
   const [sortKey, setSortKey] = useState<'started_at' | 'status' | 'agent'>('started_at')
-  const [viewMode, setViewMode] = useState<ViewMode>('kanban')
 
-  // SSE: auto-refresh on process lifecycle events
   const { events } = useSSE()
   const lastEventRef = useRef(0)
   useEffect(() => {
@@ -28,7 +24,6 @@ export function ProcessExplorer() {
     }
   }, [events, refetch])
 
-  // Poll every 5s while any process is running (metrics aren't pushed via SSE)
   useEffect(() => {
     const hasRunning = processes?.some(p => p.status === 'running')
     if (!hasRunning) return
@@ -60,74 +55,41 @@ export function ProcessExplorer() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Process Explorer</h2>
-        <div className="flex items-center gap-4">
-          {/* View toggle */}
-          <div className="flex gap-1 text-sm border border-border rounded-lg p-0.5">
-            <button
-              onClick={() => setViewMode('kanban')}
-              className={`px-3 py-1 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
-            >
-              Board
+        <div className="flex gap-2 text-sm">
+          {(['started_at', 'status', 'agent'] as const).map(key => (
+            <button key={key} onClick={() => setSortKey(key)}
+              className={`px-3 py-1 rounded ${sortKey === key ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}>
+              {key === 'started_at' ? 'Time' : key.charAt(0).toUpperCase() + key.slice(1)}
             </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-1 rounded-md transition-colors ${viewMode === 'list' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
-            >
-              List
-            </button>
-          </div>
-
-          {/* Sort controls — only in list mode */}
-          {viewMode === 'list' && (
-            <div className="flex gap-2 text-sm">
-              {(['started_at', 'status', 'agent'] as const).map(key => (
-                <button key={key} onClick={() => setSortKey(key)}
-                  className={`px-3 py-1 rounded ${sortKey === key ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}>
-                  {key === 'started_at' ? 'Time' : key.charAt(0).toUpperCase() + key.slice(1)}
-                </button>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4">
-        {/* Main content area */}
-        <div className="flex-1 min-w-0">
-          {viewMode === 'kanban' ? (
-            <KanbanBoard
-              processes={processes || []}
-              selectedId={selectedId}
-              onSelect={openDetail}
-            />
-          ) : (
-            <div className="space-y-2">
-              {sorted.length === 0 && <p className="text-muted-foreground text-sm">No processes running.</p>}
-              {sorted.map((p: ProcessResponse) => (
-                <div key={p.id} onClick={() => openDetail(p.id)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedId === p.id ? 'border-primary bg-accent' : 'border-border bg-card hover:border-primary/50'}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-sm">{p.id}</span>
-                    <StatusBadge status={p.status} />
-                  </div>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>{p.agent}</span>
-                    <span>{new Date(p.started_at).toLocaleTimeString()}</span>
-                  </div>
-                  {p.task && <p className="text-xs text-muted-foreground mt-1 truncate">{p.task}</p>}
-                </div>
-              ))}
+      <div className="space-y-2">
+        {sorted.length === 0 && <p className="text-muted-foreground text-sm">No processes running.</p>}
+        {sorted.map((p: ProcessResponse) => (
+          <div key={p.id} onClick={() => openDetail(p.id)}
+            className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedId === p.id ? 'border-primary bg-accent' : 'border-border bg-card hover:border-primary/50'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-mono text-sm">{p.id}</span>
+              <StatusBadge status={p.status} />
             </div>
-          )}
-        </div>
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{p.agent}</span>
+              <span>{new Date(p.started_at).toLocaleTimeString()}</span>
+            </div>
+            {p.task && <p className="text-xs text-muted-foreground mt-1 truncate">{p.task}</p>}
+          </div>
+        ))}
+      </div>
 
-        {/* Detail panel */}
-        {selectedId && detail && (
-          <div className="w-full md:w-96 md:shrink-0 border border-border rounded-lg bg-card p-4 space-y-4 max-h-[80vh] overflow-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold">Process {detail.id}</h3>
-              <button onClick={() => setSelectedId(null)} className="text-muted-foreground hover:text-foreground">&times;</button>
-            </div>
+      <Modal
+        open={!!(selectedId && detail)}
+        onClose={() => setSelectedId(null)}
+        title={detail ? `Process ${detail.id}` : ''}
+      >
+        {detail && (
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="text-muted-foreground">Agent</div><div>{detail.agent}</div>
               <div className="text-muted-foreground">Status</div><div><StatusBadge status={detail.status} /></div>
@@ -143,7 +105,7 @@ export function ProcessExplorer() {
             )}
             <div>
               <h4 className="text-sm font-semibold mb-2">Messages ({detail.messages.length})</h4>
-              <div className="space-y-2 max-h-96 overflow-auto">
+              <div className="space-y-2">
                 {detail.messages.map((m, i) => (
                   <div key={i} className={`p-2 rounded text-xs ${m.role === 'user' ? 'bg-blue-900/20 border border-blue-900/30' : m.role === 'assistant' ? 'bg-muted' : 'bg-yellow-900/20 border border-yellow-900/30'}`}>
                     <span className="font-bold text-muted-foreground">{m.role}</span>
@@ -154,7 +116,7 @@ export function ProcessExplorer() {
             </div>
           </div>
         )}
-      </div>
+      </Modal>
     </div>
   )
 }

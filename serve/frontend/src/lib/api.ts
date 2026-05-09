@@ -1,4 +1,6 @@
-const BASE = ''
+// Backend routes are versioned under /api/v1 (see commit 33031a9). The
+// frontend uses BASE so callers can write path-only strings.
+const BASE = '/api/v1'
 
 export class APIError extends Error {
   status: number
@@ -34,140 +36,167 @@ export async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> 
 
 export const api = {
   // Company
-  getCompany: () => fetchAPI<import('./types').CompanyResponse>('/api/company'),
+  getCompany: () => fetchAPI<import('./types').CompanyResponse>('/company'),
 
   // Agent templates
   exportAgentTemplate: (name: string) =>
-    fetchAPI<import('./types').AgentTemplateResponse>(`/api/agents/${encodeURIComponent(name)}/template`),
+    fetchAPI<import('./types').AgentTemplateResponse>(`/agents/${encodeURIComponent(name)}/template`),
   importAgentTemplate: (template: import('./types').AgentTemplateResponse) =>
-    fetchAPI<import('./types').CreateAgentResponse>('/api/agents/import', {
+    fetchAPI<import('./types').CreateAgentResponse>('/agents/import', {
       method: 'POST',
       body: JSON.stringify(template),
     }),
 
-  getProcesses: () => fetchAPI<import('./types').ProcessResponse[]>('/api/processes'),
-  getProcess: (id: string) => fetchAPI<import('./types').ProcessDetailResponse>(`/api/processes/${id}`),
-  killProcess: (id: string) => fetchAPI<{ status: string }>(`/api/processes/${id}`, { method: 'DELETE' }),
-  getAgents: () => fetchAPI<import('./types').AgentResponse[]>('/api/agents'),
-  getWorkflows: () => fetchAPI<import('./types').WorkflowResponse[]>('/api/workflows'),
+  getProcesses: () => fetchAPI<import('./types').ProcessResponse[]>('/processes'),
+  getProcess: (id: string) => fetchAPI<import('./types').ProcessDetailResponse>(`/processes/${id}`),
+  killProcess: (id: string) => fetchAPI<{ status: string }>(`/processes/${id}`, { method: 'DELETE' }),
+
+  // Tasks
+  listTasks: (params?: { status?: string; assignee?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.status) q.set('status', params.status)
+    if (params?.assignee) q.set('assignee', params.assignee)
+    const qs = q.toString()
+    return fetchAPI<import('./types').Task[]>(`/tasks${qs ? `?${qs}` : ''}`)
+  },
+  createTask: (req: import('./types').CreateTaskRequest) =>
+    fetchAPI<import('./types').Task>('/tasks', { method: 'POST', body: JSON.stringify(req) }),
+  getTask: (id: string) => fetchAPI<import('./types').TaskDetail>(`/tasks/${id}`),
+  updateTask: (id: string, req: import('./types').UpdateTaskRequest) =>
+    fetchAPI<import('./types').Task>(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(req) }),
+  deleteTask: (id: string) =>
+    fetchAPI<{ status: string }>(`/tasks/${id}`, { method: 'DELETE' }),
+  addTaskComment: (id: string, content: string, author?: string) =>
+    fetchAPI<import('./types').TaskComment>(`/tasks/${id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content, author }),
+    }),
+  linkTaskProcess: (id: string, processId: string) =>
+    fetchAPI<{ status: string }>(`/tasks/${id}/processes`, {
+      method: 'POST',
+      body: JSON.stringify({ process_id: processId }),
+    }),
+
+  getAgents: () => fetchAPI<import('./types').AgentResponse[]>('/agents'),
+  getWorkflows: () => fetchAPI<import('./types').WorkflowResponse[]>('/workflows'),
   runWorkflow: (name: string, inputs: Record<string, unknown>) =>
-    fetchAPI<import('./types').WorkflowRunResponse>(`/api/workflows/${name}/run`, {
+    fetchAPI<import('./types').WorkflowRunResponse>(`/workflows/${name}/run`, {
       method: 'POST',
       body: JSON.stringify({ inputs }),
     }),
-  getMCPServers: () => fetchAPI<import('./types').MCPServerResponse[]>('/api/mcp/servers'),
-  getMCPRegistry: () => fetchAPI<import('./types').MCPRegistryEntry[]>('/api/mcp/registry'),
+  getMCPServers: () => fetchAPI<import('./types').MCPServerResponse[]>('/mcp/servers'),
+  getMCPRegistry: () => fetchAPI<import('./types').MCPRegistryEntry[]>('/mcp/registry'),
   connectMCPServer: (req: import('./types').ConnectMCPRequest) =>
-    fetchAPI<import('./types').ConnectMCPResponse>('/api/mcp/servers', {
+    fetchAPI<import('./types').ConnectMCPResponse>('/mcp/servers', {
       method: 'POST',
       body: JSON.stringify(req),
     }),
   disconnectMCPServer: (name: string) =>
-    fetchAPI<{ status: string }>(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    fetchAPI<{ status: string }>(`/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   refreshMCPServer: (name: string) =>
-    fetchAPI<import('./types').ConnectMCPResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/refresh`, {
+    fetchAPI<import('./types').ConnectMCPResponse>(`/mcp/servers/${encodeURIComponent(name)}/refresh`, {
       method: 'POST',
     }),
   getMCPServerConfig: (name: string) =>
-    fetchAPI<import('./types').MCPServerConfigResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/config`),
+    fetchAPI<import('./types').MCPServerConfigResponse>(`/mcp/servers/${encodeURIComponent(name)}/config`),
   updateMCPServer: (name: string, req: import('./types').ConnectMCPRequest) =>
-    fetchAPI<import('./types').ConnectMCPResponse>(`/api/mcp/servers/${encodeURIComponent(name)}`, {
+    fetchAPI<import('./types').ConnectMCPResponse>(`/mcp/servers/${encodeURIComponent(name)}`, {
       method: 'PUT',
       body: JSON.stringify(req),
     }),
   duplicateMCPServer: (name: string, newName: string) =>
-    fetchAPI<import('./types').ConnectMCPResponse>(`/api/mcp/servers/${encodeURIComponent(name)}/duplicate`, {
+    fetchAPI<import('./types').ConnectMCPResponse>(`/mcp/servers/${encodeURIComponent(name)}/duplicate`, {
       method: 'POST',
       body: JSON.stringify({ new_name: newName }),
     }),
   toggleMCPServer: (name: string, disabled: boolean) =>
-    fetchAPI<import('./types').ConnectMCPResponse | { status: string }>(`/api/mcp/servers/${encodeURIComponent(name)}/disable`, {
+    fetchAPI<import('./types').ConnectMCPResponse | { status: string }>(`/mcp/servers/${encodeURIComponent(name)}/disable`, {
       method: 'PUT',
       body: JSON.stringify({ disabled }),
     }),
-  getStats: () => fetchAPI<import('./types').StatsResponse>('/api/stats'),
-  getSpawnTree: () => fetchAPI<import('./types').SpawnTreeNode[]>('/api/spawn-tree'),
+  getStats: () => fetchAPI<import('./types').StatsResponse>('/stats'),
+  getSpawnTree: () => fetchAPI<import('./types').SpawnTreeNode[]>('/spawn-tree'),
 
   // Population
   populationSearch: (q: string, kind?: string) => {
     const params = new URLSearchParams({ q })
     if (kind) params.set('kind', kind)
-    return fetchAPI<import('./types').PopulationSearchResult[]>(`/api/population/search?${params}`)
+    return fetchAPI<import('./types').PopulationSearchResult[]>(`/population/search?${params}`)
   },
   populationInfo: (kind: string, name: string) =>
-    fetchAPI<import('./types').PopulationInfoResponse>(`/api/population/info/${kind}/${name}`),
+    fetchAPI<import('./types').PopulationInfoResponse>(`/population/info/${kind}/${name}`),
   populationInstall: (name: string) =>
-    fetchAPI<{ status: string; name: string }>('/api/population/install', {
+    fetchAPI<{ status: string; name: string }>('/population/install', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
   populationInstalled: (kind?: string) => {
     const params = kind ? `?kind=${kind}` : ''
-    return fetchAPI<import('./types').PopulationInstalledItem[]>(`/api/population/installed${params}`)
+    return fetchAPI<import('./types').PopulationInstalledItem[]>(`/population/installed${params}`)
   },
 
   // Files
   getFiles: (path?: string) => {
     const params = path ? `?path=${encodeURIComponent(path)}` : ''
-    return fetchAPI<import('./types').FileEntry[]>(`/api/files${params}`)
+    return fetchAPI<import('./types').FileEntry[]>(`/files${params}`)
   },
   getFileContent: (path: string) =>
-    fetchAPI<import('./types').FileContentResponse>(`/api/files/read?path=${encodeURIComponent(path)}`),
+    fetchAPI<import('./types').FileContentResponse>(`/files/read?path=${encodeURIComponent(path)}`),
   deleteFile: (path: string) =>
-    fetchAPI<{ status: string; path: string }>(`/api/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+    fetchAPI<{ status: string; path: string }>(`/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
   getFileMetadata: (agent?: string) => {
     const params = agent ? `?agent=${encodeURIComponent(agent)}` : ''
-    return fetchAPI<import('./types').FileMetadataResponse>(`/api/files/metadata${params}`)
+    return fetchAPI<import('./types').FileMetadataResponse>(`/files/metadata${params}`)
   },
 
   // Settings
-  getSettings: () => fetchAPI<import('./types').Setting[]>('/api/settings'),
+  getSettings: () => fetchAPI<import('./types').Setting[]>('/settings'),
   upsertSetting: (key: string, value: string, sensitive: boolean) =>
-    fetchAPI<{ status: string }>('/api/settings', {
+    fetchAPI<{ status: string }>('/settings', {
       method: 'PUT',
       body: JSON.stringify({ key, value, sensitive }),
     }),
   deleteSetting: (key: string) =>
-    fetchAPI<{ status: string }>(`/api/settings/${key}`, { method: 'DELETE' }),
+    fetchAPI<{ status: string }>(`/settings/${key}`, { method: 'DELETE' }),
 
   // Schedules
-  getSchedules: () => fetchAPI<import('./types').ScheduledJob[]>('/api/schedules'),
+  getSchedules: () => fetchAPI<import('./types').ScheduledJob[]>('/schedules'),
   deleteSchedule: (name: string) =>
-    fetchAPI<{ status: string }>(`/api/schedules/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    fetchAPI<{ status: string }>(`/schedules/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   toggleSchedule: (name: string, enabled: boolean) =>
-    fetchAPI<{ status: string }>(`/api/schedules/${encodeURIComponent(name)}`, {
+    fetchAPI<{ status: string }>(`/schedules/${encodeURIComponent(name)}`, {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     }),
 
   // Agent composition
   createAgent: (req: import('./types').CreateAgentRequest) =>
-    fetchAPI<import('./types').CreateAgentResponse>('/api/agents', {
+    fetchAPI<import('./types').CreateAgentResponse>('/agents', {
       method: 'POST',
       body: JSON.stringify(req),
     }),
   updateAgent: (name: string, req: import('./types').UpdateAgentRequest) =>
-    fetchAPI<{ status: string }>(`/api/agents/${encodeURIComponent(name)}`, {
+    fetchAPI<{ status: string }>(`/agents/${encodeURIComponent(name)}`, {
       method: 'PUT',
       body: JSON.stringify(req),
     }),
   deleteAgent: (name: string) =>
-    fetchAPI<{ status: string }>(`/api/agents/${name}`, { method: 'DELETE' }),
+    fetchAPI<{ status: string }>(`/agents/${name}`, { method: 'DELETE' }),
 
   // Chat
   chatHistory: (agent: string) =>
-    fetchAPI<{ role: string; content: string }[]>(`/api/agents/${agent}/chat`),
+    fetchAPI<{ role: string; content: string }[]>(`/agents/${agent}/chat`),
   chat: (agent: string, message: string) =>
-    fetchAPI<{ response: string }>(`/api/agents/${agent}/chat`, {
+    fetchAPI<{ response: string }>(`/agents/${agent}/chat`, {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
   resetChat: (agent: string) =>
-    fetchAPI<{ status: string }>(`/api/agents/${agent}/chat`, { method: 'DELETE' }),
+    fetchAPI<{ status: string }>(`/agents/${agent}/chat`, { method: 'DELETE' }),
 
   // Chat status — check if agent has an active stream
   chatStatus: (agent: string) =>
-    fetchAPI<{ streaming: boolean }>(`/api/agents/${agent}/chat/status`),
+    fetchAPI<{ streaming: boolean }>(`/agents/${agent}/chat/status`),
 
   // Reconnect to an active stream — replays buffered events then continues live
   chatStreamReconnect: (
@@ -215,24 +244,24 @@ export const api = {
   },
 
   // Channels
-  getChannels: () => fetchAPI<import('./types').Channel[]>('/api/channels'),
+  getChannels: () => fetchAPI<import('./types').Channel[]>('/channels'),
   getChannel: (name: string) =>
-    fetchAPI<import('./types').Channel>(`/api/channels/${encodeURIComponent(name)}`),
+    fetchAPI<import('./types').Channel>(`/channels/${encodeURIComponent(name)}`),
   createChannel: (req: import('./types').CreateChannelRequest) =>
-    fetchAPI<import('./types').Channel>('/api/channels', {
+    fetchAPI<import('./types').Channel>('/channels', {
       method: 'POST',
       body: JSON.stringify(req),
     }),
   deleteChannel: (name: string) =>
-    fetchAPI<{ status: string }>(`/api/channels/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    fetchAPI<{ status: string }>(`/channels/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   getChannelMessages: (name: string, limit?: number) => {
     const params = limit ? `?limit=${limit}` : ''
-    return fetchAPI<import('./types').ChannelMessage[]>(`/api/channels/${encodeURIComponent(name)}/messages${params}`)
+    return fetchAPI<import('./types').ChannelMessage[]>(`/channels/${encodeURIComponent(name)}/messages${params}`)
   },
   getThreadMessages: (name: string, messageId: number) =>
-    fetchAPI<import('./types').ChannelMessage[]>(`/api/channels/${encodeURIComponent(name)}/messages/${messageId}/thread`),
+    fetchAPI<import('./types').ChannelMessage[]>(`/channels/${encodeURIComponent(name)}/messages/${messageId}/thread`),
   postChannelMessage: (name: string, message: string, threadId?: number, agent?: string) =>
-    fetchAPI<{ message_id: number; thread_id?: number }>(`/api/channels/${encodeURIComponent(name)}/messages`, {
+    fetchAPI<{ message_id: number; thread_id?: number }>(`/channels/${encodeURIComponent(name)}/messages`, {
       method: 'POST',
       body: JSON.stringify({ message, thread_id: threadId, agent }),
     }),
@@ -285,23 +314,23 @@ export const api = {
 
   // Read tracking
   markChannelRead: (name: string) =>
-    fetchAPI<{ status: string }>(`/api/channels/${encodeURIComponent(name)}/read`, { method: 'POST' }),
+    fetchAPI<{ status: string }>(`/channels/${encodeURIComponent(name)}/read`, { method: 'POST' }),
   markChatRead: (agent: string) =>
-    fetchAPI<{ status: string }>(`/api/agents/${encodeURIComponent(agent)}/chat/read`, { method: 'POST' }),
+    fetchAPI<{ status: string }>(`/agents/${encodeURIComponent(agent)}/chat/read`, { method: 'POST' }),
   chatUnreadCounts: () =>
-    fetchAPI<Record<string, number>>('/api/chat/unread'),
+    fetchAPI<Record<string, number>>('/chat/unread'),
 
   // Inbox
   getInbox: (status?: string) => {
     const params = status ? `?status=${encodeURIComponent(status)}` : ''
-    return fetchAPI<import('./types').InboxItem[]>(`/api/inbox${params}`)
+    return fetchAPI<import('./types').InboxItem[]>(`/inbox${params}`)
   },
   clearResolvedInbox: () =>
-    fetchAPI<{ deleted: number }>('/api/inbox/resolved', { method: 'DELETE' }),
+    fetchAPI<{ deleted: number }>('/inbox/resolved', { method: 'DELETE' }),
 
   // Nuclear reset — wipes all data and restores to YAML-defined state
   resetProject: () =>
-    fetchAPI<{ status: string }>('/api/reset', { method: 'POST' }),
+    fetchAPI<{ status: string }>('/reset', { method: 'POST' }),
 
   // Streaming chat
   chatStream: (

@@ -190,6 +190,48 @@ type Store interface {
 
 	// DeletePromptHistory removes a prompt history entry by ID.
 	DeletePromptHistory(id int64) error
+
+	// InsertTask creates a new task.
+	InsertTask(t Task) error
+
+	// GetTask returns a task by id, or (nil, nil) if not found.
+	GetTask(id string) (*Task, error)
+
+	// ListTasks returns tasks matching the filter, newest-updated first.
+	ListTasks(f TaskFilter) ([]Task, error)
+
+	// UpdateTask applies a partial update.
+	UpdateTask(id string, u TaskUpdate) error
+
+	// DeleteTask removes a task and its comments / process links.
+	DeleteTask(id string) error
+
+	// AddTaskComment appends a comment and bumps the task's updated_at.
+	AddTaskComment(taskID, author, content string) (int64, error)
+
+	// ListTaskComments returns comments oldest-first.
+	ListTaskComments(taskID string) ([]TaskComment, error)
+
+	// LinkTaskProcess associates a process with a task (idempotent).
+	LinkTaskProcess(taskID, processID string) error
+
+	// ListTaskProcesses returns process IDs linked to a task.
+	ListTaskProcesses(taskID string) ([]string, error)
+
+	// ListMyTasks returns tasks assigned to a specific agent.
+	ListMyTasks(assignee string, status []string, limit int) ([]Task, error)
+
+	// ListUnassignedTasks returns tasks with empty assignee.
+	ListUnassignedTasks(limit int) ([]Task, error)
+
+	// UpdateTaskStatus is a focused setter for the agent tool layer.
+	UpdateTaskStatus(id, status string) error
+
+	// AssignTask sets the assignee without changing status.
+	AssignTask(id, assignee string) error
+
+	// ClaimTask atomically sets assignee to caller and status to 'doing'.
+	ClaimTask(id, assignee string) error
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useSSE } from '../hooks/useSSE'
 
 export function EventStream() {
-  const { events, connected } = useSSE('/api/events', 500)
+  const { events, connected } = useSSE('/api/v1/events', 500)
   const [filter, setFilter] = useState('')
 
   const filtered = filter

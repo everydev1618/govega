@@ -1,3 +1,54 @@
+export interface Task {
+  id: string
+  title: string
+  description: string
+  status: TaskStatus
+  priority: TaskPriority
+  assignee: string
+  tags: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  due_at?: string
+}
+
+export type TaskStatus = 'todo' | 'doing' | 'blocked' | 'done' | 'canceled'
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent'
+
+export interface TaskComment {
+  id: number
+  task_id: string
+  author: string
+  content: string
+  created_at: string
+}
+
+export interface TaskDetail extends Task {
+  comments: TaskComment[]
+  processes: string[]
+}
+
+export interface CreateTaskRequest {
+  title: string
+  description?: string
+  status?: TaskStatus
+  priority?: TaskPriority
+  assignee?: string
+  tags?: string
+  created_by?: string
+  due_at?: string
+}
+
+export interface UpdateTaskRequest {
+  title?: string
+  description?: string
+  status?: TaskStatus
+  priority?: TaskPriority
+  assignee?: string
+  tags?: string
+  due_at?: string
+}
+
 export interface ProcessResponse {
   id: string
   agent: string

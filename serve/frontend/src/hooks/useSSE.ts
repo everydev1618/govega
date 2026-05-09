@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { BrokerEvent } from '../lib/types'
 
-export function useSSE(url: string = '/api/events', maxEvents: number = 200) {
+export function useSSE(url: string = '/api/v1/events', maxEvents: number = 200) {
   const [events, setEvents] = useState<BrokerEvent[]>([])
   const [connected, setConnected] = useState(false)
   const esRef = useRef<EventSource | null>(null)

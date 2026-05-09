@@ -575,6 +575,124 @@ Returns `{"deleted": 5}`.
 
 ---
 
+## Tasks
+
+Kanban-style work items that live independently of any single agent run. A task has a status (`todo` / `doing` / `blocked` / `done` / `canceled`), a priority, an optional assignee, and an activity feed of comments. One task can be fulfilled by zero or many processes (linked via `task_processes`). Tasks are how humans (and Iris) track work that spans more than one immediate exchange.
+
+**Inbox vs Tasks:** Inbox items are push-from-agent (questions, completion pings) that Iris triages and resolves. Tasks are persistent work units that move through columns. They're orthogonal — an inbox triage may file a task; a task in progress may post questions to inbox.
+
+### Task lifecycle
+
+```
+                       human creates                  agent claims
+[unassigned: todo]  ─────────────────►  [assigned: todo]  ─────────►  [doing]  ──►  [done]
+        ▲                                      │                        │
+        │ orchestrator                         │ blocker                │
+        └──── assign_task ───  Iris  ────►     ▼                        │
+                                          [blocked] ──── unblocked ─────┘
+```
+
+### List tasks
+
+```
+GET /api/v1/tasks
+```
+
+Optional query params:
+
+- `status=todo,doing,blocked` — CSV of statuses to include
+- `assignee=drew,blake` — CSV of agent names
+- `tag=ui,backend` — matches tasks with any of these tags
+- `limit`, `offset` — pagination
+
+Returns an array of `Task`, newest-updated first.
+
+### Create a task
+
+```
+POST /api/v1/tasks
+```
+
+```json
+{
+  "title": "Ship the Q3 report",
+  "description": "Compile data from all three product lines.",
+  "priority": "high",
+  "assignee": "blake",
+  "due_at": "2026-05-20T17:00:00Z"
+}
+```
+
+`title` is the only required field. Status defaults to `todo`, priority to `normal`. Leave `assignee` empty (or omit) to put the task in Iris's routing queue. Returns the created `Task` with server-assigned `id`, `created_at`, `updated_at`.
+
+### Get a task (with comments and linked processes)
+
+```
+GET /api/v1/tasks/{id}
+```
+
+Returns a `TaskDetail`: the task plus its `comments` array (chronological) and `processes` array (process IDs linked to this task — oldest-linked first). Use the linked process IDs against `GET /api/v1/processes/{id}` to inspect what each run actually did.
+
+### Update a task (partial)
+
+```
+PATCH /api/v1/tasks/{id}
+```
+
+```json
+{ "status": "doing" }
+```
+
+Any combination of fields: `title`, `description`, `status`, `priority`, `assignee`, `tags`, `due_at`. Status must be one of the enum values; an unknown status returns `400`. `updated_at` advances on every successful update.
+
+### Delete a task
+
+```
+DELETE /api/v1/tasks/{id}
+```
+
+Cascades: comments and process links for this task are removed in the same transaction.
+
+### Add a comment
+
+```
+POST /api/v1/tasks/{id}/comments
+```
+
+```json
+{ "content": "Halfway done — waiting on legal", "author": "blake" }
+```
+
+`content` is required. `author` defaults to `"user"` if omitted. Bumps the task's `updated_at` so the activity reorders the list. Returns the created `TaskComment`.
+
+### Link a process to a task
+
+```
+POST /api/v1/tasks/{id}/processes
+```
+
+```json
+{ "process_id": "abc12345" }
+```
+
+Idempotent — re-linking the same process is a no-op, not an error. Used to attach an agent run to the task it was fulfilling. **Most agents don't need to call this directly** — the `claim_task` agent tool auto-links the calling process. This endpoint is for external integrations or manual stitching.
+
+### Working with tasks from inside an agent
+
+In addition to the REST endpoints above, agents can interact with the kanban via these registered tools (defined in `dsl/task_tools.go`):
+
+- `list_my_tasks(status?, limit?)` — see what's assigned to me
+- `list_unassigned_tasks(limit?)` — orchestrator's routing queue
+- `create_task(title, description?, priority?, assignee?)` — file new work
+- `assign_task(id, assignee)` — orchestrator routes to a specialist
+- `claim_task(id)` — set assignee=me, status=doing, **and auto-link my running process to the task**
+- `update_task_status(id, status)` — move across columns
+- `comment_on_task(id, content)` — post to the activity feed (author = calling agent)
+
+By default, only Iris is taught (in her system prompt) to actively triage `list_unassigned_tasks` on heartbeat. Worker agents have the tools available but use them when their prompt directs (typically `claim_task` → work → `comment_on_task` → `update_task_status('done')`).
+
+---
+
 ## Settings
 
 Key-value configuration store. Sensitive values are masked in list responses.
