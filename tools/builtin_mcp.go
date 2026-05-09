@@ -22,6 +22,7 @@ var builtinServers = map[string]*builtinMCPServer{
 	"fetch": fetchServer(),
 	"mssql": mssqlServer(),
 	"gmail": gmailServer(),
+	"vapi":  vapiServer(),
 }
 
 // HasBuiltinServer reports whether a Go-native implementation exists for the named MCP server.

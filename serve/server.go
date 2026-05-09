@@ -883,6 +883,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// handoff consumes the signed JWT and persists tokens.
 	mux.HandleFunc("POST /api/v1/integrations/gmail/start", s.handleGmailIntegrationStart)
 	mux.HandleFunc("POST /api/v1/integrations/gmail/handoff", s.handleGmailIntegrationHandoff)
+	mux.HandleFunc("GET /api/v1/integrations/vapi", s.handleVapiStatus)
+	mux.HandleFunc("POST /api/v1/integrations/vapi", s.handleVapiConfigure)
+	mux.HandleFunc("DELETE /api/v1/integrations/vapi", s.handleVapiDisable)
 
 	// Reset
 	mux.HandleFunc("POST /api/v1/reset", s.handleReset)
