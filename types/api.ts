@@ -1392,15 +1392,52 @@ export interface components {
             /** Format: int64 */
             duration_ms?: number;
         };
+        /**
+         * @description A summary layer of an agent's persistent memory of a user.
+         *     Layers are independent rows in `user_memory`; reading the agent's
+         *     memory returns one row per layer.
+         *
+         *     - `profile` — who the user is (role, expertise, preferences,
+         *       stable facts). Rewritten async by the extractor after each
+         *       user/assistant exchange.
+         *     - `topics` — currently-active topics the user is working on.
+         *       Rebuilt async from `notes` and recent exchanges; surfaces what
+         *       the agent should treat as "live context" right now.
+         *     - `notes` — significant moments and details worth remembering.
+         *       The richest layer; appended to (not overwritten) by the
+         *       extractor and by explicit `remember` tool calls.
+         *     - `journal` — legacy/historical layer. Read-only on output, no
+         *       new writes. Surfaced under the "History (legacy)" header in
+         *       the agent's system prompt for backward compatibility with
+         *       older deployments.
+         *
+         *     Read order when injected into an agent's system prompt:
+         *     profile → topics → journal → notes. Frontend UIs may render in
+         *     any order; the enum is the source of truth for layer identity.
+         * @enum {string}
+         */
+        MemoryLayer: "profile" | "topics" | "notes" | "journal";
         MemoryResponse: {
             user_id?: string;
             agent?: string;
+            /**
+             * @description All persisted memory rows for this user+agent pair, one per
+             *     layer. Order is whatever the store returns; clients that need
+             *     stable ordering should sort by `layer` or by `updated_at`.
+             */
             layers?: components["schemas"]["UserMemory"][];
         };
         UserMemory: {
             user_id?: string;
             agent?: string;
-            layer?: string;
+            layer?: components["schemas"]["MemoryLayer"];
+            /**
+             * @description Layer payload. For `profile` and `topics`, this is JSON
+             *     (a profile object / topics summary object). For `notes` and
+             *     `journal`, this is markdown-ish prose. Frontends should treat
+             *     the content as opaque for display unless they specifically
+             *     understand the layer's shape.
+             */
             content?: string;
             /** Format: date-time */
             created_at?: string;
