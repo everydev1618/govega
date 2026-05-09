@@ -12,6 +12,7 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/tools"
 	"github.com/everydev1618/vega-population/population"
 	"gopkg.in/yaml.v3"
@@ -163,6 +164,14 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Without an identity, an agent's tool surface is the only signal the
+	// LLM has — and a default tool surface looks like the orchestrator's
+	// (issue #48: agents confabulated the Iris persona). Inject a minimal
+	// identity before team enrichment so the agent claims its own name.
+	if system == "" {
+		system = defaultIdentityPrompt(req.DisplayName, req.Name)
+	}
+
 	// Register skill tools and collect tool names.
 	var toolNames []string
 	for _, skillName := range req.Skills {
@@ -189,6 +198,14 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		})
 		toolNames = append(toolNames, "delegate")
 		system = dsl.BuildTeamPrompt(system, req.Team, nil, false)
+	}
+
+	// If the caller didn't pin a tool list (no skills, no team), populate
+	// with the non-meta subset of the registry. Otherwise spawnAgent
+	// treats len(Tools)==0 as "give it everything", which leaks Iris and
+	// Hera meta-tools and primes the agent to roleplay as the orchestrator.
+	if len(toolNames) == 0 {
+		toolNames = defaultNonMetaToolNames(s.interp.Tools().Schema())
 	}
 
 	// Build DSL agent definition.
@@ -326,6 +343,9 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Build DSL agent definition.
 	system := existing.System
+	if system == "" {
+		system = defaultIdentityPrompt(existing.DisplayName, newName)
+	}
 	var toolNames []string
 	for _, skillName := range existing.Skills {
 		names, err := s.registerSkillTools(skillName)
@@ -350,6 +370,10 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		})
 		toolNames = append(toolNames, "delegate")
 		system = dsl.BuildTeamPrompt(system, existing.Team, nil, false)
+	}
+
+	if len(toolNames) == 0 {
+		toolNames = defaultNonMetaToolNames(s.interp.Tools().Schema())
 	}
 
 	agentDef := &dsl.Agent{
@@ -398,6 +422,33 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	s.store.DeleteComposedAgent(name)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "name": name})
+}
+
+// defaultIdentityPrompt returns a minimal "you are <name>" system prompt used
+// when the caller didn't provide one. Without an identity the LLM can drift
+// into the orchestrator's persona because the tool surface is its only signal
+// (issue #48).
+func defaultIdentityPrompt(displayName, name string) string {
+	identity := displayName
+	if identity == "" {
+		identity = name
+	}
+	return "You are " + identity + "."
+}
+
+// defaultNonMetaToolNames returns every tool in schema except those that
+// belong exclusively to Hera or Iris. handleCreateAgent and handleUpdateAgent
+// use this when the caller didn't specify a tool list, mirroring the filter
+// in restoreComposedAgents so meta-tools never leak to composed agents.
+func defaultNonMetaToolNames(schema []llm.ToolSchema) []string {
+	names := make([]string, 0, len(schema))
+	for _, ts := range schema {
+		if dsl.IsHeraTool(ts.Name) || dsl.IsIrisTool(ts.Name) {
+			continue
+		}
+		names = append(names, ts.Name)
+	}
+	return names
 }
 
 // --- Skill Tool Parsing ---
@@ -497,12 +548,6 @@ func (s *Server) restoreComposedAgents() {
 		return
 	}
 
-	// metaTool returns true for tools that belong exclusively to Hera or Iris
-	// and must never be handed to arbitrary composed agents.
-	metaTool := func(name string) bool {
-		return dsl.IsHeraTool(name) || dsl.IsIrisTool(name)
-	}
-
 	ctx := context.Background()
 	for _, a := range agents {
 		// Start with any explicitly persisted tool restrictions.
@@ -528,6 +573,12 @@ func (s *Server) restoreComposedAgents() {
 					system = manifest.SystemPrompt
 				}
 			}
+		}
+		// Backstop legacy records persisted before the create-time fallback
+		// existed (issue #48): without an identity, the agent's tool surface
+		// is the only signal the LLM has and it drifts to the orchestrator.
+		if system == "" {
+			system = defaultIdentityPrompt(a.DisplayName, a.Name)
 		}
 
 		// If the agent has a team, register the delegate tool and enrich the prompt.
@@ -556,14 +607,11 @@ func (s *Server) restoreComposedAgents() {
 			system = dsl.BuildTeamPrompt(system, a.Team, nil, false)
 		}
 
-		// If no explicit tool list, the agent would get every registered tool.
-		// Exclude meta-tools (Hera/Iris) which must never leak to arbitrary agents.
+		// If no explicit tool list, populate with the non-meta subset of the
+		// registry. Same rationale as the create handler: an empty list means
+		// spawnAgent gives the agent everything, including meta-tools.
 		if len(toolNames) == 0 {
-			for _, ts := range s.interp.Tools().Schema() {
-				if !metaTool(ts.Name) {
-					toolNames = append(toolNames, ts.Name)
-				}
-			}
+			toolNames = defaultNonMetaToolNames(s.interp.Tools().Schema())
 		}
 
 		agentDef := &dsl.Agent{
