@@ -1202,7 +1202,39 @@ export interface components {
             tools?: string[];
             team?: string[];
             process_id?: string;
+            /**
+             * @deprecated
+             * @description Raw vega.Process state. Deprecated — use `status` for the
+             *     high-level lifecycle and `health` for the orthogonal "is
+             *     anything wrong" signal. Will be removed in 0.2.0.
+             */
             process_status?: string;
+            /**
+             * @description High-level agent lifecycle state. Always present.
+             *
+             *     - `idle` — agent is defined but has no active work in flight
+             *       (covers "never spawned," "pending spawn," and "completed
+             *       last task")
+             *     - `running` — process is actively working on a task right now
+             *     - `error` — last terminal state was a failure or timeout
+             *
+             *     Intentionally a subset of the apex-host-mgmt mental model;
+             *     govega's process model has no provisioning/paused/stopping
+             *     concepts. New states will be added additively.
+             * @enum {string}
+             */
+            status?: "idle" | "running" | "error";
+            /**
+             * @description Orthogonal "is anything wrong?" signal, independent of
+             *     lifecycle status. Always present.
+             *
+             *     - `unknown` — no process or no signal yet
+             *     - `healthy` — running or recently completed with zero errors
+             *     - `degraded` — running or completed but errors > 0
+             *     - `unhealthy` — last terminal state was failure or timeout
+             * @enum {string}
+             */
+            health?: "unknown" | "healthy" | "degraded" | "unhealthy";
             /** @description True if the agent (or any per-user clone of it) currently has an active chat stream. */
             streaming?: boolean;
             /** @description "composed" if created via API, absent if defined in YAML */

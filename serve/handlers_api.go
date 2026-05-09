@@ -129,6 +129,42 @@ func (s *Server) isAgentStreaming(name string) bool {
 	return false
 }
 
+// agentLifecycle derives the high-level (status, health) for an agent
+// from the underlying process state. Pure function so the mapping is
+// trivially testable without constructing a real vega.Process.
+//
+// Mapping rules:
+//   - no live process              → idle / unknown
+//   - process pending              → idle / unknown
+//   - process running, 0 errors    → running / healthy
+//   - process running, errors > 0  → running / degraded
+//   - process completed, 0 errors  → idle / healthy
+//   - process completed, errors    → idle / degraded
+//   - process failed or timeout    → error / unhealthy
+func agentLifecycle(procStatus vega.Status, errorCount int, hasProcess bool) (AgentStatus, AgentHealth) {
+	if !hasProcess {
+		return AgentStatusIdle, AgentHealthUnknown
+	}
+	switch procStatus {
+	case vega.StatusFailed, vega.StatusTimeout:
+		return AgentStatusError, AgentHealthUnhealthy
+	case vega.StatusRunning:
+		if errorCount > 0 {
+			return AgentStatusRunning, AgentHealthDegraded
+		}
+		return AgentStatusRunning, AgentHealthHealthy
+	case vega.StatusCompleted:
+		if errorCount > 0 {
+			return AgentStatusIdle, AgentHealthDegraded
+		}
+		return AgentStatusIdle, AgentHealthHealthy
+	default:
+		// StatusPending and any future state we haven't taught the mapping
+		// about: treat as idle/unknown so the response is always populated.
+		return AgentStatusIdle, AgentHealthUnknown
+	}
+}
+
 // buildAgentResponse assembles the API representation for a single agent.
 // Shared by the list and single-agent endpoints. Caller has already
 // resolved the optional process and composed-agent metadata.
@@ -148,14 +184,20 @@ func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel st
 		System:         def.System,
 		Tools:          def.Tools,
 	}
-	if proc != nil {
+	hasProcess := proc != nil
+	var procStatus vega.Status
+	errors := 0
+	if hasProcess {
+		procStatus = proc.Status()
+		errors = proc.Metrics().Errors
 		ar.ProcessID = proc.ID
-		ar.ProcessStatus = string(proc.Status())
+		ar.ProcessStatus = string(procStatus)
 		if last := proc.Metrics().LastActiveAt; !last.IsZero() {
 			la := last.UTC()
 			ar.LastActivity = &la
 		}
 	}
+	ar.Status, ar.Health = agentLifecycle(procStatus, errors, hasProcess)
 	if s.isAgentStreaming(name) {
 		ar.Streaming = true
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 )
 
@@ -170,6 +171,68 @@ func TestHandleGetAgent_ComposedFieldsSurface(t *testing.T) {
 	}
 	if got.UpdatedAt == nil || got.UpdatedAt.IsZero() {
 		t.Error("updated_at not set")
+	}
+}
+
+// TestAgentLifecycle covers the mapping from the underlying vega.Process
+// state to the high-level (AgentStatus, AgentHealth) the API surfaces.
+// Pure function — no Process construction needed.
+func TestAgentLifecycle(t *testing.T) {
+	cases := []struct {
+		name       string
+		procStatus vega.Status
+		errors     int
+		hasProcess bool
+		wantStatus AgentStatus
+		wantHealth AgentHealth
+	}{
+		{"no process", "", 0, false, AgentStatusIdle, AgentHealthUnknown},
+		{"pending", vega.StatusPending, 0, true, AgentStatusIdle, AgentHealthUnknown},
+		{"running, no errors", vega.StatusRunning, 0, true, AgentStatusRunning, AgentHealthHealthy},
+		{"running, with errors", vega.StatusRunning, 3, true, AgentStatusRunning, AgentHealthDegraded},
+		{"completed clean", vega.StatusCompleted, 0, true, AgentStatusIdle, AgentHealthHealthy},
+		{"completed with errors", vega.StatusCompleted, 2, true, AgentStatusIdle, AgentHealthDegraded},
+		{"failed", vega.StatusFailed, 0, true, AgentStatusError, AgentHealthUnhealthy},
+		{"timeout", vega.StatusTimeout, 0, true, AgentStatusError, AgentHealthUnhealthy},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotStatus, gotHealth := agentLifecycle(tc.procStatus, tc.errors, tc.hasProcess)
+			if gotStatus != tc.wantStatus {
+				t.Errorf("status = %q, want %q", gotStatus, tc.wantStatus)
+			}
+			if gotHealth != tc.wantHealth {
+				t.Errorf("health = %q, want %q", gotHealth, tc.wantHealth)
+			}
+		})
+	}
+}
+
+// TestHandleGetAgent_StatusAndHealth checks the new fields are populated on
+// every response, even for agents with no live process.
+func TestHandleGetAgent_StatusAndHealth(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"riley": {Name: "riley", Model: "claude-sonnet-4-6"},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/riley", nil)
+	req.SetPathValue("name", "riley")
+	w := httptest.NewRecorder()
+	s.handleGetAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var got AgentResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// dsl.NewInterpreter spawns processes lazily, so the live process puts
+	// this agent in StatusRunning with zero errors → status=running,
+	// health=healthy. The point is that some non-empty value lands.
+	if got.Status == "" {
+		t.Error("status field empty")
+	}
+	if got.Health == "" {
+		t.Error("health field empty")
 	}
 }
 

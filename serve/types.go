@@ -41,6 +41,39 @@ type MetricsResponse struct {
 	LastActiveAt time.Time `json:"last_active_at,omitempty"`
 }
 
+// AgentStatus is the high-level lifecycle state of an agent surfaced to
+// the API. Distinct from the underlying vega.Process state machine: this
+// answers "should the user think this agent is busy / broken?" rather than
+// "what state is the underlying conversation in?".
+//
+// govega's process model has no provisioning/paused/stopping concepts
+// (those are deployment-tier states), so this enum is intentionally a
+// subset of the apex-host-mgmt mental model. New states will be added
+// additively as govega's lifecycle grows.
+type AgentStatus string
+
+const (
+	// AgentStatusIdle: agent is defined but has no active work in flight.
+	// Includes "never spawned," "pending spawn," and "completed last task."
+	AgentStatusIdle AgentStatus = "idle"
+	// AgentStatusRunning: process is actively working on a task right now.
+	AgentStatusRunning AgentStatus = "running"
+	// AgentStatusError: last terminal state was a failure or timeout.
+	AgentStatusError AgentStatus = "error"
+)
+
+// AgentHealth is an orthogonal "is anything wrong?" axis. Lifecycle status
+// answers "where is this in its life," health answers "is anything wrong
+// with how it's running."
+type AgentHealth string
+
+const (
+	AgentHealthUnknown   AgentHealth = "unknown"
+	AgentHealthHealthy   AgentHealth = "healthy"
+	AgentHealthDegraded  AgentHealth = "degraded"
+	AgentHealthUnhealthy AgentHealth = "unhealthy"
+)
+
 // AgentResponse is the API representation of an agent definition.
 type AgentResponse struct {
 	Name        string `json:"name"`
@@ -57,9 +90,15 @@ type AgentResponse struct {
 	Tools          []string `json:"tools,omitempty"`
 	Team           []string `json:"team,omitempty"`
 	ProcessID      string   `json:"process_id,omitempty"`
-	ProcessStatus  string   `json:"process_status,omitempty"`
-	Streaming      bool     `json:"streaming,omitempty"`
-	Source         string   `json:"source,omitempty"`
+	// ProcessStatus exposes the raw vega.Process state. Deprecated: use
+	// `status` for the high-level lifecycle. Will be removed in 0.2.0.
+	ProcessStatus string `json:"process_status,omitempty"`
+	// Status is the high-level agent lifecycle state. Always present.
+	Status AgentStatus `json:"status"`
+	// Health is the orthogonal "is anything wrong?" signal. Always present.
+	Health    AgentHealth `json:"health"`
+	Streaming bool        `json:"streaming,omitempty"`
+	Source    string      `json:"source,omitempty"`
 	// CreatedAt is when the agent was first persisted (composed agents) or
 	// the server start time (YAML agents). Pointer so untracked agents omit.
 	CreatedAt *time.Time `json:"created_at,omitempty"`
