@@ -43,18 +43,31 @@ type MetricsResponse struct {
 
 // AgentResponse is the API representation of an agent definition.
 type AgentResponse struct {
-	Name          string   `json:"name"`
-	DisplayName   string   `json:"display_name,omitempty"`
-	Title         string   `json:"title,omitempty"`
-	Avatar        string   `json:"avatar,omitempty"`
-	Model         string   `json:"model,omitempty"`
-	System        string   `json:"system,omitempty"`
-	Tools         []string `json:"tools,omitempty"`
-	Team          []string `json:"team,omitempty"`
-	ProcessID     string   `json:"process_id,omitempty"`
-	ProcessStatus string   `json:"process_status,omitempty"`
-	Streaming     bool     `json:"streaming,omitempty"`
-	Source        string   `json:"source,omitempty"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Avatar      string `json:"avatar,omitempty"`
+	// Icon is a Lucide icon name; pairs with AvatarGradient for the
+	// frontend's circular agent badge.
+	Icon string `json:"icon,omitempty"`
+	// AvatarGradient is a 2-stop CSS color array, e.g. ["#EF4444", "#DC2626"].
+	AvatarGradient []string `json:"avatar_gradient,omitempty"`
+	Model          string   `json:"model,omitempty"`
+	System         string   `json:"system,omitempty"`
+	Tools          []string `json:"tools,omitempty"`
+	Team           []string `json:"team,omitempty"`
+	ProcessID      string   `json:"process_id,omitempty"`
+	ProcessStatus  string   `json:"process_status,omitempty"`
+	Streaming      bool     `json:"streaming,omitempty"`
+	Source         string   `json:"source,omitempty"`
+	// CreatedAt is when the agent was first persisted (composed agents) or
+	// the server start time (YAML agents). Pointer so untracked agents omit.
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	// UpdatedAt is the last time the agent definition changed.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	// LastActivity is the most recent moment the agent's running process
+	// did work (last token, last tool call). Nil if the agent has never run.
+	LastActivity *time.Time `json:"last_activity,omitempty"`
 }
 
 // WorkflowResponse is the API representation of a workflow definition.
@@ -163,16 +176,19 @@ type CompanySiblingResponse struct {
 
 // AgentTemplateResponse is the API representation of a portable agent template.
 type AgentTemplateResponse struct {
-	Version     string   `json:"version"`
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name,omitempty"`
-	Title       string   `json:"title,omitempty"`
-	Model       string   `json:"model"`
-	System      string   `json:"system"`
-	Tools       []string `json:"tools,omitempty"`
-	Team        []string `json:"team,omitempty"`
-	ExportedBy  string   `json:"exported_by,omitempty"`
-	ExportedAt  string   `json:"exported_at,omitempty"`
+	Version        string   `json:"version"`
+	Name           string   `json:"name"`
+	DisplayName    string   `json:"display_name,omitempty"`
+	Title          string   `json:"title,omitempty"`
+	Avatar         string   `json:"avatar,omitempty"`
+	Icon           string   `json:"icon,omitempty"`
+	AvatarGradient []string `json:"avatar_gradient,omitempty"`
+	Model          string   `json:"model"`
+	System         string   `json:"system"`
+	Tools          []string `json:"tools,omitempty"`
+	Team           []string `json:"team,omitempty"`
+	ExportedBy     string   `json:"exported_by,omitempty"`
+	ExportedAt     string   `json:"exported_at,omitempty"`
 }
 
 // --- Channel Types ---
@@ -319,13 +335,18 @@ type PopulationInstallRequest struct {
 
 // CreateAgentRequest is the request to compose a new agent.
 type CreateAgentRequest struct {
-	Name        string   `json:"name"`
-	Model       string   `json:"model"`
-	Persona     string   `json:"persona,omitempty"`
-	Skills      []string `json:"skills,omitempty"`
-	Team        []string `json:"team,omitempty"`
-	System      string   `json:"system,omitempty"`
-	Temperature *float64 `json:"temperature,omitempty"`
+	Name           string   `json:"name"`
+	DisplayName    string   `json:"display_name,omitempty"`
+	Title          string   `json:"title,omitempty"`
+	Avatar         string   `json:"avatar,omitempty"`
+	Icon           string   `json:"icon,omitempty"`
+	AvatarGradient []string `json:"avatar_gradient,omitempty"`
+	Model          string   `json:"model"`
+	Persona        string   `json:"persona,omitempty"`
+	Skills         []string `json:"skills,omitempty"`
+	Team           []string `json:"team,omitempty"`
+	System         string   `json:"system,omitempty"`
+	Temperature    *float64 `json:"temperature,omitempty"`
 }
 
 // CreateAgentResponse is returned when a new agent is composed.
@@ -337,12 +358,19 @@ type CreateAgentResponse struct {
 }
 
 // UpdateAgentRequest is the request to update an existing composed agent.
+// Pointer-typed fields distinguish "not set" (omit, leave unchanged) from
+// "set to empty" (clear). Slice fields use len() == 0 to mean unchanged.
 type UpdateAgentRequest struct {
-	Name        *string  `json:"name,omitempty"`
-	Model       *string  `json:"model,omitempty"`
-	System      *string  `json:"system,omitempty"`
-	Team        []string `json:"team,omitempty"`
-	Temperature *float64 `json:"temperature,omitempty"`
+	Name           *string  `json:"name,omitempty"`
+	DisplayName    *string  `json:"display_name,omitempty"`
+	Title          *string  `json:"title,omitempty"`
+	Avatar         *string  `json:"avatar,omitempty"`
+	Icon           *string  `json:"icon,omitempty"`
+	AvatarGradient []string `json:"avatar_gradient,omitempty"`
+	Model          *string  `json:"model,omitempty"`
+	System         *string  `json:"system,omitempty"`
+	Team           []string `json:"team,omitempty"`
+	Temperature    *float64 `json:"temperature,omitempty"`
 }
 
 // --- MCP Connection Types ---

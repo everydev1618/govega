@@ -780,6 +780,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/processes/{id}", s.handleGetProcess)
 	mux.HandleFunc("DELETE /api/v1/processes/{id}", s.handleKillProcess)
 	mux.HandleFunc("GET /api/v1/agents", s.handleListAgents)
+	mux.HandleFunc("GET /api/v1/agents/{name}", s.handleGetAgent)
 	mux.HandleFunc("GET /api/v1/workflows", s.handleListWorkflows)
 	mux.HandleFunc("POST /api/v1/workflows/{name}/run", s.handleRunWorkflow)
 	mux.HandleFunc("GET /api/v1/mcp/servers", s.handleMCPServers)
@@ -1181,18 +1182,22 @@ func (s *Server) injectHera() {
 			if agent.Skills != nil {
 				skills = agent.Skills.Directories
 			}
+			now := time.Now().UTC()
 			ca := ComposedAgent{
-				Name:        agent.Name,
-				DisplayName: agent.DisplayName,
-				Title:       agent.Title,
-				Avatar:      agent.Avatar,
-				Model:       agent.Model,
-				System:      agent.System,
-				Tools:       agent.Tools,
-				Team:        agent.Team,
-				Skills:      skills,
-				Temperature: agent.Temperature,
-				CreatedAt:   time.Now(),
+				Name:           agent.Name,
+				DisplayName:    agent.DisplayName,
+				Title:          agent.Title,
+				Avatar:         agent.Avatar,
+				Icon:           agent.Icon,
+				AvatarGradient: agent.AvatarGradient,
+				Model:          agent.Model,
+				System:         agent.System,
+				Tools:          agent.Tools,
+				Team:           agent.Team,
+				Skills:         skills,
+				Temperature:    agent.Temperature,
+				CreatedAt:      now,
+				UpdatedAt:      now,
 			}
 			// Retry up to 3 times on SQLITE_BUSY.
 			var err error

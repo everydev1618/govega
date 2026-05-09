@@ -98,6 +98,91 @@ func (s *Server) handleKillProcess(w http.ResponseWriter, r *http.Request) {
 
 // --- Agent Handlers ---
 
+// isHiddenAgent reports whether the named agent should be hidden from the
+// public API. The builder meta-agent is internal-only (accessed via the
+// orchestrator), and any "base:suffix" name is a per-user clone (e.g.
+// "iris:Etienne") that the API surface treats as part of its base.
+func (s *Server) isHiddenAgent(name string) bool {
+	if name == s.cfg.Builder.Name {
+		return true
+	}
+	if strings.Contains(name, ":") {
+		return true
+	}
+	return false
+}
+
+// isAgentStreaming returns true if the named agent (or any of its per-user
+// clones) currently has an active chat stream. Takes the streams lock.
+func (s *Server) isAgentStreaming(name string) bool {
+	s.streamsMu.Lock()
+	defer s.streamsMu.Unlock()
+	for sname, as := range s.streams {
+		if sname == name || strings.HasPrefix(sname, name+":") {
+			select {
+			case <-as.done:
+			default:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// buildAgentResponse assembles the API representation for a single agent.
+// Shared by the list and single-agent endpoints. Caller has already
+// resolved the optional process and composed-agent metadata.
+func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel string, proc *vega.Process, composed *ComposedAgent) AgentResponse {
+	model := def.Model
+	if model == "" {
+		model = defaultModel
+	}
+	ar := AgentResponse{
+		Name:           name,
+		DisplayName:    def.DisplayName,
+		Title:          def.Title,
+		Avatar:         def.Avatar,
+		Icon:           def.Icon,
+		AvatarGradient: def.AvatarGradient,
+		Model:          model,
+		System:         def.System,
+		Tools:          def.Tools,
+	}
+	if proc != nil {
+		ar.ProcessID = proc.ID
+		ar.ProcessStatus = string(proc.Status())
+		if last := proc.Metrics().LastActiveAt; !last.IsZero() {
+			la := last.UTC()
+			ar.LastActivity = &la
+		}
+	}
+	if s.isAgentStreaming(name) {
+		ar.Streaming = true
+	}
+	if composed != nil {
+		ar.Source = "composed"
+		ar.Team = composed.Team
+		// Composed agents may carry their own visual identity that wasn't
+		// hydrated back into the in-memory dsl.Agent. Prefer composed values
+		// when set so a runtime-edited icon survives a restart.
+		if composed.Icon != "" {
+			ar.Icon = composed.Icon
+		}
+		if len(composed.AvatarGradient) > 0 {
+			ar.AvatarGradient = composed.AvatarGradient
+		}
+		if !composed.CreatedAt.IsZero() {
+			ca := composed.CreatedAt.UTC()
+			ar.CreatedAt = &ca
+		}
+		if !composed.UpdatedAt.IsZero() {
+			ua := composed.UpdatedAt.UTC()
+			ar.UpdatedAt = &ua
+		}
+	}
+	return ar
+}
+
 func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	doc := s.interp.Document()
 	agents := s.interp.Agents()
@@ -118,55 +203,55 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]AgentResponse, 0, len(doc.Agents))
 	for name, def := range doc.Agents {
-		// Hide the builder meta-agent from the API — internal-only,
-		// accessed via the orchestrator.
-		if name == s.cfg.Builder.Name {
+		if s.isHiddenAgent(name) {
 			continue
 		}
-		// Hide per-user clones (e.g. "iris:Etienne") — they're internal.
-		if strings.Contains(name, ":") {
-			continue
-		}
-		model := def.Model
-		if model == "" {
-			model = defaultModel
-		}
-		ar := AgentResponse{
-			Name:        name,
-			DisplayName: def.DisplayName,
-			Title:       def.Title,
-			Avatar:      def.Avatar,
-			Model:       model,
-			System:      def.System,
-			Tools:       def.Tools,
-		}
-		if proc, ok := agents[name]; ok {
-			ar.ProcessID = proc.ID
-			ar.ProcessStatus = string(proc.Status())
-		}
-		// Check whether this agent (or any per-user clone) has an active stream.
-		s.streamsMu.Lock()
-		for sname, as := range s.streams {
-			if sname == name || strings.HasPrefix(sname, name+":") {
-				select {
-				case <-as.done:
-				default:
-					ar.Streaming = true
-				}
-				if ar.Streaming {
-					break
-				}
-			}
-		}
-		s.streamsMu.Unlock()
+		var composed *ComposedAgent
 		if ca, ok := composedMap[name]; ok {
-			ar.Source = "composed"
-			ar.Team = ca.Team
+			composed = &ca
 		}
-		resp = append(resp, ar)
+		resp = append(resp, s.buildAgentResponse(name, def, defaultModel, agents[name], composed))
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleGetAgent returns a single agent by name. Hidden agents (builder,
+// per-user clones) and unknown names both return 404 — the response shape
+// is identical so callers can't probe for the existence of internal agents.
+func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	if s.isHiddenAgent(name) {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "agent not found"})
+		return
+	}
+
+	doc := s.interp.Document()
+	def, ok := doc.Agents[name]
+	if !ok {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "agent not found"})
+		return
+	}
+
+	defaultModel := ""
+	if doc.Settings != nil {
+		defaultModel = doc.Settings.DefaultModel
+	}
+
+	var composed *ComposedAgent
+	if list, err := s.store.ListComposedAgents(); err == nil {
+		for i := range list {
+			if list[i].Name == name {
+				composed = &list[i]
+				break
+			}
+		}
+	}
+
+	proc := s.interp.Agents()[name]
+
+	writeJSON(w, http.StatusOK, s.buildAgentResponse(name, def, defaultModel, proc, composed))
 }
 
 // --- Chat Handlers ---
@@ -2006,16 +2091,19 @@ func (s *Server) handleExportTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpl := AgentTemplateResponse{
-		Version:     "1",
-		Name:        name,
-		DisplayName: agentDef.DisplayName,
-		Title:       agentDef.Title,
-		Model:       agentDef.Model,
-		System:      agentDef.System,
-		Tools:       portableTools,
-		Team:        agentDef.Team,
-		ExportedBy:  companyName,
-		ExportedAt:  time.Now().UTC().Format(time.RFC3339),
+		Version:        "1",
+		Name:           name,
+		DisplayName:    agentDef.DisplayName,
+		Title:          agentDef.Title,
+		Avatar:         agentDef.Avatar,
+		Icon:           agentDef.Icon,
+		AvatarGradient: agentDef.AvatarGradient,
+		Model:          agentDef.Model,
+		System:         agentDef.System,
+		Tools:          portableTools,
+		Team:           agentDef.Team,
+		ExportedBy:     companyName,
+		ExportedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 
 	writeJSON(w, http.StatusOK, tmpl)
@@ -2042,27 +2130,35 @@ func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
 
 	// Create the agent definition.
 	agentDef := &dsl.Agent{
-		Name:        tmpl.Name,
-		DisplayName: tmpl.DisplayName,
-		Title:       tmpl.Title,
-		Model:       tmpl.Model,
-		System:      tmpl.System,
-		Tools:       tmpl.Tools,
-		Team:        tmpl.Team,
+		Name:           tmpl.Name,
+		DisplayName:    tmpl.DisplayName,
+		Title:          tmpl.Title,
+		Avatar:         tmpl.Avatar,
+		Icon:           tmpl.Icon,
+		AvatarGradient: tmpl.AvatarGradient,
+		Model:          tmpl.Model,
+		System:         tmpl.System,
+		Tools:          tmpl.Tools,
+		Team:           tmpl.Team,
 	}
 
 	s.interp.AddAgent(tmpl.Name, agentDef)
 
 	// Persist as composed agent.
+	now := time.Now().UTC()
 	if err := s.store.InsertComposedAgent(ComposedAgent{
-		Name:        agentDef.Name,
-		DisplayName: agentDef.DisplayName,
-		Title:       agentDef.Title,
-		Model:       agentDef.Model,
-		System:      agentDef.System,
-		Tools:       agentDef.Tools,
-		Team:        agentDef.Team,
-		CreatedAt:   time.Now(),
+		Name:           agentDef.Name,
+		DisplayName:    agentDef.DisplayName,
+		Title:          agentDef.Title,
+		Avatar:         agentDef.Avatar,
+		Icon:           agentDef.Icon,
+		AvatarGradient: agentDef.AvatarGradient,
+		Model:          agentDef.Model,
+		System:         agentDef.System,
+		Tools:          agentDef.Tools,
+		Team:           agentDef.Team,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}); err != nil {
 		slog.Error("failed to persist imported agent", "agent", agentDef.Name, "error", err)
 	}

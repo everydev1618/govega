@@ -23,16 +23,19 @@ type Company struct {
 
 // AgentTemplate is a portable agent definition for export/import across instances.
 type AgentTemplate struct {
-	Version     string   `json:"version" yaml:"version"`
-	Name        string   `json:"name" yaml:"name"`
-	DisplayName string   `json:"display_name,omitempty" yaml:"display_name,omitempty"`
-	Title       string   `json:"title,omitempty" yaml:"title,omitempty"`
-	Model       string   `json:"model" yaml:"model"`
-	System      string   `json:"system" yaml:"system"`
-	Tools       []string `json:"tools,omitempty" yaml:"tools,omitempty"`
-	Team        []string `json:"team,omitempty" yaml:"team,omitempty"`
-	ExportedBy  string   `json:"exported_by,omitempty" yaml:"exported_by,omitempty"`
-	ExportedAt  string   `json:"exported_at,omitempty" yaml:"exported_at,omitempty"`
+	Version        string   `json:"version" yaml:"version"`
+	Name           string   `json:"name" yaml:"name"`
+	DisplayName    string   `json:"display_name,omitempty" yaml:"display_name,omitempty"`
+	Title          string   `json:"title,omitempty" yaml:"title,omitempty"`
+	Avatar         string   `json:"avatar,omitempty" yaml:"avatar,omitempty"`
+	Icon           string   `json:"icon,omitempty" yaml:"icon,omitempty"`
+	AvatarGradient []string `json:"avatar_gradient,omitempty" yaml:"avatar_gradient,omitempty"`
+	Model          string   `json:"model" yaml:"model"`
+	System         string   `json:"system" yaml:"system"`
+	Tools          []string `json:"tools,omitempty" yaml:"tools,omitempty"`
+	Team           []string `json:"team,omitempty" yaml:"team,omitempty"`
+	ExportedBy     string   `json:"exported_by,omitempty" yaml:"exported_by,omitempty"`
+	ExportedAt     string   `json:"exported_at,omitempty" yaml:"exported_at,omitempty"`
 }
 
 // ChannelDef defines a channel in the DSL.
@@ -60,6 +63,12 @@ type Agent struct {
 	DisplayName   string            `yaml:"display_name"`
 	Title         string            `yaml:"title"`
 	Avatar        string            `yaml:"avatar"`
+	// Icon is a Lucide icon name (frontend uses lucide-react). Lets each
+	// agent render with a distinctive glyph instead of an identical robot.
+	Icon string `yaml:"icon,omitempty" json:"icon,omitempty"`
+	// AvatarGradient is a 2-stop CSS color array (e.g. ["#EF4444", "#DC2626"])
+	// used as the background gradient behind the icon/avatar.
+	AvatarGradient []string `yaml:"avatar_gradient,omitempty" json:"avatar_gradient,omitempty"`
 	Extends       string            `yaml:"extends"`
 	Model         string            `yaml:"model"`
 	FallbackModel string            `yaml:"fallback_model"`

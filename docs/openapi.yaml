@@ -113,6 +113,29 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/agents/{name}:
+    get:
+      tags: [Agents]
+      summary: Get a single agent by name
+      description: |
+        Returns the same shape as a single element of GET /api/v1/agents,
+        but in one round-trip (collapses the list-then-find pattern in
+        clients building agent detail pages).
+
+        Hidden agents (the builder meta-agent and per-user clones using the
+        "base:suffix" form) return 404 — same as unknown names — so the
+        endpoint cannot be used to probe for internal agents.
+      operationId: getAgent
+      parameters:
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
     put:
       tags: [Agents]
       summary: Update an existing composed agent
@@ -1965,6 +1988,15 @@ components:
           type: string
         avatar:
           type: string
+          description: Free-form avatar string (emoji, short code, etc.). Prefer `icon` + `avatar_gradient` for new code.
+        icon:
+          type: string
+          description: Lucide icon name (e.g. "Sparkles", "Briefcase"). Pairs with `avatar_gradient` for the agent badge.
+        avatar_gradient:
+          type: array
+          items:
+            type: string
+          description: Two-stop CSS color gradient as a hex pair, e.g. ["#EF4444", "#DC2626"].
         model:
           type: string
         system:
@@ -1981,9 +2013,24 @@ components:
           type: string
         process_status:
           type: string
+        streaming:
+          type: boolean
+          description: True if the agent (or any per-user clone of it) currently has an active chat stream.
         source:
           type: string
           description: '"composed" if created via API, absent if defined in YAML'
+        created_at:
+          type: string
+          format: date-time
+          description: When the agent was first persisted. Composed agents only — YAML agents omit this.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last time the agent definition changed. Composed agents only.
+        last_activity:
+          type: string
+          format: date-time
+          description: Most recent moment the agent's running process did work (last token, last tool call). Omitted if the agent has never run.
 
     CreateAgentRequest:
       type: object
@@ -1991,6 +2038,20 @@ components:
       properties:
         name:
           type: string
+        display_name:
+          type: string
+        title:
+          type: string
+        avatar:
+          type: string
+        icon:
+          type: string
+          description: Lucide icon name. See AgentResponse.icon.
+        avatar_gradient:
+          type: array
+          items:
+            type: string
+          description: Two-stop CSS color gradient. See AgentResponse.avatar_gradient.
         model:
           type: string
         persona:
@@ -2033,6 +2094,20 @@ components:
         name:
           type: string
           description: New name (for renaming)
+        display_name:
+          type: string
+        title:
+          type: string
+        avatar:
+          type: string
+        icon:
+          type: string
+          description: Lucide icon name. See AgentResponse.icon.
+        avatar_gradient:
+          type: array
+          items:
+            type: string
+          description: Two-stop CSS color gradient. See AgentResponse.avatar_gradient.
         model:
           type: string
         system:

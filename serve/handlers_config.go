@@ -378,18 +378,22 @@ func (s *Server) persistComposedAgent(name string, def *dsl.Agent) {
 	if def.Skills != nil {
 		skills = def.Skills.Directories
 	}
+	now := time.Now().UTC()
 	ca := ComposedAgent{
-		Name:        name,
-		DisplayName: def.DisplayName,
-		Title:       def.Title,
-		Avatar:      def.Avatar,
-		Model:       def.Model,
-		System:      def.System,
-		Tools:       def.Tools,
-		Team:        def.Team,
-		Skills:      skills,
-		Temperature: def.Temperature,
-		CreatedAt:   time.Now(),
+		Name:           name,
+		DisplayName:    def.DisplayName,
+		Title:          def.Title,
+		Avatar:         def.Avatar,
+		Icon:           def.Icon,
+		AvatarGradient: def.AvatarGradient,
+		Model:          def.Model,
+		System:         def.System,
+		Tools:          def.Tools,
+		Team:           def.Team,
+		Skills:         skills,
+		Temperature:    def.Temperature,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := s.store.InsertComposedAgent(ca); err != nil {
 		slog.Error("config upload: failed to persist agent", "agent", name, "error", err)

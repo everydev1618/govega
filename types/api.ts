@@ -84,7 +84,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get a single agent by name
+         * @description Returns the same shape as a single element of GET /api/v1/agents,
+         *     but in one round-trip (collapses the list-then-find pattern in
+         *     clients building agent detail pages).
+         *
+         *     Hidden agents (the builder meta-agent and per-user clones using the
+         *     "base:suffix" form) return 404 — same as unknown names — so the
+         *     endpoint cannot be used to probe for internal agents.
+         */
+        get: operations["getAgent"];
         /** Update an existing composed agent */
         put: operations["updateAgent"];
         post?: never;
@@ -1181,18 +1191,47 @@ export interface components {
             name?: string;
             display_name?: string;
             title?: string;
+            /** @description Free-form avatar string (emoji, short code, etc.). Prefer `icon` + `avatar_gradient` for new code. */
             avatar?: string;
+            /** @description Lucide icon name (e.g. "Sparkles", "Briefcase"). Pairs with `avatar_gradient` for the agent badge. */
+            icon?: string;
+            /** @description Two-stop CSS color gradient as a hex pair, e.g. ["#EF4444", "#DC2626"]. */
+            avatar_gradient?: string[];
             model?: string;
             system?: string;
             tools?: string[];
             team?: string[];
             process_id?: string;
             process_status?: string;
+            /** @description True if the agent (or any per-user clone of it) currently has an active chat stream. */
+            streaming?: boolean;
             /** @description "composed" if created via API, absent if defined in YAML */
             source?: string;
+            /**
+             * Format: date-time
+             * @description When the agent was first persisted. Composed agents only — YAML agents omit this.
+             */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description Last time the agent definition changed. Composed agents only.
+             */
+            updated_at?: string;
+            /**
+             * Format: date-time
+             * @description Most recent moment the agent's running process did work (last token, last tool call). Omitted if the agent has never run.
+             */
+            last_activity?: string;
         };
         CreateAgentRequest: {
             name: string;
+            display_name?: string;
+            title?: string;
+            avatar?: string;
+            /** @description Lucide icon name. See AgentResponse.icon. */
+            icon?: string;
+            /** @description Two-stop CSS color gradient. See AgentResponse.avatar_gradient. */
+            avatar_gradient?: string[];
             model: string;
             /** @description Population persona name (loads system prompt from installed persona) */
             persona?: string;
@@ -1214,6 +1253,13 @@ export interface components {
         UpdateAgentRequest: {
             /** @description New name (for renaming) */
             name?: string;
+            display_name?: string;
+            title?: string;
+            avatar?: string;
+            /** @description Lucide icon name. See AgentResponse.icon. */
+            icon?: string;
+            /** @description Two-stop CSS color gradient. See AgentResponse.avatar_gradient. */
+            avatar_gradient?: string[];
             model?: string;
             system?: string;
             team?: string[];
@@ -1893,6 +1939,30 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    getAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Agent name */
+                name: components["parameters"]["AgentName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     updateAgent: {

@@ -74,17 +74,21 @@ func (s *SQLiteStore) Init() error {
 	);
 
 	CREATE TABLE IF NOT EXISTS composed_agents (
-		name         TEXT PRIMARY KEY,
-		display_name TEXT NOT NULL DEFAULT '',
-		title        TEXT NOT NULL DEFAULT '',
-		model        TEXT NOT NULL DEFAULT '',
-		persona      TEXT NOT NULL DEFAULT '',
-		skills       TEXT NOT NULL DEFAULT '[]',
-		tools        TEXT NOT NULL DEFAULT '[]',
-		team         TEXT NOT NULL DEFAULT '[]',
-		system       TEXT NOT NULL DEFAULT '',
-		temperature  REAL,
-		created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		name            TEXT PRIMARY KEY,
+		display_name    TEXT NOT NULL DEFAULT '',
+		title           TEXT NOT NULL DEFAULT '',
+		avatar          TEXT NOT NULL DEFAULT '',
+		icon            TEXT NOT NULL DEFAULT '',
+		avatar_gradient TEXT NOT NULL DEFAULT '[]',
+		model           TEXT NOT NULL DEFAULT '',
+		persona         TEXT NOT NULL DEFAULT '',
+		skills          TEXT NOT NULL DEFAULT '[]',
+		tools           TEXT NOT NULL DEFAULT '[]',
+		team            TEXT NOT NULL DEFAULT '[]',
+		system          TEXT NOT NULL DEFAULT '',
+		temperature     REAL,
+		created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS chat_messages (
@@ -253,6 +257,15 @@ func (s *SQLiteStore) Init() error {
 	// Migrate: add avatar column to composed_agents if missing.
 	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`)
 
+	// Migrate: add visual identity (icon, avatar_gradient) and updated_at
+	// columns to composed_agents. Backfill updated_at from created_at so
+	// existing rows surface a sensible "last touched" timestamp.
+	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN icon TEXT NOT NULL DEFAULT ''`)
+	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN avatar_gradient TEXT NOT NULL DEFAULT '[]'`)
+	if _, err := s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN updated_at DATETIME`); err == nil {
+		s.db.Exec(`UPDATE composed_agents SET updated_at = created_at WHERE updated_at IS NULL`)
+	}
+
 	// Migrate: add mode column to channels if missing.
 	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
 
@@ -400,15 +413,38 @@ func (s *SQLiteStore) ListWorkflowRuns(limit int) ([]WorkflowRun, error) {
 	return runs, rows.Err()
 }
 
-// InsertComposedAgent persists a composed agent definition.
+// InsertComposedAgent persists a composed agent definition. CreatedAt is
+// preserved on update (UPSERT path); UpdatedAt is set to NOW if zero so
+// callers can omit it on the happy path.
 func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 	skillsJSON, _ := json.Marshal(a.Skills)
 	toolsJSON, _ := json.Marshal(a.Tools)
 	teamJSON, _ := json.Marshal(a.Team)
+	gradJSON, _ := json.Marshal(a.AvatarGradient)
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now().UTC()
+	}
+	if a.UpdatedAt.IsZero() {
+		a.UpdatedAt = time.Now().UTC()
+	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO composed_agents (name, display_name, title, avatar, model, persona, skills, tools, team, system, temperature, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Name, a.DisplayName, a.Title, a.Avatar, a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt,
+		`INSERT INTO composed_agents (name, display_name, title, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(name) DO UPDATE SET
+		   display_name    = excluded.display_name,
+		   title           = excluded.title,
+		   avatar          = excluded.avatar,
+		   icon            = excluded.icon,
+		   avatar_gradient = excluded.avatar_gradient,
+		   model           = excluded.model,
+		   persona         = excluded.persona,
+		   skills          = excluded.skills,
+		   tools           = excluded.tools,
+		   team            = excluded.team,
+		   system          = excluded.system,
+		   temperature     = excluded.temperature,
+		   updated_at      = excluded.updated_at`,
+		a.Name, a.DisplayName, a.Title, a.Avatar, a.Icon, string(gradJSON), a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt, a.UpdatedAt,
 	)
 	return err
 }
@@ -416,7 +452,7 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 // ListComposedAgents returns all composed agents.
 func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	rows, err := s.db.Query(
-		`SELECT name, display_name, title, avatar, model, persona, skills, tools, team, system, temperature, created_at
+		`SELECT name, display_name, title, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at
 		 FROM composed_agents ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -427,16 +463,24 @@ func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	var agents []ComposedAgent
 	for rows.Next() {
 		var a ComposedAgent
-		var skillsJSON, toolsJSON, teamJSON string
+		var skillsJSON, toolsJSON, teamJSON, gradJSON string
 		var temp sql.NullFloat64
-		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Avatar, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt); err != nil {
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Avatar, &a.Icon, &gradJSON, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(skillsJSON), &a.Skills)
 		json.Unmarshal([]byte(toolsJSON), &a.Tools)
 		json.Unmarshal([]byte(teamJSON), &a.Team)
+		json.Unmarshal([]byte(gradJSON), &a.AvatarGradient)
 		if temp.Valid {
 			a.Temperature = &temp.Float64
+		}
+		if updatedAt.Valid {
+			a.UpdatedAt = updatedAt.Time
+		} else {
+			// Backfill: pre-migration rows have no updated_at.
+			a.UpdatedAt = a.CreatedAt
 		}
 		agents = append(agents, a)
 	}

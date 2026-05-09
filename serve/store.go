@@ -279,18 +279,21 @@ type ProcessSnapshot struct {
 
 // ComposedAgent is a persisted agent created via the compose API.
 type ComposedAgent struct {
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name,omitempty"`
-	Title       string   `json:"title,omitempty"`
-	Avatar      string   `json:"avatar,omitempty"`
-	Model       string   `json:"model"`
-	Persona     string   `json:"persona,omitempty"`
-	Skills      []string `json:"skills,omitempty"`
-	Tools       []string `json:"tools,omitempty"`
-	Team        []string `json:"team,omitempty"`
-	System      string   `json:"system,omitempty"`
-	Temperature *float64 `json:"temperature,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
+	Name           string    `json:"name"`
+	DisplayName    string    `json:"display_name,omitempty"`
+	Title          string    `json:"title,omitempty"`
+	Avatar         string    `json:"avatar,omitempty"`
+	Icon           string    `json:"icon,omitempty"`
+	AvatarGradient []string  `json:"avatar_gradient,omitempty"`
+	Model          string    `json:"model"`
+	Persona        string    `json:"persona,omitempty"`
+	Skills         []string  `json:"skills,omitempty"`
+	Tools          []string  `json:"tools,omitempty"`
+	Team           []string  `json:"team,omitempty"`
+	System         string    `json:"system,omitempty"`
+	Temperature    *float64  `json:"temperature,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // MemoryType discriminates between memory categories so the agent can

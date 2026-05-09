@@ -193,11 +193,16 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Build DSL agent definition.
 	agentDef := &dsl.Agent{
-		Name:        req.Name,
-		Model:       req.Model,
-		System:      system,
-		Tools:       toolNames,
-		Temperature: req.Temperature,
+		Name:           req.Name,
+		DisplayName:    req.DisplayName,
+		Title:          req.Title,
+		Avatar:         req.Avatar,
+		Icon:           req.Icon,
+		AvatarGradient: req.AvatarGradient,
+		Model:          req.Model,
+		System:         system,
+		Tools:          toolNames,
+		Temperature:    req.Temperature,
 	}
 
 	if err := s.interp.AddAgent(req.Name, agentDef); err != nil {
@@ -206,15 +211,22 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist to SQLite.
+	now := time.Now().UTC()
 	if err := s.store.InsertComposedAgent(ComposedAgent{
-		Name:        req.Name,
-		Model:       req.Model,
-		Persona:     req.Persona,
-		Skills:      req.Skills,
-		Team:        req.Team,
-		System:      system,
-		Temperature: req.Temperature,
-		CreatedAt:   time.Now(),
+		Name:           req.Name,
+		DisplayName:    req.DisplayName,
+		Title:          req.Title,
+		Avatar:         req.Avatar,
+		Icon:           req.Icon,
+		AvatarGradient: req.AvatarGradient,
+		Model:          req.Model,
+		Persona:        req.Persona,
+		Skills:         req.Skills,
+		Team:           req.Team,
+		System:         system,
+		Temperature:    req.Temperature,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}); err != nil {
 		slog.Error("failed to persist composed agent", "agent", req.Name, "error", err)
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "agent created in memory but failed to persist: " + err.Error()})
@@ -273,6 +285,21 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	if req.Name != nil && *req.Name != "" {
 		newName = *req.Name
 	}
+	if req.DisplayName != nil {
+		existing.DisplayName = *req.DisplayName
+	}
+	if req.Title != nil {
+		existing.Title = *req.Title
+	}
+	if req.Avatar != nil {
+		existing.Avatar = *req.Avatar
+	}
+	if req.Icon != nil {
+		existing.Icon = *req.Icon
+	}
+	if req.AvatarGradient != nil {
+		existing.AvatarGradient = req.AvatarGradient
+	}
 	if req.Model != nil {
 		existing.Model = *req.Model
 	}
@@ -326,11 +353,16 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agentDef := &dsl.Agent{
-		Name:        newName,
-		Model:       existing.Model,
-		System:      system,
-		Tools:       toolNames,
-		Temperature: existing.Temperature,
+		Name:           newName,
+		DisplayName:    existing.DisplayName,
+		Title:          existing.Title,
+		Avatar:         existing.Avatar,
+		Icon:           existing.Icon,
+		AvatarGradient: existing.AvatarGradient,
+		Model:          existing.Model,
+		System:         system,
+		Tools:          toolNames,
+		Temperature:    existing.Temperature,
 	}
 
 	if err := s.interp.AddAgent(newName, agentDef); err != nil {
@@ -338,8 +370,10 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist updated agent.
-	existing.CreatedAt = time.Now()
+	// Persist updated agent. CreatedAt is preserved from `existing`; only
+	// UpdatedAt advances. (Pre-fix this stamped CreatedAt on every update,
+	// which made the field meaningless for the frontend.)
+	existing.UpdatedAt = time.Now().UTC()
 	if err := s.store.InsertComposedAgent(*existing); err != nil {
 		slog.Error("failed to persist updated agent", "agent", newName, "error", err)
 	}
