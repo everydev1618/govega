@@ -703,6 +703,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tasks */
+        get: operations["listTasks"];
+        put?: never;
+        /** Create a task */
+        post: operations["createTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Get a task with its activity feed and linked processes */
+        get: operations["getTask"];
+        put?: never;
+        post?: never;
+        /** Delete a task (cascades to comments and process links) */
+        delete: operations["deleteTask"];
+        options?: never;
+        head?: never;
+        /** Update a task (partial — any combination of fields) */
+        patch: operations["updateTask"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a comment to a task's activity feed */
+        post: operations["addTaskComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/processes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link a process to a task (idempotent — re-linking is a no-op) */
+        post: operations["linkTaskProcess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings": {
         parameters: {
             query?: never;
@@ -1466,6 +1543,83 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             resolved_at?: string;
+        };
+        Task: {
+            id: string;
+            title: string;
+            description?: string;
+            /** @enum {string} */
+            status: "todo" | "doing" | "blocked" | "done" | "canceled";
+            /** @enum {string} */
+            priority: "low" | "normal" | "high" | "urgent";
+            /** @description Agent name; empty string means the task is in the orchestrator's routing queue */
+            assignee?: string;
+            /** @description Comma-separated tag list */
+            tags?: string;
+            /** @description "user" if created via REST/UI, agent name if filed by an agent */
+            created_by?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            due_at?: string;
+        };
+        TaskComment: {
+            /** Format: int64 */
+            id: number;
+            task_id: string;
+            author?: string;
+            content: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        TaskDetail: components["schemas"]["Task"] & {
+            comments: components["schemas"]["TaskComment"][];
+            /** @description Process IDs linked to this task (oldest first) */
+            processes: string[];
+        };
+        CreateTaskRequest: {
+            title: string;
+            description?: string;
+            /**
+             * @description Defaults to todo
+             * @enum {string}
+             */
+            status?: "todo" | "doing" | "blocked" | "done" | "canceled";
+            /**
+             * @description Defaults to normal
+             * @enum {string}
+             */
+            priority?: "low" | "normal" | "high" | "urgent";
+            /** @description Agent name; leave empty for orchestrator routing */
+            assignee?: string;
+            tags?: string;
+            /** @description Defaults to "user" */
+            created_by?: string;
+            /** Format: date-time */
+            due_at?: string;
+        };
+        /** @description Partial update — include only the fields you want to change */
+        UpdateTaskRequest: {
+            title?: string;
+            description?: string;
+            /** @enum {string} */
+            status?: "todo" | "doing" | "blocked" | "done" | "canceled";
+            /** @enum {string} */
+            priority?: "low" | "normal" | "high" | "urgent";
+            assignee?: string;
+            tags?: string;
+            /** Format: date-time */
+            due_at?: string;
+        };
+        AddTaskCommentRequest: {
+            content: string;
+            /** @description Defaults to "user" */
+            author?: string;
+        };
+        LinkTaskProcessRequest: {
+            process_id: string;
         };
         Setting: {
             key: string;
@@ -3003,6 +3157,190 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    listTasks: {
+        parameters: {
+            query?: {
+                /** @description CSV of statuses to include — todo,doing,blocked,done,canceled */
+                status?: string;
+                /** @description CSV of agent names to filter by */
+                assignee?: string;
+                /** @description CSV of tags; matches if a task has any of them */
+                tag?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of tasks (newest-updated first) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"][];
+                };
+            };
+        };
+    };
+    createTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Created task */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addTaskComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddTaskCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Created comment */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskComment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    linkTaskProcess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkTaskProcessRequest"];
+            };
+        };
+        responses: {
+            /** @description Linked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     listSettings: {
