@@ -236,6 +236,133 @@ func TestHandleGetAgent_StatusAndHealth(t *testing.T) {
 	}
 }
 
+// TestTaskStatsByAssignee covers the store-level aggregation. Pure store
+// test — no handler, no server.
+func TestTaskStatsByAssignee(t *testing.T) {
+	store := newTestStore(t)
+	// riley: 2 active, 3 completed, 1 canceled → success 3/4 = 0.75
+	for i, status := range []string{"todo", "doing", "done", "done", "done", "canceled"} {
+		if err := store.InsertTask(Task{
+			ID:       "riley-" + string(rune('a'+i)),
+			Title:    "T",
+			Status:   status,
+			Assignee: "riley",
+		}); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	// alex: 1 active, 0 completed → success rate is nil
+	_ = store.InsertTask(Task{ID: "alex-a", Title: "T", Status: "doing", Assignee: "alex"})
+	// unassigned task (empty assignee) — must not appear in any agent's stats
+	_ = store.InsertTask(Task{ID: "u1", Title: "T", Status: "todo", Assignee: ""})
+
+	stats, err := store.TaskStatsByAssignee()
+	if err != nil {
+		t.Fatalf("TaskStatsByAssignee: %v", err)
+	}
+
+	got := stats["riley"]
+	if got.AssignedTasks != 2 {
+		t.Errorf("riley assigned = %d, want 2", got.AssignedTasks)
+	}
+	if got.CompletedTasks != 3 {
+		t.Errorf("riley completed = %d, want 3", got.CompletedTasks)
+	}
+	if got.SuccessRate == nil || *got.SuccessRate != 0.75 {
+		t.Errorf("riley success_rate = %v, want 0.75", got.SuccessRate)
+	}
+
+	got = stats["alex"]
+	if got.AssignedTasks != 1 || got.CompletedTasks != 0 {
+		t.Errorf("alex stats wrong: %+v", got)
+	}
+	if got.SuccessRate != nil {
+		t.Errorf("alex success_rate = %v, want nil (no terminal tasks)", got.SuccessRate)
+	}
+
+	if _, ok := stats[""]; ok {
+		t.Error("unassigned tasks leaked into stats map under empty key")
+	}
+}
+
+// TestHandleGetAgent_TaskStats checks the stats are surfaced on the
+// single-agent endpoint.
+func TestHandleGetAgent_TaskStats(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"riley": {Name: "riley", Model: "claude-sonnet-4-6"},
+	})
+	_ = s.store.InsertTask(Task{ID: "t1", Title: "T", Status: "doing", Assignee: "riley"})
+	_ = s.store.InsertTask(Task{ID: "t2", Title: "T", Status: "done", Assignee: "riley"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/riley", nil)
+	req.SetPathValue("name", "riley")
+	w := httptest.NewRecorder()
+	s.handleGetAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var got AgentResponse
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if got.Stats.AssignedTasks != 1 {
+		t.Errorf("assigned = %d, want 1", got.Stats.AssignedTasks)
+	}
+	if got.Stats.CompletedTasks != 1 {
+		t.Errorf("completed = %d, want 1", got.Stats.CompletedTasks)
+	}
+}
+
+// TestReportsTo_Inversion checks reports_to is derived from inverting team
+// arrays in the document. Iris.team = [riley, alex] → riley.reports_to =
+// ["iris"], alex.reports_to = ["iris"], iris.reports_to = [].
+func TestReportsTo_Inversion(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"iris":  {Name: "iris", Model: "claude-sonnet-4-6", Team: []string{"riley", "alex"}},
+		"riley": {Name: "riley", Model: "claude-sonnet-4-6"},
+		"alex":  {Name: "alex", Model: "claude-sonnet-4-6"},
+		// Multi-supervisor: jordan reports to both iris (via separate team)
+		// and a finance lead.
+		"finance-lead": {Name: "finance-lead", Model: "claude-sonnet-4-6", Team: []string{"jordan"}},
+		"jordan":       {Name: "jordan", Model: "claude-sonnet-4-6"},
+	})
+
+	cases := []struct {
+		name      string
+		wantSorted []string
+	}{
+		{"riley", []string{"iris"}},
+		{"alex", []string{"iris"}},
+		{"iris", nil},
+		{"jordan", []string{"finance-lead"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+tc.name, nil)
+			req.SetPathValue("name", tc.name)
+			w := httptest.NewRecorder()
+			s.handleGetAgent(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+			}
+			var got AgentResponse
+			_ = json.NewDecoder(w.Body).Decode(&got)
+			if len(got.ReportsTo) != len(tc.wantSorted) {
+				t.Errorf("reports_to = %v, want %v", got.ReportsTo, tc.wantSorted)
+				return
+			}
+			// Order isn't guaranteed (map iteration), so compare as set.
+			seen := map[string]bool{}
+			for _, r := range got.ReportsTo {
+				seen[r] = true
+			}
+			for _, want := range tc.wantSorted {
+				if !seen[want] {
+					t.Errorf("reports_to missing %q; got %v", want, got.ReportsTo)
+				}
+			}
+		})
+	}
+}
+
 // TestHandleListAgents_IncludesNewFields makes sure the list endpoint
 // surfaces the same new fields (timestamps, icon, avatar_gradient).
 func TestHandleListAgents_IncludesNewFields(t *testing.T) {

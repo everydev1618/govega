@@ -232,6 +232,11 @@ type Store interface {
 
 	// ClaimTask atomically sets assignee to caller and status to 'doing'.
 	ClaimTask(id, assignee string) error
+
+	// TaskStatsByAssignee returns per-assignee kanban task counters in a
+	// single query. Used by the agents API to surface "how productive is
+	// this agent" stats. Empty assignees are excluded.
+	TaskStatsByAssignee() (map[string]AgentStatsResponse, error)
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.

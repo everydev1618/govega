@@ -1254,6 +1254,27 @@ export interface components {
              * @description Most recent moment the agent's running process did work (last token, last tool call). Omitted if the agent has never run.
              */
             last_activity?: string;
+            stats?: components["schemas"]["AgentStatsResponse"];
+            /**
+             * @description List of agents whose `team` includes this agent — i.e. the
+             *     agent's supervisors. Inverse direction of `team` (forward
+             *     delegation). Computed at request time from the document.
+             */
+            reports_to?: string[];
+        };
+        /** @description Per-agent kanban task counters. Aggregated from the tasks table at request time. */
+        AgentStatsResponse: {
+            /** @description Count of tasks assigned to this agent that are not yet terminal (status in todo, doing, blocked). */
+            assigned_tasks: number;
+            /** @description Count of tasks this agent has marked done. */
+            completed_tasks: number;
+            /**
+             * Format: double
+             * @description `completed / (completed + canceled)`. Null when there are no
+             *     terminal tasks (denominator zero) — the frontend should render
+             *     "—" rather than a misleading 0%.
+             */
+            success_rate?: number | null;
         };
         CreateAgentRequest: {
             name: string;

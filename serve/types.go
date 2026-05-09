@@ -74,6 +74,16 @@ const (
 	AgentHealthUnhealthy AgentHealth = "unhealthy"
 )
 
+// AgentStatsResponse aggregates per-agent kanban task counters. Computed
+// from the tasks table at request time. SuccessRate is nil if there are
+// no terminal tasks (done + canceled = 0) so the frontend can render a
+// "—" rather than a misleading 0%.
+type AgentStatsResponse struct {
+	AssignedTasks  int      `json:"assigned_tasks"`
+	CompletedTasks int      `json:"completed_tasks"`
+	SuccessRate    *float64 `json:"success_rate"`
+}
+
 // AgentResponse is the API representation of an agent definition.
 type AgentResponse struct {
 	Name        string `json:"name"`
@@ -107,6 +117,13 @@ type AgentResponse struct {
 	// LastActivity is the most recent moment the agent's running process
 	// did work (last token, last tool call). Nil if the agent has never run.
 	LastActivity *time.Time `json:"last_activity,omitempty"`
+	// Stats is the per-agent kanban task summary. Always present; zero
+	// values mean "no tasks" rather than "not implemented."
+	Stats AgentStatsResponse `json:"stats"`
+	// ReportsTo lists the agents whose `team` includes this agent — i.e.
+	// the agent's supervisors. Inverse direction of `team`. Computed from
+	// the document at request time.
+	ReportsTo []string `json:"reports_to,omitempty"`
 }
 
 // WorkflowResponse is the API representation of a workflow definition.

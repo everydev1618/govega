@@ -165,10 +165,28 @@ func agentLifecycle(procStatus vega.Status, errorCount int, hasProcess bool) (Ag
 	}
 }
 
+// buildReverseTeamMap walks every agent in the document and inverts the
+// `team` arrays so we can answer "who reports to me?" in O(1) per lookup.
+// agentName → list of supervisors. Hidden agents (builder, clones) are
+// excluded as supervisors so they don't leak through reports_to.
+func (s *Server) buildReverseTeamMap(doc *dsl.Document) map[string][]string {
+	rev := make(map[string][]string)
+	for supervisorName, def := range doc.Agents {
+		if s.isHiddenAgent(supervisorName) {
+			continue
+		}
+		for _, member := range def.Team {
+			rev[member] = append(rev[member], supervisorName)
+		}
+	}
+	return rev
+}
+
 // buildAgentResponse assembles the API representation for a single agent.
 // Shared by the list and single-agent endpoints. Caller has already
-// resolved the optional process and composed-agent metadata.
-func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel string, proc *vega.Process, composed *ComposedAgent) AgentResponse {
+// resolved the optional process, composed-agent metadata, task stats,
+// and supervisor list.
+func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel string, proc *vega.Process, composed *ComposedAgent, stats AgentStatsResponse, reportsTo []string) AgentResponse {
 	model := def.Model
 	if model == "" {
 		model = defaultModel
@@ -198,6 +216,8 @@ func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel st
 		}
 	}
 	ar.Status, ar.Health = agentLifecycle(procStatus, errors, hasProcess)
+	ar.Stats = stats
+	ar.ReportsTo = reportsTo
 	if s.isAgentStreaming(name) {
 		ar.Streaming = true
 	}
@@ -243,6 +263,14 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		defaultModel = doc.Settings.DefaultModel
 	}
 
+	// Pre-compute aggregates that are otherwise N+1 per agent.
+	statsMap, err := s.store.TaskStatsByAssignee()
+	if err != nil {
+		slog.Warn("task stats lookup failed; rendering with zero stats", "error", err)
+		statsMap = map[string]AgentStatsResponse{}
+	}
+	reverseTeam := s.buildReverseTeamMap(doc)
+
 	resp := make([]AgentResponse, 0, len(doc.Agents))
 	for name, def := range doc.Agents {
 		if s.isHiddenAgent(name) {
@@ -252,7 +280,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		if ca, ok := composedMap[name]; ok {
 			composed = &ca
 		}
-		resp = append(resp, s.buildAgentResponse(name, def, defaultModel, agents[name], composed))
+		resp = append(resp, s.buildAgentResponse(name, def, defaultModel, agents[name], composed, statsMap[name], reverseTeam[name]))
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -293,7 +321,14 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 
 	proc := s.interp.Agents()[name]
 
-	writeJSON(w, http.StatusOK, s.buildAgentResponse(name, def, defaultModel, proc, composed))
+	// One aggregate query for stats; cheap because of the assignee index.
+	stats := AgentStatsResponse{}
+	if statsMap, err := s.store.TaskStatsByAssignee(); err == nil {
+		stats = statsMap[name]
+	}
+	reportsTo := s.buildReverseTeamMap(doc)[name]
+
+	writeJSON(w, http.StatusOK, s.buildAgentResponse(name, def, defaultModel, proc, composed, stats, reportsTo))
 }
 
 // --- Chat Handlers ---

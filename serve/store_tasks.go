@@ -434,6 +434,63 @@ func (s *SQLiteStore) ListTaskProcesses(taskID string) ([]string, error) {
 	return out, rows.Err()
 }
 
+// TaskStatsByAssignee returns kanban task counters grouped by assignee.
+// One round-trip per call regardless of how many agents — used by the
+// agents API to avoid an N+1 query when listing.
+//
+// Excludes empty assignees (would lump all unassigned tasks under "").
+// SuccessRate is nil when (done + canceled) == 0, since "0%" would be
+// misleading for an agent that just hasn't finished anything yet.
+func (s *SQLiteStore) TaskStatsByAssignee() (map[string]AgentStatsResponse, error) {
+	rows, err := s.db.Query(
+		`SELECT assignee, status, COUNT(*) FROM tasks WHERE assignee != '' GROUP BY assignee, status`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type counts struct{ assigned, done, canceled int }
+	raw := make(map[string]*counts)
+	for rows.Next() {
+		var assignee, status string
+		var n int
+		if err := rows.Scan(&assignee, &status, &n); err != nil {
+			return nil, err
+		}
+		c, ok := raw[assignee]
+		if !ok {
+			c = &counts{}
+			raw[assignee] = c
+		}
+		switch status {
+		case TaskStatusTodo, TaskStatusDoing, TaskStatusBlocked:
+			c.assigned += n
+		case TaskStatusDone:
+			c.done += n
+		case TaskStatusCanceled:
+			c.canceled += n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]AgentStatsResponse, len(raw))
+	for assignee, c := range raw {
+		stats := AgentStatsResponse{
+			AssignedTasks:  c.assigned,
+			CompletedTasks: c.done,
+		}
+		if total := c.done + c.canceled; total > 0 {
+			rate := float64(c.done) / float64(total)
+			stats.SuccessRate = &rate
+		}
+		out[assignee] = stats
+	}
+	return out, nil
+}
+
 func placeholders(n int) string {
 	if n <= 0 {
 		return ""
