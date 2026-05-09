@@ -21,6 +21,7 @@ func TestLookup(t *testing.T) {
 		{"puppeteer", true},
 		{"sequential-thinking", true},
 		{"composio", true},
+		{"vapi", true},
 		{"nonexistent", false},
 	}
 
@@ -145,6 +146,27 @@ func TestComposioRegistryEntry(t *testing.T) {
 	}
 	if cfg.Headers["x-api-key"] != "test-key" {
 		t.Errorf("config Headers[x-api-key]=%q, want %q", cfg.Headers["x-api-key"], "test-key")
+	}
+}
+
+func TestVapiRegistryEntry(t *testing.T) {
+	entry, ok := Lookup("vapi")
+	if !ok {
+		t.Fatal("vapi not in registry")
+	}
+	if !entry.BuiltinGo {
+		t.Error("vapi should be a builtin Go server (no Node.js dependency)")
+	}
+	if len(entry.RequiredEnv) == 0 || entry.RequiredEnv[0] != "VAPI_API_KEY" {
+		t.Errorf("vapi RequiredEnv=%v, want first entry VAPI_API_KEY", entry.RequiredEnv)
+	}
+
+	os.Setenv("VAPI_API_KEY", "test-key")
+	defer os.Unsetenv("VAPI_API_KEY")
+
+	cfg := entry.ToServerConfig(nil)
+	if cfg.Env["VAPI_API_KEY"] != "test-key" {
+		t.Errorf("VAPI_API_KEY auto-populate failed: got %q", cfg.Env["VAPI_API_KEY"])
 	}
 }
 

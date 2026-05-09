@@ -132,6 +132,13 @@ var DefaultRegistry = map[string]RegistryEntry{
 		BuiltinGo:   true,
 		RequiredEnv: []string{"GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"},
 	},
+	"vapi": {
+		Name:        "vapi",
+		Description: "Voice AI calls via Vapi.ai — start outbound calls, fetch transcripts, manage assistants. Built-in Go server using a BYO Vapi API key.",
+		BuiltinGo:   true,
+		RequiredEnv: []string{"VAPI_API_KEY"},
+		OptionalEnv: []string{"VAPI_DEFAULT_PHONE_NUMBER_ID"},
+	},
 }
 
 // Lookup finds a registry entry by name.

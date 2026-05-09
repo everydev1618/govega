@@ -210,3 +210,125 @@ func (s *Server) handleGmailDisable(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.gmailSnapshot())
 }
 
+// --- Vapi (voice AI) ---
+
+// VapiStatus describes the current Vapi builtin server state for the
+// integrations API. Mirrors GmailStatus's shape so the SPA can use one
+// pattern for both.
+type VapiStatus struct {
+	Connected             bool `json:"connected"`
+	HasAPIKey             bool `json:"has_api_key"`
+	HasDefaultPhoneNumber bool `json:"has_default_phone_number"`
+}
+
+const (
+	vapiAPIKeyKey               = "VAPI_API_KEY"
+	vapiDefaultPhoneNumberIDKey = "VAPI_DEFAULT_PHONE_NUMBER_ID"
+)
+
+func (s *Server) vapiSnapshot() VapiStatus {
+	t := s.interp.Tools()
+	connected := t.BuiltinServerConnected("vapi")
+	settings, _ := s.store.ListSettings()
+	has := func(bare string) bool {
+		nsKey := mcpSettingKey("vapi", bare)
+		for _, st := range settings {
+			if st.Key == nsKey || st.Key == bare {
+				return st.Value != ""
+			}
+		}
+		return false
+	}
+	return VapiStatus{
+		Connected:             connected,
+		HasAPIKey:             has(vapiAPIKeyKey),
+		HasDefaultPhoneNumber: has(vapiDefaultPhoneNumberIDKey),
+	}
+}
+
+func (s *Server) handleVapiStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.vapiSnapshot())
+}
+
+type vapiConfigureRequest struct {
+	APIKey               string `json:"api_key"`
+	DefaultPhoneNumberID string `json:"default_phone_number_id,omitempty"`
+}
+
+// handleVapiConfigure persists the Vapi API key (and optional default phone
+// number id) and connects the builtin vapi MCP server. After this returns
+// 200, agents can call vapi__start_call etc.
+func (s *Server) handleVapiConfigure(w http.ResponseWriter, r *http.Request) {
+	var req vapiConfigureRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+	if strings.TrimSpace(req.APIKey) == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "api_key is required"})
+		return
+	}
+
+	envForReq := map[string]string{
+		vapiAPIKeyKey: req.APIKey,
+	}
+	if v := strings.TrimSpace(req.DefaultPhoneNumberID); v != "" {
+		envForReq[vapiDefaultPhoneNumberIDKey] = v
+	}
+
+	connectReq := ConnectMCPRequest{
+		Name: "vapi",
+		Env:  envForReq,
+	}
+
+	// Re-init if already connected so a key rotation actually takes effect.
+	t := s.interp.Tools()
+	if t.BuiltinServerConnected("vapi") {
+		_ = t.DisconnectBuiltinServer("vapi")
+	}
+
+	// Persist as namespaced sensitive settings.
+	for k, v := range connectReq.Env {
+		if err := s.store.UpsertSetting(Setting{
+			Key:       mcpSettingKey("vapi", k),
+			Value:     v,
+			Sensitive: k == vapiAPIKeyKey,
+		}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "save " + k + ": " + err.Error()})
+			return
+		}
+	}
+	s.refreshToolSettings()
+
+	// Builtin server reads via os.Getenv, so push the env in before connect.
+	envMap := s.buildMCPEnvMap("vapi", connectReq.Env)
+	for k, v := range envMap {
+		os.Setenv(k, v)
+	}
+
+	if _, err := t.ConnectBuiltinServer(r.Context(), "vapi"); err != nil {
+		writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: "connect vapi: " + err.Error()})
+		return
+	}
+
+	s.persistMCPServer(connectReq)
+
+	writeJSON(w, http.StatusOK, s.vapiSnapshot())
+}
+
+func (s *Server) handleVapiDisable(w http.ResponseWriter, r *http.Request) {
+	t := s.interp.Tools()
+	if t.BuiltinServerConnected("vapi") {
+		if err := t.DisconnectBuiltinServer("vapi"); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "disconnect: " + err.Error()})
+			return
+		}
+	}
+	for _, k := range []string{vapiAPIKeyKey, vapiDefaultPhoneNumberIDKey} {
+		_ = s.store.DeleteSetting(mcpSettingKey("vapi", k))
+	}
+	if sqlStore, ok := s.store.(*SQLiteStore); ok {
+		_ = sqlStore.DeleteMCPServer("vapi")
+	}
+	writeJSON(w, http.StatusOK, s.vapiSnapshot())
+}
