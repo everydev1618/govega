@@ -96,6 +96,78 @@ func TestHeraCreateAgent(t *testing.T) {
 	}
 }
 
+// TestHeraCreateAgent_DefaultIdentityWhenSystemEmpty covers the #48 bug:
+// agents created via Hera's create_agent tool with no system prompt were
+// inheriting the orchestrator persona ("I'm Iris..."). The fix: inject
+// "You are <name>." when system is empty, mirroring the HTTP handler
+// behavior shipped in PR #50.
+func TestHeraCreateAgent_DefaultIdentityWhenSystemEmpty(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
+	ctx := context.Background()
+
+	_, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
+		"name":         "test-agent-02",
+		"display_name": "Test Agent 02",
+		"model":        "test-model",
+		// No system prompt
+	})
+	if err != nil {
+		t.Fatalf("create_agent: %v", err)
+	}
+
+	def, ok := interp.Document().Agents["test-agent-02"]
+	if !ok {
+		t.Fatal("agent not registered in document")
+	}
+	if def.System == "" {
+		t.Error("system prompt empty — would inherit orchestrator persona (refs #48)")
+	}
+	if !strings.Contains(def.System, "Test Agent 02") && !strings.Contains(def.System, "test-agent-02") {
+		t.Errorf("system prompt doesn't mention agent identity: %q", def.System)
+	}
+}
+
+// TestHeraCreateAgent_FiltersMetaToolsWhenToolsEmpty covers the second
+// half of #48: empty tools list led to spawnAgent giving the agent
+// everything, including Hera/Iris meta-tools, which primed the LLM to
+// roleplay as the orchestrator.
+func TestHeraCreateAgent_FiltersMetaToolsWhenToolsEmpty(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
+	// Iris meta-tools need to be registered so we can verify they're filtered out.
+	RegisterIrisTools(interp, DefaultIrisConfig(), nil)
+	ctx := context.Background()
+
+	_, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
+		"name":   "no-tools-specified",
+		"system": "You are no-tools-specified.",
+		"model":  "test-model",
+		// No tools
+	})
+	if err != nil {
+		t.Fatalf("create_agent: %v", err)
+	}
+
+	def := interp.Document().Agents["no-tools-specified"]
+	if len(def.Tools) == 0 {
+		t.Fatal("def.Tools is empty — spawnAgent will fill it with everything " +
+			"including meta-tools, which is the #48 root cause")
+	}
+	for _, tn := range def.Tools {
+		if IsHeraTool(tn) {
+			t.Errorf("Hera meta-tool %q leaked into composed agent", tn)
+		}
+		if IsIrisTool(tn) {
+			t.Errorf("Iris meta-tool %q leaked into composed agent", tn)
+		}
+	}
+}
+
 func TestHeraCreateAgentProtectsHera(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()

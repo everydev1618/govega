@@ -9,6 +9,7 @@ import (
 	"time"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/govega/tools"
 )
@@ -394,6 +395,13 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 			knowledge := toStringSlice(params["knowledge"])
 			skillsDirs := toStringSlice(params["skills_dirs"])
 
+			// Inject default identity if no system prompt was provided. Without
+			// it the LLM has no anchor and inherits the orchestrator persona
+			// from the surrounding tool surface (issue #48).
+			if system == "" {
+				system = DefaultAgentSystem(displayName, name)
+			}
+
 			agentDef := &Agent{
 				Name:        name,
 				DisplayName: displayName,
@@ -408,6 +416,15 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 
 			if len(skillsDirs) > 0 {
 				agentDef.Skills = &SkillsDef{Directories: skillsDirs}
+			}
+
+			// Filter meta-tools when no explicit tool list — empty Tools means
+			// spawnAgent gives the agent everything, which leaks Hera/Iris
+			// meta-tools and primes the agent to roleplay as the orchestrator
+			// (issue #48). Mirror what handleCreateAgent and
+			// restoreComposedAgents do at the HTTP layer.
+			if len(agentDef.Tools) == 0 {
+				agentDef.Tools = DefaultNonMetaToolNames(interp.Tools().Schema())
 			}
 
 			// If agent has a team, ensure the delegate tool is registered.
@@ -988,4 +1005,32 @@ var heraToolNames = []string{
 // IsHeraTool reports whether a tool name is one of Hera's meta-tools.
 func IsHeraTool(name string) bool {
 	return containsStr(heraToolNames, name)
+}
+
+// DefaultAgentSystem returns a minimal "you are <name>." system prompt used
+// when the caller didn't provide one. Without an identity the LLM can drift
+// into the orchestrator's persona because the tool surface is its only
+// signal (issue #48). Prefer display_name for the identity if set.
+func DefaultAgentSystem(displayName, name string) string {
+	identity := displayName
+	if identity == "" {
+		identity = name
+	}
+	return "You are " + identity + "."
+}
+
+// DefaultNonMetaToolNames returns every tool in schema except those that
+// belong exclusively to Hera or Iris. Used by every agent-creation path
+// (HTTP handler, Hera's create_agent tool, restore-on-boot) when the
+// caller didn't specify a tool list — empty Tools means spawnAgent gives
+// the agent everything, which leaks meta-tools to composed agents.
+func DefaultNonMetaToolNames(schema []llm.ToolSchema) []string {
+	names := make([]string, 0, len(schema))
+	for _, ts := range schema {
+		if IsHeraTool(ts.Name) || IsIrisTool(ts.Name) {
+			continue
+		}
+		names = append(names, ts.Name)
+	}
+	return names
 }

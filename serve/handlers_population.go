@@ -12,7 +12,6 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
-	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/tools"
 	"github.com/everydev1618/vega-population/population"
 	"gopkg.in/yaml.v3"
@@ -169,7 +168,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	// (issue #48: agents confabulated the Iris persona). Inject a minimal
 	// identity before team enrichment so the agent claims its own name.
 	if system == "" {
-		system = defaultIdentityPrompt(req.DisplayName, req.Name)
+		system = dsl.DefaultAgentSystem(req.DisplayName, req.Name)
 	}
 
 	// Register skill tools and collect tool names.
@@ -205,7 +204,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	// treats len(Tools)==0 as "give it everything", which leaks Iris and
 	// Hera meta-tools and primes the agent to roleplay as the orchestrator.
 	if len(toolNames) == 0 {
-		toolNames = defaultNonMetaToolNames(s.interp.Tools().Schema())
+		toolNames = dsl.DefaultNonMetaToolNames(s.interp.Tools().Schema())
 	}
 
 	// Build DSL agent definition.
@@ -369,7 +368,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	// Build DSL agent definition.
 	system := existing.System
 	if system == "" {
-		system = defaultIdentityPrompt(existing.DisplayName, newName)
+		system = dsl.DefaultAgentSystem(existing.DisplayName, newName)
 	}
 	var toolNames []string
 	for _, skillName := range existing.Skills {
@@ -398,7 +397,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(toolNames) == 0 {
-		toolNames = defaultNonMetaToolNames(s.interp.Tools().Schema())
+		toolNames = dsl.DefaultNonMetaToolNames(s.interp.Tools().Schema())
 	}
 
 	agentDef := &dsl.Agent{
@@ -449,32 +448,9 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "name": name})
 }
 
-// defaultIdentityPrompt returns a minimal "you are <name>" system prompt used
-// when the caller didn't provide one. Without an identity the LLM can drift
-// into the orchestrator's persona because the tool surface is its only signal
-// (issue #48).
-func defaultIdentityPrompt(displayName, name string) string {
-	identity := displayName
-	if identity == "" {
-		identity = name
-	}
-	return "You are " + identity + "."
-}
-
-// defaultNonMetaToolNames returns every tool in schema except those that
-// belong exclusively to Hera or Iris. handleCreateAgent and handleUpdateAgent
-// use this when the caller didn't specify a tool list, mirroring the filter
-// in restoreComposedAgents so meta-tools never leak to composed agents.
-func defaultNonMetaToolNames(schema []llm.ToolSchema) []string {
-	names := make([]string, 0, len(schema))
-	for _, ts := range schema {
-		if dsl.IsHeraTool(ts.Name) || dsl.IsIrisTool(ts.Name) {
-			continue
-		}
-		names = append(names, ts.Name)
-	}
-	return names
-}
+// dsl.DefaultAgentSystem and dsl.DefaultNonMetaToolNames moved to the dsl
+// package as DefaultAgentSystem and DefaultNonMetaToolNames so Hera's
+// create_agent tool can apply the same defaults (issue #48).
 
 // --- Skill Tool Parsing ---
 
@@ -603,7 +579,7 @@ func (s *Server) restoreComposedAgents() {
 		// existed (issue #48): without an identity, the agent's tool surface
 		// is the only signal the LLM has and it drifts to the orchestrator.
 		if system == "" {
-			system = defaultIdentityPrompt(a.DisplayName, a.Name)
+			system = dsl.DefaultAgentSystem(a.DisplayName, a.Name)
 		}
 
 		// If the agent has a team, register the delegate tool and enrich the prompt.
@@ -636,7 +612,7 @@ func (s *Server) restoreComposedAgents() {
 		// registry. Same rationale as the create handler: an empty list means
 		// spawnAgent gives the agent everything, including meta-tools.
 		if len(toolNames) == 0 {
-			toolNames = defaultNonMetaToolNames(s.interp.Tools().Schema())
+			toolNames = dsl.DefaultNonMetaToolNames(s.interp.Tools().Schema())
 		}
 
 		agentDef := &dsl.Agent{
