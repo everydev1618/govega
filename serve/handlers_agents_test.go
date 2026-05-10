@@ -493,6 +493,60 @@ func TestHandleUpdateAgent_TrueUnknownStill404(t *testing.T) {
 	}
 }
 
+// TestHandleUpdateAgent_PartialPUT_PreservesGradient reproduces #40 BUG 1.
+// PUT with {"icon": "Cpu"} (no avatar_gradient field) should leave the
+// previously-set gradient intact. Cody reports the second PUT clears it.
+func TestHandleUpdateAgent_PartialPUT_PreservesGradient(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"ceo": {
+			Name:  "ceo",
+			Model: "claude-sonnet-4-6",
+			Icon:  "Sparkles",
+		},
+	})
+
+	// First PUT: set the gradient.
+	body1, _ := json.Marshal(map[string]any{
+		"avatar_gradient": []string{"#0EA5E9", "#22D3EE"},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agents/ceo", bytes.NewReader(body1))
+	req.SetPathValue("name", "ceo")
+	w := httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first PUT status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Second PUT: change icon only — gradient should survive.
+	body2, _ := json.Marshal(map[string]any{"icon": "Cpu"})
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/agents/ceo", bytes.NewReader(body2))
+	req.SetPathValue("name", "ceo")
+	w = httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("second PUT status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// GET: must return the gradient AND the new icon.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/agents/ceo", nil)
+	req.SetPathValue("name", "ceo")
+	w = httptest.NewRecorder()
+	s.handleGetAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var got AgentResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Icon != "Cpu" {
+		t.Errorf("icon = %q, want Cpu (#40 BUG 2 — icon write didn't persist)", got.Icon)
+	}
+	if len(got.AvatarGradient) != 2 || got.AvatarGradient[0] != "#0EA5E9" {
+		t.Errorf("avatar_gradient = %v, want [#0EA5E9, #22D3EE] (#40 BUG 1 — partial PUT cleared it)", got.AvatarGradient)
+	}
+}
+
 // TestHandleListAgents_IncludesNewFields makes sure the list endpoint
 // surfaces the same new fields (timestamps, icon, avatar_gradient).
 func TestHandleListAgents_IncludesNewFields(t *testing.T) {

@@ -218,9 +218,23 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			}
 
 			// Creator is the calling agent (or "system" when no process context).
+			// Strip per-user clone suffix to match the rest of the file —
+			// downstream lookups normalize against the base agent name.
 			creator := "system"
 			if proc := vega.ProcessFromContext(ctx); proc != nil && proc.Agent != nil {
 				creator = proc.Agent.Name
+				if idx := strings.Index(creator, ":"); idx > 0 {
+					creator = creator[:idx]
+				}
+			}
+			// Strip clone suffix from any team entries the caller passed
+			// through. Agents may include their own clone-suffixed name
+			// when listing the team, which would silently miss the same
+			// downstream lookups.
+			for i, member := range team {
+				if idx := strings.Index(member, ":"); idx > 0 {
+					team[i] = member[:idx]
+				}
 			}
 			id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
 			if err := backend.CreateChannel(id, name, description, creator, team, mode); err != nil {

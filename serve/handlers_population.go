@@ -640,14 +640,16 @@ func (s *Server) restoreComposedAgents() {
 		}
 
 		agentDef := &dsl.Agent{
-			Name:        a.Name,
-			DisplayName: a.DisplayName,
-			Title:       a.Title,
-			Avatar:      a.Avatar,
-			Model:       a.Model,
-			System:      system,
-			Tools:       toolNames,
-			Temperature: a.Temperature,
+			Name:           a.Name,
+			DisplayName:    a.DisplayName,
+			Title:          a.Title,
+			Avatar:         a.Avatar,
+			Icon:           a.Icon,
+			AvatarGradient: a.AvatarGradient,
+			Model:          a.Model,
+			System:         system,
+			Tools:          toolNames,
+			Temperature:    a.Temperature,
 		}
 
 		if err := s.interp.AddAgent(a.Name, agentDef); err != nil {
