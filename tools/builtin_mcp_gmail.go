@@ -28,8 +28,8 @@ import (
 // All tools call /gmail/v1/users/me/... — i.e. the authenticated user's
 // own mailbox. Multi-user access requires a different auth strategy
 // (OAuth code flow per user, or a domain-wide delegated service account).
-func gmailServer() *builtinMCPServer {
-	return &builtinMCPServer{
+func gmailServer() *BuiltinMCPServer {
+	return &BuiltinMCPServer{
 		tools: map[string]ToolDef{
 			"list_messages": {
 				Description: "Search Gmail and return a list of matching messages. Uses Gmail's standard search syntax (e.g. 'from:foo@bar.com', 'is:unread', 'newer_than:7d', 'label:newsletters'). Returns id, threadId, snippet, and key headers — call get_message to read the body. Default returns up to 25 messages.",

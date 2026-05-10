@@ -11,18 +11,52 @@ import (
 	"time"
 )
 
-// builtinMCPServer describes a Go-native MCP server implementation.
-type builtinMCPServer struct {
+// BuiltinMCPServer is an in-process Go-native MCP server. Embedding
+// applications register additional servers via RegisterBuiltinServer.
+//
+// govega ships only generic, agent-runtime-essential builtins (e.g.
+// fetch). Vendor-specific integrations live in the consuming product
+// and call RegisterBuiltinServer at startup.
+type BuiltinMCPServer struct {
 	// tools maps tool name (without server prefix) to its definition.
 	tools map[string]ToolDef
 }
 
-// builtinServers maps server names to their Go implementations.
-var builtinServers = map[string]*builtinMCPServer{
+// NewBuiltinMCPServer constructs a server with the given tool defs. The
+// caller still has to call RegisterBuiltinServer to make it discoverable
+// by name from agents.
+func NewBuiltinMCPServer(tools map[string]ToolDef) *BuiltinMCPServer {
+	return &BuiltinMCPServer{tools: tools}
+}
+
+// RegisterBuiltinServer adds an in-process MCP server to the global
+// registry under the given name. After this returns nil, agents can
+// connect via Tools.ConnectBuiltinServer(ctx, name) and tools will be
+// registered as <name>__<toolname>.
+//
+// Returns an error if the name is already taken — re-registration is
+// not supported (use a different name or restart the process).
+func RegisterBuiltinServer(name string, server *BuiltinMCPServer) error {
+	if server == nil {
+		return fmt.Errorf("RegisterBuiltinServer: server is nil")
+	}
+	if _, exists := builtinServers[name]; exists {
+		return fmt.Errorf("RegisterBuiltinServer: %q is already registered", name)
+	}
+	builtinServers[name] = server
+	return nil
+}
+
+// builtinServers maps server names to their Go implementations. govega's
+// hardcoded entries cover infrastructure-y essentials; product-specific
+// servers (Vapi, Slack, etc.) are added via RegisterBuiltinServer.
+//
+// gmail and mssql are pending the same migration as vapi — they'll move
+// to apexvega's integrations/ tree in follow-up commits.
+var builtinServers = map[string]*BuiltinMCPServer{
 	"fetch": fetchServer(),
 	"mssql": mssqlServer(),
 	"gmail": gmailServer(),
-	"vapi":  vapiServer(),
 }
 
 // HasBuiltinServer reports whether a Go-native implementation exists for the named MCP server.
@@ -88,8 +122,8 @@ func (t *Tools) DisconnectBuiltinServer(name string) error {
 
 // --- Fetch server ---
 
-func fetchServer() *builtinMCPServer {
-	return &builtinMCPServer{
+func fetchServer() *BuiltinMCPServer {
+	return &BuiltinMCPServer{
 		tools: map[string]ToolDef{
 			"fetch": {
 				Description: "Fetches a URL from the internet and returns its content. When raw=false (default), HTML is stripped to plain text for readability. Use start_index and max_length to paginate through large responses.",

@@ -1920,6 +1920,30 @@ func mcpSettingKey(serverName, envKey string) string {
 	return "mcp:" + serverName + ":" + envKey
 }
 
+// MCPSettingKey is the public form of mcpSettingKey, for product
+// integrations that persist their own per-server settings (Vapi etc.).
+func MCPSettingKey(serverName, envKey string) string {
+	return mcpSettingKey(serverName, envKey)
+}
+
+// BuildMCPEnvMap is the public wrapper for buildMCPEnvMap so product
+// integrations can hydrate the env map their builtin server reads.
+func (s *Server) BuildMCPEnvMap(serverName string, reqEnv map[string]string) map[string]string {
+	return s.buildMCPEnvMap(serverName, reqEnv)
+}
+
+// PersistMCPServer is the public wrapper for persistMCPServer so product
+// integrations register their server-config so autoConnectPersistedServers
+// reconnects after a restart.
+func (s *Server) PersistMCPServer(req ConnectMCPRequest) {
+	s.persistMCPServer(req)
+}
+
+// RefreshToolSettings is the public wrapper for refreshToolSettings.
+func (s *Server) RefreshToolSettings() {
+	s.refreshToolSettings()
+}
+
 // buildMCPEnvMap builds an env map for an MCP server by looking up per-server
 // namespaced settings, falling back to bare keys, and merging request overrides.
 func (s *Server) buildMCPEnvMap(serverName string, reqEnv map[string]string) map[string]string {

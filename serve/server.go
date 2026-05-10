@@ -119,6 +119,12 @@ type Config struct {
 	// instead of govega's bundled UI. When nil, the bundled frontend is
 	// served from serve/builtinui.
 	FrontendFS fs.FS
+
+	// Store, when non-nil, is used as the persistence layer instead of
+	// opening a SQLite database from DBPath. Useful for tests (in-memory
+	// or temp-file stores) and for embedding products that want to
+	// supply a different backend.
+	Store Store
 }
 
 // Server is the HTTP server for the Vega dashboard and REST API.
@@ -181,7 +187,44 @@ type Server struct {
 	// reply_targets.go.
 	replyTargetsMu sync.RWMutex
 	replyTargets   map[string]dsl.ReplyTarget
+
+	// routeHooks are extra HTTP handlers registered by the embedding
+	// product (apexvega) via RegisterRoute. Applied after govega's own
+	// routes during Start, so any conflict surfaces as a Go panic the
+	// operator will see immediately.
+	routeHooksMu sync.Mutex
+	routeHooks   []routeHook
 }
+
+// routeHook is one (pattern, handler) pair stashed by RegisterRoute and
+// mounted on the mux during Start.
+type routeHook struct {
+	pattern string
+	handler http.HandlerFunc
+}
+
+// RegisterRoute mounts an HTTP handler on the server's mux. Must be
+// called before Start. Routes outside /api/v1/* are not gated by the
+// bearer-JWT middleware — useful for service-to-service webhooks that
+// authenticate themselves (shared secret in a header, signed JWT in a
+// query param, etc.).
+//
+// Conflicts with existing patterns surface as a panic from net/http when
+// the mux is built — same behavior as govega's own route registrations.
+func (s *Server) RegisterRoute(pattern string, handler http.HandlerFunc) {
+	s.routeHooksMu.Lock()
+	defer s.routeHooksMu.Unlock()
+	s.routeHooks = append(s.routeHooks, routeHook{pattern: pattern, handler: handler})
+}
+
+// Interpreter returns the underlying dsl.Interpreter so integrations can
+// access the tool registry, agent set, etc.
+func (s *Server) Interpreter() *dsl.Interpreter { return s.interp }
+
+// Store returns the persistence store. Integrations use this to persist
+// their settings (API keys, shared secrets, per-tenant config) under the
+// MCPSettingKey namespace.
+func (s *Server) Store() Store { return s.store }
 
 // New creates a new Server.
 func New(interp *dsl.Interpreter, cfg Config) *Server {
@@ -226,6 +269,7 @@ func New(interp *dsl.Interpreter, cfg Config) *Server {
 	return &Server{
 		interp:          interp,
 		broker:          NewEventBroker(),
+		store:           cfg.Store, // may be nil; Start() opens SQLite when so
 		cfg:             cfg,
 		streams:         make(map[string]*activeStream),
 		extractSem:      make(chan struct{}, 1),
@@ -271,14 +315,20 @@ func resolveAddr(addr string) (net.Listener, string, error) {
 func (s *Server) Start(ctx context.Context) error {
 	s.startedAt = time.Now()
 
-	// Initialize SQLite store.
-	store, err := NewSQLiteStore(s.cfg.DBPath)
-	if err != nil {
-		return fmt.Errorf("open database: %w", err)
-	}
-	s.store = store
-	if err := store.Init(); err != nil {
-		return fmt.Errorf("init database: %w", err)
+	// Initialize SQLite store (unless one was injected via Config.Store).
+	// We own (and Close) the store iff we opened it; an injected store is
+	// the caller's responsibility.
+	var weOwnStore bool
+	if s.store == nil {
+		store, err := NewSQLiteStore(s.cfg.DBPath)
+		if err != nil {
+			return fmt.Errorf("open database: %w", err)
+		}
+		s.store = store
+		if err := store.Init(); err != nil {
+			return fmt.Errorf("init database: %w", err)
+		}
+		weOwnStore = true
 	}
 
 	// Hydrate provider env vars from settings so a fresh container with a
@@ -303,7 +353,7 @@ func (s *Server) Start(ctx context.Context) error {
 				agentName = proc.Agent.Name
 			}
 		}
-		if err := store.InsertWorkspaceFile(WorkspaceFile{
+		if err := s.store.InsertWorkspaceFile(WorkspaceFile{
 			Path:        path,
 			Agent:       agentName,
 			ProcessID:   processID,
@@ -360,7 +410,9 @@ func (s *Server) Start(ctx context.Context) error {
 			return s.store.DeleteScheduledJob(name)
 		},
 	)
-	s.scheduler.inbox = store
+	if checker, ok := s.store.(inboxChecker); ok {
+		s.scheduler.inbox = checker
+	}
 	if storedJobs, err := s.store.ListScheduledJobs(); err != nil {
 		slog.Warn("scheduler: failed to load persisted jobs", "error", err)
 	} else {
@@ -712,6 +764,13 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
 
+	// Apply routes registered by the embedding product (RegisterRoute).
+	s.routeHooksMu.Lock()
+	for _, hook := range s.routeHooks {
+		mux.HandleFunc(hook.pattern, hook.handler)
+	}
+	s.routeHooksMu.Unlock()
+
 	ln, addr, err := resolveAddr(s.cfg.Addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -763,8 +822,10 @@ func (s *Server) Start(ctx context.Context) error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
 	}
-	if err := store.Close(); err != nil {
-		slog.Error("store close error", "error", err)
+	if weOwnStore {
+		if err := s.store.Close(); err != nil {
+			slog.Error("store close error", "error", err)
+		}
 	}
 
 	return nil
@@ -883,10 +944,6 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// handoff consumes the signed JWT and persists tokens.
 	mux.HandleFunc("POST /api/v1/integrations/gmail/start", s.handleGmailIntegrationStart)
 	mux.HandleFunc("POST /api/v1/integrations/gmail/handoff", s.handleGmailIntegrationHandoff)
-	mux.HandleFunc("GET /api/v1/integrations/vapi", s.handleVapiStatus)
-	mux.HandleFunc("POST /api/v1/integrations/vapi", s.handleVapiConfigure)
-	mux.HandleFunc("DELETE /api/v1/integrations/vapi", s.handleVapiDisable)
-
 	// Reset
 	mux.HandleFunc("POST /api/v1/reset", s.handleReset)
 

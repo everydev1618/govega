@@ -10,8 +10,8 @@ import (
 	_ "github.com/microsoft/go-mssqldb"
 )
 
-func mssqlServer() *builtinMCPServer {
-	return &builtinMCPServer{
+func mssqlServer() *BuiltinMCPServer {
+	return &BuiltinMCPServer{
 		tools: map[string]ToolDef{
 			"list_tables": {
 				Description: "List all tables in the connected SQL Server database, showing schema and table name.",

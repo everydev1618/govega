@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"fmt"
 	"os"
 	"time"
 )
@@ -132,19 +133,67 @@ var DefaultRegistry = map[string]RegistryEntry{
 		BuiltinGo:   true,
 		RequiredEnv: []string{"GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"},
 	},
-	"vapi": {
-		Name:        "vapi",
-		Description: "Voice AI calls via Vapi.ai — start outbound calls, fetch transcripts, manage assistants. Built-in Go server using a BYO Vapi API key.",
-		BuiltinGo:   true,
-		RequiredEnv: []string{"VAPI_API_KEY"},
-		OptionalEnv: []string{"VAPI_DEFAULT_PHONE_NUMBER_ID"},
-	},
 }
 
 // Lookup finds a registry entry by name.
 func Lookup(name string) (RegistryEntry, bool) {
 	entry, ok := DefaultRegistry[name]
 	return entry, ok
+}
+
+// Register adds an entry to the registry. Embedding products call this
+// at startup to register product-specific MCP servers (e.g. Vapi) so
+// they show up alongside govega's built-in entries in list_mcp_registry.
+//
+// Returns an error if a different entry already exists under that name.
+// Re-registering an identical entry is a no-op (safe to call from init
+// or main multiple times).
+func Register(entry RegistryEntry) error {
+	if entry.Name == "" {
+		return fmt.Errorf("mcp.Register: entry.Name is empty")
+	}
+	if existing, ok := DefaultRegistry[entry.Name]; ok {
+		if entriesEqual(existing, entry) {
+			return nil
+		}
+		return fmt.Errorf("mcp.Register: %q already registered with different shape", entry.Name)
+	}
+	DefaultRegistry[entry.Name] = entry
+	return nil
+}
+
+func entriesEqual(a, b RegistryEntry) bool {
+	if a.Name != b.Name || a.Description != b.Description ||
+		a.Transport != b.Transport || a.Command != b.Command ||
+		a.URL != b.URL || a.BuiltinGo != b.BuiltinGo ||
+		a.GitHubRepo != b.GitHubRepo {
+		return false
+	}
+	if !stringSliceEq(a.Args, b.Args) || !stringSliceEq(a.RequiredEnv, b.RequiredEnv) ||
+		!stringSliceEq(a.OptionalEnv, b.OptionalEnv) {
+		return false
+	}
+	if len(a.Headers) != len(b.Headers) {
+		return false
+	}
+	for k, v := range a.Headers {
+		if b.Headers[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func stringSliceEq(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ToServerConfig converts a registry entry to a ServerConfig,
