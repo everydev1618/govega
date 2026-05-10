@@ -1247,6 +1247,7 @@ func (s *Server) injectHera() {
 				Name:           agent.Name,
 				DisplayName:    agent.DisplayName,
 				Title:          agent.Title,
+				Description:    agent.Description,
 				Avatar:         agent.Avatar,
 				Icon:           agent.Icon,
 				AvatarGradient: agent.AvatarGradient,

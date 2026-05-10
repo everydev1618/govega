@@ -383,6 +383,7 @@ func (s *Server) persistComposedAgent(name string, def *dsl.Agent) {
 		Name:           name,
 		DisplayName:    def.DisplayName,
 		Title:          def.Title,
+		Description:    def.Description,
 		Avatar:         def.Avatar,
 		Icon:           def.Icon,
 		AvatarGradient: def.AvatarGradient,

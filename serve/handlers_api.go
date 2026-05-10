@@ -195,6 +195,7 @@ func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel st
 		Name:           name,
 		DisplayName:    def.DisplayName,
 		Title:          def.Title,
+		Description:    def.Description,
 		Avatar:         def.Avatar,
 		Icon:           def.Icon,
 		AvatarGradient: def.AvatarGradient,
@@ -232,6 +233,9 @@ func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel st
 		}
 		if len(composed.AvatarGradient) > 0 {
 			ar.AvatarGradient = composed.AvatarGradient
+		}
+		if composed.Description != "" {
+			ar.Description = composed.Description
 		}
 		if !composed.CreatedAt.IsZero() {
 			ca := composed.CreatedAt.UTC()
@@ -2204,6 +2208,7 @@ func (s *Server) handleExportTemplate(w http.ResponseWriter, r *http.Request) {
 		Name:           name,
 		DisplayName:    agentDef.DisplayName,
 		Title:          agentDef.Title,
+		Description:    agentDef.Description,
 		Avatar:         agentDef.Avatar,
 		Icon:           agentDef.Icon,
 		AvatarGradient: agentDef.AvatarGradient,
@@ -2242,6 +2247,7 @@ func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
 		Name:           tmpl.Name,
 		DisplayName:    tmpl.DisplayName,
 		Title:          tmpl.Title,
+		Description:    tmpl.Description,
 		Avatar:         tmpl.Avatar,
 		Icon:           tmpl.Icon,
 		AvatarGradient: tmpl.AvatarGradient,
@@ -2259,6 +2265,7 @@ func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
 		Name:           agentDef.Name,
 		DisplayName:    agentDef.DisplayName,
 		Title:          agentDef.Title,
+		Description:    agentDef.Description,
 		Avatar:         agentDef.Avatar,
 		Icon:           agentDef.Icon,
 		AvatarGradient: agentDef.AvatarGradient,

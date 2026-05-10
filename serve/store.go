@@ -289,6 +289,7 @@ type ComposedAgent struct {
 	Name           string    `json:"name"`
 	DisplayName    string    `json:"display_name,omitempty"`
 	Title          string    `json:"title,omitempty"`
+	Description    string    `json:"description,omitempty"`
 	Avatar         string    `json:"avatar,omitempty"`
 	Icon           string    `json:"icon,omitempty"`
 	AvatarGradient []string  `json:"avatar_gradient,omitempty"`

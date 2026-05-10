@@ -77,6 +77,7 @@ func (s *SQLiteStore) Init() error {
 		name            TEXT PRIMARY KEY,
 		display_name    TEXT NOT NULL DEFAULT '',
 		title           TEXT NOT NULL DEFAULT '',
+		description     TEXT NOT NULL DEFAULT '',
 		avatar          TEXT NOT NULL DEFAULT '',
 		icon            TEXT NOT NULL DEFAULT '',
 		avatar_gradient TEXT NOT NULL DEFAULT '[]',
@@ -266,6 +267,9 @@ func (s *SQLiteStore) Init() error {
 		s.db.Exec(`UPDATE composed_agents SET updated_at = created_at WHERE updated_at IS NULL`)
 	}
 
+	// Migrate: add description column for the user-facing body text.
+	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN description TEXT NOT NULL DEFAULT ''`)
+
 	// Migrate: add mode column to channels if missing.
 	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
 
@@ -428,11 +432,12 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 		a.UpdatedAt = time.Now().UTC()
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO composed_agents (name, display_name, title, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO composed_agents (name, display_name, title, description, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 		   display_name    = excluded.display_name,
 		   title           = excluded.title,
+		   description     = excluded.description,
 		   avatar          = excluded.avatar,
 		   icon            = excluded.icon,
 		   avatar_gradient = excluded.avatar_gradient,
@@ -444,7 +449,7 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 		   system          = excluded.system,
 		   temperature     = excluded.temperature,
 		   updated_at      = excluded.updated_at`,
-		a.Name, a.DisplayName, a.Title, a.Avatar, a.Icon, string(gradJSON), a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt, a.UpdatedAt,
+		a.Name, a.DisplayName, a.Title, a.Description, a.Avatar, a.Icon, string(gradJSON), a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt, a.UpdatedAt,
 	)
 	return err
 }
@@ -452,7 +457,7 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 // ListComposedAgents returns all composed agents.
 func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	rows, err := s.db.Query(
-		`SELECT name, display_name, title, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at
+		`SELECT name, display_name, title, description, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at
 		 FROM composed_agents ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -466,7 +471,7 @@ func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 		var skillsJSON, toolsJSON, teamJSON, gradJSON string
 		var temp sql.NullFloat64
 		var updatedAt sql.NullTime
-		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Avatar, &a.Icon, &gradJSON, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt, &updatedAt); err != nil {
+		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Description, &a.Avatar, &a.Icon, &gradJSON, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(skillsJSON), &a.Skills)

@@ -212,6 +212,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Name:           req.Name,
 		DisplayName:    req.DisplayName,
 		Title:          req.Title,
+		Description:    req.Description,
 		Avatar:         req.Avatar,
 		Icon:           req.Icon,
 		AvatarGradient: req.AvatarGradient,
@@ -232,6 +233,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Name:           req.Name,
 		DisplayName:    req.DisplayName,
 		Title:          req.Title,
+		Description:    req.Description,
 		Avatar:         req.Avatar,
 		Icon:           req.Icon,
 		AvatarGradient: req.AvatarGradient,
@@ -302,6 +304,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 				Name:           name,
 				DisplayName:    def.DisplayName,
 				Title:          def.Title,
+				Description:    def.Description,
 				Avatar:         def.Avatar,
 				Icon:           def.Icon,
 				AvatarGradient: def.AvatarGradient,
@@ -331,6 +334,9 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Title != nil {
 		existing.Title = *req.Title
+	}
+	if req.Description != nil {
+		existing.Description = *req.Description
 	}
 	if req.Avatar != nil {
 		existing.Avatar = *req.Avatar
@@ -404,6 +410,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		Name:           newName,
 		DisplayName:    existing.DisplayName,
 		Title:          existing.Title,
+		Description:    existing.Description,
 		Avatar:         existing.Avatar,
 		Icon:           existing.Icon,
 		AvatarGradient: existing.AvatarGradient,
@@ -619,6 +626,7 @@ func (s *Server) restoreComposedAgents() {
 			Name:           a.Name,
 			DisplayName:    a.DisplayName,
 			Title:          a.Title,
+			Description:    a.Description,
 			Avatar:         a.Avatar,
 			Icon:           a.Icon,
 			AvatarGradient: a.AvatarGradient,

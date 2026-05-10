@@ -1201,6 +1201,8 @@ export interface components {
             name?: string;
             display_name?: string;
             title?: string;
+            /** @description Short paragraph describing the agent's purpose. User-facing — distinct from `system` (the LLM-facing prompt). */
+            description?: string;
             /** @description Free-form avatar string (emoji, short code, etc.). Prefer `icon` + `avatar_gradient` for new code. */
             avatar?: string;
             /** @description Lucide icon name (e.g. "Sparkles", "Briefcase"). Pairs with `avatar_gradient` for the agent badge. */
@@ -1290,6 +1292,8 @@ export interface components {
             name: string;
             display_name?: string;
             title?: string;
+            /** @description Short paragraph describing the agent's purpose. See AgentResponse.description. */
+            description?: string;
             avatar?: string;
             /** @description Lucide icon name. See AgentResponse.icon. */
             icon?: string;
@@ -1318,6 +1322,8 @@ export interface components {
             name?: string;
             display_name?: string;
             title?: string;
+            /** @description New description. See AgentResponse.description. */
+            description?: string;
             avatar?: string;
             /** @description Lucide icon name. See AgentResponse.icon. */
             icon?: string;
@@ -1334,6 +1340,11 @@ export interface components {
             name?: string;
             display_name?: string;
             title?: string;
+            /** @description See AgentResponse.description. */
+            description?: string;
+            avatar?: string;
+            icon?: string;
+            avatar_gradient?: string[];
             model?: string;
             system?: string;
             tools?: string[];

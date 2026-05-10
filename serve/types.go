@@ -89,6 +89,9 @@ type AgentResponse struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
 	Title       string `json:"title,omitempty"`
+	// Description is a short paragraph of body text describing the agent's
+	// purpose. User-facing — distinct from `system` (the LLM-facing prompt).
+	Description string `json:"description,omitempty"`
 	Avatar      string `json:"avatar,omitempty"`
 	// Icon is a Lucide icon name; pairs with AvatarGradient for the
 	// frontend's circular agent badge.
@@ -236,6 +239,7 @@ type AgentTemplateResponse struct {
 	Name           string   `json:"name"`
 	DisplayName    string   `json:"display_name,omitempty"`
 	Title          string   `json:"title,omitempty"`
+	Description    string   `json:"description,omitempty"`
 	Avatar         string   `json:"avatar,omitempty"`
 	Icon           string   `json:"icon,omitempty"`
 	AvatarGradient []string `json:"avatar_gradient,omitempty"`
@@ -394,6 +398,7 @@ type CreateAgentRequest struct {
 	Name           string   `json:"name"`
 	DisplayName    string   `json:"display_name,omitempty"`
 	Title          string   `json:"title,omitempty"`
+	Description    string   `json:"description,omitempty"`
 	Avatar         string   `json:"avatar,omitempty"`
 	Icon           string   `json:"icon,omitempty"`
 	AvatarGradient []string `json:"avatar_gradient,omitempty"`
@@ -420,6 +425,7 @@ type UpdateAgentRequest struct {
 	Name           *string  `json:"name,omitempty"`
 	DisplayName    *string  `json:"display_name,omitempty"`
 	Title          *string  `json:"title,omitempty"`
+	Description    *string  `json:"description,omitempty"`
 	Avatar         *string  `json:"avatar,omitempty"`
 	Icon           *string  `json:"icon,omitempty"`
 	AvatarGradient []string `json:"avatar_gradient,omitempty"`

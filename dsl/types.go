@@ -27,6 +27,7 @@ type AgentTemplate struct {
 	Name           string   `json:"name" yaml:"name"`
 	DisplayName    string   `json:"display_name,omitempty" yaml:"display_name,omitempty"`
 	Title          string   `json:"title,omitempty" yaml:"title,omitempty"`
+	Description    string   `json:"description,omitempty" yaml:"description,omitempty"`
 	Avatar         string   `json:"avatar,omitempty" yaml:"avatar,omitempty"`
 	Icon           string   `json:"icon,omitempty" yaml:"icon,omitempty"`
 	AvatarGradient []string `json:"avatar_gradient,omitempty" yaml:"avatar_gradient,omitempty"`
@@ -62,7 +63,11 @@ type Agent struct {
 	Name          string            `yaml:"name"`
 	DisplayName   string            `yaml:"display_name"`
 	Title         string            `yaml:"title"`
-	Avatar        string            `yaml:"avatar"`
+	// Description is a short paragraph of body text describing the agent's
+	// purpose, surfaced on agent cards and detail pages. Distinct from
+	// `system` (which is the LLM-facing prompt) — intended for users.
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	Avatar      string `yaml:"avatar"`
 	// Icon is a Lucide icon name (frontend uses lucide-react). Lets each
 	// agent render with a distinctive glyph instead of an identical robot.
 	Icon string `yaml:"icon,omitempty" json:"icon,omitempty"`

@@ -384,6 +384,7 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 
 			displayName, _ := params["display_name"].(string)
 			title, _ := params["title"].(string)
+			description, _ := params["description"].(string)
 			avatar, _ := params["avatar"].(string)
 			channelName, _ := params["channel"].(string)
 			channelName = strings.TrimPrefix(channelName, "#")
@@ -406,6 +407,7 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 				Name:        name,
 				DisplayName: displayName,
 				Title:       title,
+				Description: description,
 				Avatar:      avatar,
 				Model:       model,
 				System:      system,
@@ -506,6 +508,10 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 				Description: "Short professional title shown under the display name (e.g. 'Content Strategist', 'Senior Developer')",
 				Required:    true,
 			},
+			"description": {
+				Type:        "string",
+				Description: "Optional short paragraph describing the agent's purpose (1–3 sentences). User-facing — shown on agent cards and detail pages.",
+			},
 			"avatar": {
 				Type:        "string",
 				Description: "Avatar ID from the catalog (e.g. 'f1', 'm3', 'n2'). Pick one that matches the agent's persona gender/style.",
@@ -572,6 +578,9 @@ func newUpdateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 			}
 			if v, ok := params["title"].(string); ok && v != "" {
 				merged.Title = v
+			}
+			if v, ok := params["description"].(string); ok && v != "" {
+				merged.Description = v
 			}
 			if v, ok := params["avatar"].(string); ok && v != "" {
 				merged.Avatar = v
@@ -651,6 +660,10 @@ func newUpdateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 			"title": {
 				Type:        "string",
 				Description: "New title (leave empty to keep current)",
+			},
+			"description": {
+				Type:        "string",
+				Description: "New description (leave empty to keep current)",
 			},
 			"avatar": {
 				Type:        "string",
