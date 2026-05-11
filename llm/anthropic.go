@@ -619,7 +619,7 @@ func (a *AnthropicLLM) createHTTPRequest(ctx context.Context, req *anthropicRequ
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", a.apiKey)
+	httpReq.Header.Set("x-api-key", a.resolveAPIKey(ctx))
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
 	slog.Debug("anthropic request",
