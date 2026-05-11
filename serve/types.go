@@ -471,6 +471,46 @@ type CreateAgentResponse struct {
 	ProcessID string   `json:"process_id,omitempty"`
 }
 
+// --- Agent Routines (per-agent Schedules) — refs govega#52 ---
+
+// AgentRoutineResponse is the wire shape returned by the per-agent
+// schedules endpoints. Mirrors apex-host-mgmt's AgentRoutine type so the
+// FE can render the Routines tab without any client-side conversion.
+type AgentRoutineResponse struct {
+	ID           string     `json:"id"`
+	Agent        string     `json:"agent"`
+	Title        string     `json:"title"`
+	Instructions string     `json:"instructions"`
+	Schedule     Schedule   `json:"schedule"`
+	// Cron is the derived expression — exposed for FE debugging and for
+	// jobs created via DSL/legacy paths where the structured Schedule
+	// can't be reconstructed.
+	Cron       string     `json:"cron"`
+	Enabled    bool       `json:"enabled"`
+	LastRunAt  *time.Time `json:"last_run_at"`
+	NextRunAt  *time.Time `json:"next_run_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+// CreateRoutineRequest is the POST body for creating a routine on an agent.
+type CreateRoutineRequest struct {
+	Title        string   `json:"title"`
+	Instructions string   `json:"instructions"`
+	Schedule     Schedule `json:"schedule"`
+	// Enabled defaults to true when omitted.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// UpdateRoutineRequest is the PATCH body. Pointer-typed fields distinguish
+// "omitted" (leave unchanged) from "set to empty".
+type UpdateRoutineRequest struct {
+	Title        *string   `json:"title,omitempty"`
+	Instructions *string   `json:"instructions,omitempty"`
+	Schedule     *Schedule `json:"schedule,omitempty"`
+	Enabled      *bool     `json:"enabled,omitempty"`
+}
+
 // UpdateAgentRequest is the request to update an existing composed agent.
 // Pointer-typed fields distinguish "not set" (omit, leave unchanged) from
 // "set to empty" (clear). Slice fields use len() == 0 to mean unchanged.

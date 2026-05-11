@@ -95,6 +95,13 @@ type Store interface {
 	// ListScheduledJobs returns all scheduled jobs.
 	ListScheduledJobs() ([]ScheduledJob, error)
 
+	// GetScheduledJobByID returns one job by its server-generated id.
+	// Returns nil, nil when not found.
+	GetScheduledJobByID(id string) (*ScheduledJob, error)
+
+	// MarkScheduledJobRun stamps the supplied time on last_run_at.
+	MarkScheduledJobRun(name string, at time.Time) error
+
 	// InsertWorkspaceFile records a file write by an agent.
 	InsertWorkspaceFile(f WorkspaceFile) error
 
@@ -362,14 +369,34 @@ type MemoryItem struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 }
 
-// ScheduledJob is a persisted recurring agent trigger.
+// ScheduledJob is a persisted recurring agent trigger. The legacy fields
+// (Name, Cron, Message) drive the cron runner and the DSL tools; the
+// newer ones (ID, Title, ScheduleJSON, LastRunAt, UpdatedAt) back the
+// per-agent Routines CRUD surface added for govega#52.
 type ScheduledJob struct {
-	Name      string    `json:"name"`
-	Cron      string    `json:"cron"`
-	AgentName string    `json:"agent"`
-	Message   string    `json:"message"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"created_at"`
+	// ID is the server-generated stable identifier. For rows created
+	// before the routines migration, ID == Name (backfilled by the
+	// migration).
+	ID string `json:"id"`
+	// Name is the cron-runner key + DSL lookup key. For new routines the
+	// API sets Name == ID; legacy rows keep their original slug.
+	Name string `json:"name"`
+	// Title is the user-facing display label (e.g. "Daily standup
+	// reminder"). Empty for legacy rows; falls back to Name in API
+	// responses.
+	Title string `json:"title,omitempty"`
+	Cron  string `json:"cron"`
+	// ScheduleJSON is the marshalled Schedule struct as supplied by the
+	// FE. Empty when the row was created via the DSL or the legacy flat
+	// API; in that case responses synthesize a `Custom` schedule that
+	// echoes Cron.
+	ScheduleJSON string     `json:"-"`
+	AgentName    string     `json:"agent"`
+	Message      string     `json:"message"`
+	Enabled      bool       `json:"enabled"`
+	LastRunAt    *time.Time `json:"last_run_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // WorkspaceFile tracks a file written by an agent.

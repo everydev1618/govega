@@ -292,6 +292,24 @@ func (s *SQLiteStore) Init() error {
 	// Migrate: add sender column to channel_messages for multi-user identity.
 	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN sender TEXT DEFAULT ''`)
 
+	// Migrate: extend scheduled_jobs to carry routine identity (refs
+	// govega#52). `id` becomes the stable key returned to the FE; `name`
+	// stays as the routing/lookup key DSL tools use. For legacy rows
+	// (created before this migration) we backfill id = name so the FE
+	// can still address them.
+	s.db.Exec(`ALTER TABLE scheduled_jobs ADD COLUMN id TEXT NOT NULL DEFAULT ''`)
+	s.db.Exec(`ALTER TABLE scheduled_jobs ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
+	s.db.Exec(`ALTER TABLE scheduled_jobs ADD COLUMN schedule_json TEXT NOT NULL DEFAULT ''`)
+	s.db.Exec(`ALTER TABLE scheduled_jobs ADD COLUMN last_run_at DATETIME`)
+	if _, err := s.db.Exec(`ALTER TABLE scheduled_jobs ADD COLUMN updated_at DATETIME`); err == nil {
+		s.db.Exec(`UPDATE scheduled_jobs SET updated_at = created_at WHERE updated_at IS NULL`)
+	}
+	// Backfill id from name for legacy rows so the new GET-by-id path
+	// resolves them.
+	s.db.Exec(`UPDATE scheduled_jobs SET id = name WHERE id = ''`)
+	s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_agent ON scheduled_jobs(agent_name)`)
+	s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_jobs_id ON scheduled_jobs(id)`)
+
 	// Migrate: add type column to memory_items so existing rows fall back
 	// to the catch-all 'reference' type instead of an empty string.
 	s.db.Exec(`ALTER TABLE memory_items ADD COLUMN type TEXT NOT NULL DEFAULT 'reference'`)
@@ -611,29 +629,66 @@ func (s *SQLiteStore) DeleteUserMemory(userID, agent string) error {
 	return err
 }
 
-// UpsertScheduledJob creates or replaces a scheduled job.
+// UpsertScheduledJob creates or replaces a scheduled job. The Name field
+// is the legacy primary key (cron runner + DSL lookup); ID defaults to
+// Name for backwards compatibility when callers don't supply it.
 func (s *SQLiteStore) UpsertScheduledJob(job ScheduledJob) error {
+	if job.ID == "" {
+		job.ID = job.Name
+	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO scheduled_jobs (name, cron, agent_name, message, enabled, created_at)
-		 VALUES (?, ?, ?, ?, ?, COALESCE(
-		   (SELECT created_at FROM scheduled_jobs WHERE name = ?),
-		   CURRENT_TIMESTAMP
-		 ))`,
-		job.Name, job.Cron, job.AgentName, job.Message, job.Enabled, job.Name,
+		`INSERT OR REPLACE INTO scheduled_jobs (
+			id, name, title, cron, agent_name, message, schedule_json, enabled,
+			last_run_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(
+		    (SELECT created_at FROM scheduled_jobs WHERE name = ?),
+		    CURRENT_TIMESTAMP
+		 ), CURRENT_TIMESTAMP)`,
+		job.ID, job.Name, job.Title, job.Cron, job.AgentName, job.Message,
+		job.ScheduleJSON, job.Enabled, job.LastRunAt, job.Name,
 	)
 	return err
 }
 
-// DeleteScheduledJob removes a scheduled job by name.
+// DeleteScheduledJob removes a scheduled job by name (the cron-runner key).
 func (s *SQLiteStore) DeleteScheduledJob(name string) error {
 	_, err := s.db.Exec(`DELETE FROM scheduled_jobs WHERE name = ?`, name)
 	return err
 }
 
+// GetScheduledJobByID returns one job by its server-generated id (or by
+// name for legacy rows). Returns nil, nil when the row doesn't exist.
+func (s *SQLiteStore) GetScheduledJobByID(id string) (*ScheduledJob, error) {
+	row := s.db.QueryRow(
+		`SELECT id, name, title, cron, agent_name, message, schedule_json,
+		        enabled, last_run_at, created_at, updated_at
+		 FROM scheduled_jobs WHERE id = ?`, id,
+	)
+	var j ScheduledJob
+	var lastRun sql.NullTime
+	var updated sql.NullTime
+	if err := row.Scan(&j.ID, &j.Name, &j.Title, &j.Cron, &j.AgentName,
+		&j.Message, &j.ScheduleJSON, &j.Enabled, &lastRun, &j.CreatedAt, &updated); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if lastRun.Valid {
+		t := lastRun.Time
+		j.LastRunAt = &t
+	}
+	if updated.Valid {
+		j.UpdatedAt = updated.Time
+	}
+	return &j, nil
+}
+
 // ListScheduledJobs returns all scheduled jobs.
 func (s *SQLiteStore) ListScheduledJobs() ([]ScheduledJob, error) {
 	rows, err := s.db.Query(
-		`SELECT name, cron, agent_name, message, enabled, created_at
+		`SELECT id, name, title, cron, agent_name, message, schedule_json,
+		        enabled, last_run_at, created_at, updated_at
 		 FROM scheduled_jobs ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -644,12 +699,33 @@ func (s *SQLiteStore) ListScheduledJobs() ([]ScheduledJob, error) {
 	var jobs []ScheduledJob
 	for rows.Next() {
 		var j ScheduledJob
-		if err := rows.Scan(&j.Name, &j.Cron, &j.AgentName, &j.Message, &j.Enabled, &j.CreatedAt); err != nil {
+		var lastRun sql.NullTime
+		var updated sql.NullTime
+		if err := rows.Scan(&j.ID, &j.Name, &j.Title, &j.Cron, &j.AgentName,
+			&j.Message, &j.ScheduleJSON, &j.Enabled, &lastRun, &j.CreatedAt, &updated); err != nil {
 			return nil, err
+		}
+		if lastRun.Valid {
+			t := lastRun.Time
+			j.LastRunAt = &t
+		}
+		if updated.Valid {
+			j.UpdatedAt = updated.Time
 		}
 		jobs = append(jobs, j)
 	}
 	return jobs, rows.Err()
+}
+
+// MarkScheduledJobRun stamps last_run_at = now for the given job name.
+// Best-effort — a failure just means the next-run computation will be
+// slightly stale; the cron runner is the source of truth for firing.
+func (s *SQLiteStore) MarkScheduledJobRun(name string, at time.Time) error {
+	_, err := s.db.Exec(
+		`UPDATE scheduled_jobs SET last_run_at = ? WHERE name = ?`,
+		at, name,
+	)
+	return err
 }
 
 // InsertMemoryItem saves a memory item and returns its ID. If a row already

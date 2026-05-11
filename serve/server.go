@@ -439,13 +439,24 @@ func (s *Server) Start(ctx context.Context) error {
 	s.scheduler = NewScheduler(
 		s.interp,
 		func(job dsl.ScheduledJob) error {
-			return s.store.UpsertScheduledJob(ScheduledJob{
+			// scheduler.AddJob fires this for both first-time DSL inserts and
+			// re-adds after a routine PATCH. The DSL job carries only the
+			// legacy fields, so merge with the existing row to preserve
+			// the routine-specific columns (title, schedule_json) that the
+			// HTTP layer populated (refs govega#52).
+			row := ScheduledJob{
 				Name:      job.Name,
 				Cron:      job.Cron,
 				AgentName: job.AgentName,
 				Message:   job.Message,
 				Enabled:   job.Enabled,
-			})
+			}
+			if existing, err := s.store.GetScheduledJobByID(job.Name); err == nil && existing != nil {
+				row.ID = existing.ID
+				row.Title = existing.Title
+				row.ScheduleJSON = existing.ScheduleJSON
+			}
+			return s.store.UpsertScheduledJob(row)
 		},
 		func(name string) error {
 			return s.store.DeleteScheduledJob(name)
@@ -453,6 +464,9 @@ func (s *Server) Start(ctx context.Context) error {
 	)
 	if checker, ok := s.store.(inboxChecker); ok {
 		s.scheduler.inbox = checker
+	}
+	if rec, ok := s.store.(scheduleRunRecorder); ok {
+		s.scheduler.recorder = rec
 	}
 	if storedJobs, err := s.store.ListScheduledJobs(); err != nil {
 		slog.Warn("scheduler: failed to load persisted jobs", "error", err)
@@ -878,6 +892,14 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/schedules", s.handleListSchedules)
 	mux.HandleFunc("DELETE /api/v1/schedules/{name}", s.handleDeleteSchedule)
 	mux.HandleFunc("PUT /api/v1/schedules/{name}", s.handleToggleSchedule)
+
+	// Per-agent Routines API (refs govega#52). Lives alongside the legacy
+	// flat /schedules surface — DSL-created jobs still flow through that.
+	mux.HandleFunc("GET /api/v1/agents/{agent}/schedules", s.handleListAgentRoutines)
+	mux.HandleFunc("POST /api/v1/agents/{agent}/schedules", s.handleCreateAgentRoutine)
+	mux.HandleFunc("GET /api/v1/agents/{agent}/schedules/{id}", s.handleGetAgentRoutine)
+	mux.HandleFunc("PATCH /api/v1/agents/{agent}/schedules/{id}", s.handleUpdateAgentRoutine)
+	mux.HandleFunc("DELETE /api/v1/agents/{agent}/schedules/{id}", s.handleDeleteAgentRoutine)
 
 	// Inbox
 	mux.HandleFunc("GET /api/v1/inbox", s.handleListInbox)

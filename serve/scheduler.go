@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/everydev1618/govega/dsl"
 	"github.com/robfig/cron/v3"
@@ -15,14 +16,22 @@ type inboxChecker interface {
 	PendingInboxCount() (int, error)
 }
 
+// scheduleRunRecorder is the slice of the store the scheduler uses to
+// stamp last_run_at after each fire (refs govega#52). Kept narrow so
+// tests can stub it.
+type scheduleRunRecorder interface {
+	MarkScheduledJobRun(name string, at time.Time) error
+}
+
 // Scheduler runs cron jobs that send messages to agents.
 // It implements dsl.SchedulerBackend.
 type Scheduler struct {
-	c       *cron.Cron
-	interp  *dsl.Interpreter
-	inbox   inboxChecker // optional — used to skip no-op heartbeats
-	persist func(job dsl.ScheduledJob) error
-	remove  func(name string) error
+	c        *cron.Cron
+	interp   *dsl.Interpreter
+	inbox    inboxChecker         // optional — used to skip no-op heartbeats
+	recorder scheduleRunRecorder // optional — stamps last_run_at after each fire
+	persist  func(job dsl.ScheduledJob) error
+	remove   func(name string) error
 
 	mu      sync.Mutex
 	jobs    []dsl.ScheduledJob
@@ -161,6 +170,14 @@ func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 		// heartbeat results like "inbox empty."
 		if _, err := s.interp.SendToAgent(ctx, job.AgentName, job.Message); err != nil {
 			slog.Warn("scheduler: agent send failed", "name", job.Name, "agent", job.AgentName, "error", err)
+		}
+		// Stamp last_run_at so the FE's Routines list reflects "last fired"
+		// (refs govega#52). Best-effort — a stamp failure is not a real
+		// failure of the job itself.
+		if s.recorder != nil {
+			if err := s.recorder.MarkScheduledJobRun(job.Name, time.Now().UTC()); err != nil {
+				slog.Warn("scheduler: stamp last_run_at failed", "name", job.Name, "error", err)
+			}
 		}
 	}
 }

@@ -1169,6 +1169,125 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Per-agent Routines (a.k.a. Schedules) — govega#52 ────────────────
+  /api/v1/agents/{agent}/schedules:
+    get:
+      tags: [Schedules]
+      summary: List routines for one agent
+      operationId: listAgentRoutines
+      parameters:
+        - name: agent
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Array of routines scoped to the agent
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentRoutine"
+    post:
+      tags: [Schedules]
+      summary: Create a routine for an agent
+      operationId: createAgentRoutine
+      parameters:
+        - name: agent
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoutineRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRoutine"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/v1/agents/{agent}/schedules/{id}:
+    get:
+      tags: [Schedules]
+      summary: Fetch one routine
+      operationId: getAgentRoutine
+      parameters:
+        - name: agent
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRoutine"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Schedules]
+      summary: Partially update a routine
+      operationId: updateAgentRoutine
+      parameters:
+        - name: agent
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoutineRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRoutine"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Schedules]
+      summary: Delete a routine
+      operationId: deleteAgentRoutine
+      parameters:
+        - name: agent
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── Inbox ─────────────────────────────────────────────────────────────
   /api/v1/inbox:
     get:
@@ -3044,6 +3163,99 @@ components:
         created_at:
           type: string
           format: date-time
+
+    # Per-agent Routines — govega#52
+    RoutineSchedule:
+      type: object
+      required: [frequency]
+      properties:
+        frequency:
+          type: string
+          enum: [daily, weekdays, weekly, biweekly, monthly, custom]
+        time:
+          type: string
+          description: HH:mm (24h)
+          pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+        timezone:
+          type: string
+          description: IANA timezone, e.g. America/New_York
+        days_of_week:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+          description: 0=Sun … 6=Sat (weekly/biweekly)
+        day_of_month:
+          type: integer
+          minimum: 1
+          maximum: 31
+          nullable: true
+        cron:
+          type: string
+          description: |
+            When `frequency=custom`, the raw cron expression supplied by
+            the caller. Always returned on read as the derived expression
+            for debugging.
+
+    AgentRoutine:
+      type: object
+      required: [id, agent, title, instructions, schedule, cron, enabled, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          description: Server-generated stable id. For legacy DSL-created jobs falls back to `name`.
+        agent:
+          type: string
+        title:
+          type: string
+        instructions:
+          type: string
+          description: Message sent to the agent on each fire.
+        schedule:
+          $ref: "#/components/schemas/RoutineSchedule"
+        cron:
+          type: string
+          description: Derived cron expression (CRON_TZ-prefixed for non-custom frequencies).
+        enabled:
+          type: boolean
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateRoutineRequest:
+      type: object
+      required: [title, instructions, schedule]
+      properties:
+        title:
+          type: string
+        instructions:
+          type: string
+        schedule:
+          $ref: "#/components/schemas/RoutineSchedule"
+        enabled:
+          type: boolean
+          description: Defaults to true.
+
+    UpdateRoutineRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        instructions:
+          type: string
+        schedule:
+          $ref: "#/components/schemas/RoutineSchedule"
+        enabled:
+          type: boolean
 
     # ── Inbox ─────────────────────────────────────────────────────────
     InboxItem:
