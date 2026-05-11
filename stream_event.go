@@ -9,11 +9,17 @@ import (
 type ChatEventType string
 
 const (
-	ChatEventTextDelta ChatEventType = "text_delta"
-	ChatEventToolStart ChatEventType = "tool_start"
-	ChatEventToolEnd   ChatEventType = "tool_end"
-	ChatEventError     ChatEventType = "error"
-	ChatEventDone      ChatEventType = "done"
+	ChatEventTextDelta       ChatEventType = "text_delta"
+	ChatEventToolStart       ChatEventType = "tool_start"
+	ChatEventToolEnd         ChatEventType = "tool_end"
+	ChatEventError           ChatEventType = "error"
+	ChatEventDone            ChatEventType = "done"
+	// ChatEventNoActiveStream is sent on the reconnect endpoint when the
+	// caller connected to an agent that has no in-progress stream. It's
+	// always followed by a `done` event and the connection closes. Lets
+	// frontends use one SSE code path for both "live stream" and "nothing
+	// to resume" cases without a content-type heuristic.
+	ChatEventNoActiveStream ChatEventType = "no_active_stream"
 )
 
 // ChatEventCode is a stable string discriminator carried on chat error

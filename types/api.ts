@@ -177,8 +177,14 @@ export interface paths {
         };
         /**
          * Reconnect to an in-progress stream
-         * @description If the agent has an active stream, replays all buffered events then continues live.
-         *     If no active stream, returns `{"streaming": false}`.
+         * @description Always returns SSE. If the agent has an active stream, replays
+         *     all buffered events then continues live. If no active stream,
+         *     emits a single `no_active_stream` event followed by `done` and
+         *     closes. Callers can run one SSE code path for both cases —
+         *     no content-type heuristic.
+         *
+         *     (BREAKING CHANGE in 0.2.0 — previously returned a JSON
+         *     `{"streaming": false}` body when no stream was active.)
          */
         get: operations["chatStreamReconnect"];
         put?: never;
@@ -1238,13 +1244,6 @@ export interface components {
             team?: string[];
             process_id?: string;
             /**
-             * @deprecated
-             * @description Raw vega.Process state. Deprecated — use `status` for the
-             *     high-level lifecycle and `health` for the orthogonal "is
-             *     anything wrong" signal. Will be removed in 0.2.0.
-             */
-            process_status?: string;
-            /**
              * @description High-level agent lifecycle state. Always present.
              *
              *     - `idle` — agent is defined but has no active work in flight
@@ -1700,10 +1699,16 @@ export interface components {
             /** @description Target a specific agent (defaults to team lead) */
             agent?: string;
         };
-        /** @description SSE event for channel activity. Tool-call fields are present on `channel.tool_start` / `channel.tool_end` events, mirroring ChatStreamEvent. */
+        /**
+         * @description SSE event for channel activity. Tool-call fields are present on
+         *     `channel.tool_start` / `channel.tool_end` events, mirroring
+         *     ChatStreamEvent. On the reconnect endpoint, `no_active_stream`
+         *     is emitted followed by `done` when there's nothing to resume —
+         *     callers don't need a content-type heuristic to detect that case.
+         */
         ChannelEvent: {
             /** @enum {string} */
-            type?: "channel.message" | "channel.typing" | "channel.text_delta" | "channel.tool_start" | "channel.tool_end" | "channel.thread_reply" | "channel.error" | "channel.done";
+            type?: "channel.message" | "channel.typing" | "channel.text_delta" | "channel.tool_start" | "channel.tool_end" | "channel.thread_reply" | "channel.error" | "channel.done" | "no_active_stream" | "done";
             channel?: string;
             /** Format: int64 */
             message_id?: number;
@@ -2383,7 +2388,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description SSE stream or status JSON */
+            /** @description SSE event stream */
             200: {
                 headers: {
                     [name: string]: unknown;

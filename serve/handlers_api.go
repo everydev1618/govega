@@ -212,7 +212,6 @@ func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel st
 		procStatus = proc.Status()
 		errors = proc.Metrics().Errors
 		ar.ProcessID = proc.ID
-		ar.ProcessStatus = string(procStatus)
 		if last := proc.Metrics().LastActiveAt; !last.IsZero() {
 			la := last.UTC()
 			ar.LastActivity = &la
@@ -550,6 +549,15 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	// Use a detached context so the LLM stream survives client disconnect.
 	// Bootstrap flows can run 30+ min (Hera builds team, Iris dispatches to each agent serially).
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	// context.Background() drops the request context's values; carry the
+	// auth-related ones forward so tool callbacks can authenticate as
+	// the user even after the browser disconnects.
+	if c, ok := ClaimsFrom(r.Context()); ok {
+		ctx = WithClaims(ctx, c)
+	}
+	if tok := BearerTokenFrom(r.Context()); tok != "" {
+		ctx = WithBearerToken(ctx, tok)
+	}
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
 
 	// Snapshot baseline metrics before the stream so we can compute per-response delta.
@@ -655,6 +663,11 @@ func (s *Server) handleChatStatus(w http.ResponseWriter, r *http.Request) {
 // chat stream. It replays all buffered events, then continues with live
 // events via SSE. If the stream is already done, it replays everything and
 // sends a done event.
+//
+// BREAKING in 0.2.0: always returns SSE, even when no active stream exists.
+// When there's nothing to resume, emits a single `no_active_stream` event
+// followed by `done` and closes. Replaces the previous JSON-or-SSE response
+// shape so callers can use one code path. (closes part of #48)
 func (s *Server) handleChatStreamReconnect(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
@@ -663,7 +676,21 @@ func (s *Server) handleChatStreamReconnect(w http.ResponseWriter, r *http.Reques
 	s.streamsMu.Unlock()
 
 	if as == nil {
-		writeJSON(w, http.StatusOK, ChatStatusResponse{Streaming: false})
+		// Always-SSE: emit a synthetic no_active_stream + done and close.
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "streaming not supported"})
+			return
+		}
+		noStreamData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventNoActiveStream})
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", vega.ChatEventNoActiveStream, noStreamData)
+		doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone})
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
+		flusher.Flush()
 		return
 	}
 

@@ -91,6 +91,13 @@ export type ChatEventType =
   | 'tool_end'
   | 'error'
   | 'done'
+  /**
+   * Emitted on the reconnect endpoint when the agent has no in-progress
+   * stream to resume. Always followed by `done`. Replaces the prior
+   * "JSON status body" behavior in 0.2.0 — reconnect is now SSE-always
+   * and callers don't need a content-type heuristic.
+   */
+  | 'no_active_stream'
 
 /**
  * Stable error classifier on `ChatStreamEvent.code` when type === 'error'.

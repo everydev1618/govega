@@ -120,10 +120,7 @@ type AgentResponse struct {
 	System         string   `json:"system,omitempty"`
 	Tools          []string `json:"tools,omitempty"`
 	Team           []string `json:"team,omitempty"`
-	ProcessID      string   `json:"process_id,omitempty"`
-	// ProcessStatus exposes the raw vega.Process state. Deprecated: use
-	// `status` for the high-level lifecycle. Will be removed in 0.2.0.
-	ProcessStatus string `json:"process_status,omitempty"`
+	ProcessID string `json:"process_id,omitempty"`
 	// Status is the high-level agent lifecycle state. Always present.
 	Status AgentStatus `json:"status"`
 	// Health is the orthogonal "is anything wrong?" signal. Always present.

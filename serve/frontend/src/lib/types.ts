@@ -91,7 +91,7 @@ export interface AgentResponse {
   tools?: string[]
   team?: string[]
   process_id?: string
-  process_status?: string
+  status?: 'idle' | 'running' | 'error' | 'provisioning'
   streaming?: boolean
   source?: string
 }

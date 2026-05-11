@@ -209,9 +209,10 @@ export const api = {
       headers: {},
       signal,
     }).then(async (res) => {
-      if (!res.ok) return // no active stream or error
-      const ct = res.headers.get('content-type') || ''
-      if (!ct.includes('text/event-stream')) return // not streaming (JSON status response)
+      if (!res.ok) return // server error
+      // 0.2.0: reconnect is always SSE. When there's nothing to resume,
+      // the server emits a `no_active_stream` event followed by `done`
+      // and closes. Caller's onEvent handler can switch on event.type.
 
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()

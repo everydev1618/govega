@@ -328,15 +328,21 @@ paths:
       tags: [Chat]
       summary: Reconnect to an in-progress stream
       description: |
-        If the agent has an active stream, replays all buffered events then continues live.
-        If no active stream, returns `{"streaming": false}`.
+        Always returns SSE. If the agent has an active stream, replays
+        all buffered events then continues live. If no active stream,
+        emits a single `no_active_stream` event followed by `done` and
+        closes. Callers can run one SSE code path for both cases —
+        no content-type heuristic.
+
+        (BREAKING CHANGE in 0.2.0 — previously returned a JSON
+        `{"streaming": false}` body when no stream was active.)
       operationId: chatStreamReconnect
       parameters:
         - $ref: "#/components/parameters/AgentName"
         - $ref: "#/components/parameters/XAuthUser"
       responses:
         "200":
-          description: SSE stream or status JSON
+          description: SSE event stream
 
   /api/v1/agents/{name}/chat/status:
     get:
@@ -2067,13 +2073,6 @@ components:
             type: string
         process_id:
           type: string
-        process_status:
-          type: string
-          deprecated: true
-          description: |
-            Raw vega.Process state. Deprecated — use `status` for the
-            high-level lifecycle and `health` for the orthogonal "is
-            anything wrong" signal. Will be removed in 0.2.0.
         status:
           type: string
           enum: [idle, running, error, provisioning]
@@ -2848,7 +2847,12 @@ components:
 
     ChannelEvent:
       type: object
-      description: SSE event for channel activity. Tool-call fields are present on `channel.tool_start` / `channel.tool_end` events, mirroring ChatStreamEvent.
+      description: |
+        SSE event for channel activity. Tool-call fields are present on
+        `channel.tool_start` / `channel.tool_end` events, mirroring
+        ChatStreamEvent. On the reconnect endpoint, `no_active_stream`
+        is emitted followed by `done` when there's nothing to resume —
+        callers don't need a content-type heuristic to detect that case.
       properties:
         type:
           type: string
@@ -2861,6 +2865,8 @@ components:
             - channel.thread_reply
             - channel.error
             - channel.done
+            - no_active_stream
+            - done
         channel:
           type: string
         message_id:

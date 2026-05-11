@@ -608,7 +608,10 @@ func (s *Server) relayChannelStreamSSE(w http.ResponseWriter, r *http.Request, c
 	channelStreamsMu.Unlock()
 
 	if !ok {
-		// No active stream — just send a connected comment and wait.
+		// No active stream — emit a synthetic no_active_stream + done so
+		// the wire shape matches the chat reconnect (refs #48). Frontends
+		// using one SSE code path for both channels and chat get the same
+		// "nothing to resume" signal.
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Accel-Buffering", "no")
@@ -618,11 +621,9 @@ func (s *Server) relayChannelStreamSSE(w http.ResponseWriter, r *http.Request, c
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "streaming not supported"})
 			return
 		}
-		fmt.Fprintf(w, ": connected\n\n")
+		fmt.Fprintf(w, "event: no_active_stream\ndata: {\"type\":\"no_active_stream\",\"channel\":%q}\n\n", channelName)
+		fmt.Fprintf(w, "event: done\ndata: {\"type\":\"done\",\"channel\":%q}\n\n", channelName)
 		flusher.Flush()
-
-		// Wait for context cancellation.
-		<-r.Context().Done()
 		return
 	}
 

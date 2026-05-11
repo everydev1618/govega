@@ -256,7 +256,7 @@ export function AgentOrgChart({ agents }: Props) {
           {/* Layer 3: Nodes */}
           {layout.nodes.map(n => {
             const color = PALETTE[n.colorIdx % PALETTE.length]
-            const isRunning = n.agent.process_status === 'running'
+            const isRunning = n.agent.status === 'running'
             const initial = n.agent.name.charAt(0).toUpperCase()
             const toolCount = n.agent.tools?.length ?? 0
             const AvatarSvg = getAvatar(n.agent.avatar)
@@ -369,12 +369,12 @@ export function AgentOrgChart({ agents }: Props) {
             {(tooltip.agent.tools?.length ?? 0) > 0 && (
               <p className="text-muted-foreground">{tooltip.agent.tools!.length} tools</p>
             )}
-            {tooltip.agent.process_status && (
+            {tooltip.agent.status && (
               <p className={
-                tooltip.agent.process_status === 'running' ? 'text-blue-400' :
-                tooltip.agent.process_status === 'completed' ? 'text-green-400' :
+                tooltip.agent.status === 'running' ? 'text-blue-400' :
+                tooltip.agent.status === 'error' ? 'text-red-400' :
                 'text-muted-foreground'
-              }>{tooltip.agent.process_status}</p>
+              }>{tooltip.agent.status}</p>
             )}
           </div>
         )}
