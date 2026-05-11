@@ -98,7 +98,17 @@ type AgentResponse struct {
 	Icon string `json:"icon,omitempty"`
 	// AvatarGradient is a 2-stop CSS color array, e.g. ["#EF4444", "#DC2626"].
 	AvatarGradient []string `json:"avatar_gradient,omitempty"`
-	Model          string   `json:"model,omitempty"`
+	// IsOrchestrator is true when this agent is the tenant's configured
+	// orchestrator (the "main agent" — Iris by default, renamable per
+	// tenant). Lets frontends mark the orchestrator with special
+	// affordances ("talk to your orchestrator" surface) without
+	// hardcoding the name.
+	IsOrchestrator bool `json:"is_orchestrator,omitempty"`
+	// IsBuilder is true when this agent is the tenant's configured
+	// builder (Hera by default; in Apex tenants this is always "apex").
+	// Internal meta-agent — typically filtered out of public listings.
+	IsBuilder bool   `json:"is_builder,omitempty"`
+	Model     string `json:"model,omitempty"`
 	System         string   `json:"system,omitempty"`
 	Tools          []string `json:"tools,omitempty"`
 	Team           []string `json:"team,omitempty"`

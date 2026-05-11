@@ -547,6 +547,42 @@ func TestHandleUpdateAgent_PartialPUT_PreservesGradient(t *testing.T) {
 	}
 }
 
+// TestHandleGetAgent_IsOrchestratorFlag closes #49 Q3 — frontends need a
+// canonical signal for "this agent is the tenant's orchestrator" that
+// works regardless of what the tenant renamed Iris to.
+func TestHandleGetAgent_IsOrchestratorFlag(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"kai":   {Name: "kai", Model: "claude-sonnet-4-6"},
+		"riley": {Name: "riley", Model: "claude-sonnet-4-6"},
+	})
+	// Tenant renamed orchestrator to "kai".
+	s.cfg.Orchestrator = dsl.IrisConfig{Name: "kai"}
+
+	cases := []struct {
+		name              string
+		wantOrchestrator  bool
+	}{
+		{"kai", true},
+		{"riley", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+tc.name, nil)
+			req.SetPathValue("name", tc.name)
+			w := httptest.NewRecorder()
+			s.handleGetAgent(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+			}
+			var got AgentResponse
+			_ = json.NewDecoder(w.Body).Decode(&got)
+			if got.IsOrchestrator != tc.wantOrchestrator {
+				t.Errorf("is_orchestrator = %v, want %v", got.IsOrchestrator, tc.wantOrchestrator)
+			}
+		})
+	}
+}
+
 // TestHandleListAgents_IncludesNewFields makes sure the list endpoint
 // surfaces the same new fields (timestamps, icon, avatar_gradient).
 func TestHandleListAgents_IncludesNewFields(t *testing.T) {

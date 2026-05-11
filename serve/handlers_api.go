@@ -199,6 +199,8 @@ func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel st
 		Avatar:         def.Avatar,
 		Icon:           def.Icon,
 		AvatarGradient: def.AvatarGradient,
+		IsOrchestrator: name == s.cfg.Orchestrator.Name,
+		IsBuilder:      name == s.cfg.Builder.Name,
 		Model:          model,
 		System:         def.System,
 		Tools:          def.Tools,

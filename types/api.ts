@@ -1216,6 +1216,22 @@ export interface components {
             icon?: string;
             /** @description Two-stop CSS color gradient as a hex pair, e.g. ["#EF4444", "#DC2626"]. */
             avatar_gradient?: string[];
+            /**
+             * @description True when this agent is the tenant's configured orchestrator
+             *     (the "main agent" — Iris by default, renamable per tenant via
+             *     `cfg.Orchestrator.Name`). Frontends use this to render
+             *     orchestrator-specific affordances (e.g. a "talk to your
+             *     orchestrator" entry point) without hardcoding the name.
+             */
+            is_orchestrator?: boolean;
+            /**
+             * @description True when this agent is the tenant's configured builder
+             *     (Hera by default; in Apex tenants this is always "Apex").
+             *     Internal meta-agent — typically filtered out of public
+             *     listings; flag is provided for symmetry with is_orchestrator
+             *     when an integration path surfaces the builder.
+             */
+            is_builder?: boolean;
             model?: string;
             system?: string;
             tools?: string[];
