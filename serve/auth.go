@@ -87,6 +87,18 @@ func ClaimsFrom(ctx context.Context) (AuthClaims, bool) {
 	return c, ok
 }
 
+// WithClaims attaches AuthClaims to ctx using the same key authMiddleware
+// uses. Provided so products that authenticate users outside the JWT
+// middleware (e.g. a trusted reverse proxy that has already verified a
+// session cookie) can inject identity that downstream handlers consume
+// uniformly via ClaimsFrom.
+//
+// Callers are responsible for verifying the claim — govega does no
+// additional validation here.
+func WithClaims(ctx context.Context, c AuthClaims) context.Context {
+	return context.WithValue(ctx, authContextKey{}, c)
+}
+
 // Verify validates a JWT against this AuthConfig's issuer/audience/key
 // expectations and returns its claims. It is the seam for handlers that
 // live outside the /api/v1 middleware (e.g. the Gmail OAuth handoff,

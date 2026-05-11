@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"net/http"
@@ -435,6 +436,66 @@ func TestClaimsFrom_AbsentReturnsFalse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats", nil)
 	if _, ok := ClaimsFrom(req.Context()); ok {
 		t.Errorf("ClaimsFrom returned ok=true on a context with no claims")
+	}
+}
+
+// WithClaims is the public seam that lets product-owned middleware
+// inject identity from sources outside the JWT path (e.g. a trusted
+// reverse proxy that has already validated a session cookie).
+func TestWithClaims_RoundTrips(t *testing.T) {
+	ctx := WithClaims(context.Background(), AuthClaims{
+		UserID:   "alice",
+		TenantID: "galley",
+		Scopes:   []string{"chat:write"},
+	})
+	got, ok := ClaimsFrom(ctx)
+	if !ok {
+		t.Fatalf("ClaimsFrom returned ok=false after WithClaims")
+	}
+	if got.UserID != "alice" || got.TenantID != "galley" {
+		t.Errorf("unexpected claims: %+v", got)
+	}
+	if len(got.Scopes) != 1 || got.Scopes[0] != "chat:write" {
+		t.Errorf("scopes not preserved: %+v", got.Scopes)
+	}
+}
+
+func TestWithClaims_OverwritesPrior(t *testing.T) {
+	ctx := WithClaims(context.Background(), AuthClaims{UserID: "alice"})
+	ctx = WithClaims(ctx, AuthClaims{UserID: "bob"})
+	got, ok := ClaimsFrom(ctx)
+	if !ok || got.UserID != "bob" {
+		t.Errorf("expected bob, got %+v ok=%v", got, ok)
+	}
+}
+
+// chatUserID is the helper the chat handlers use to source userID for
+// per-user memory namespacing. It must read from ClaimsFrom when
+// present and fall back to "default" for self-hosted single-user mode.
+// See apexvega/docs/phase-2-auth-rfc.md Decision 9.
+func TestChatUserID_FallsBackToDefault(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/x/chat", nil)
+	if got := chatUserID(req); got != "default" {
+		t.Errorf("chatUserID without claims = %q, want %q", got, "default")
+	}
+}
+
+func TestChatUserID_UsesClaimsUserID(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/x/chat", nil)
+	req = req.WithContext(WithClaims(req.Context(), AuthClaims{UserID: "user_workos_123"}))
+	if got := chatUserID(req); got != "user_workos_123" {
+		t.Errorf("chatUserID with claims = %q, want %q", got, "user_workos_123")
+	}
+}
+
+func TestChatUserID_EmptyClaimsUserIDFallsBackToDefault(t *testing.T) {
+	// Defensive — if claims are attached but UserID is empty (malformed
+	// upstream identity), prefer the "default" sentinel over an empty
+	// string so memory queries can't accidentally namespace under "".
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/x/chat", nil)
+	req = req.WithContext(WithClaims(req.Context(), AuthClaims{TenantID: "galley"}))
+	if got := chatUserID(req); got != "default" {
+		t.Errorf("chatUserID with empty UserID = %q, want %q", got, "default")
 	}
 }
 

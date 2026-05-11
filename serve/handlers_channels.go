@@ -308,7 +308,7 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if targetAgent != "" {
-		go s.runChannelAgentStreamed(ch, cs, targetAgent, agentMessage, threadID)
+		go s.runChannelAgentStreamed(ch, cs, targetAgent, agentMessage, threadID, chatUserID(r))
 	}
 
 	// Notify all OTHER team members so they can decide whether to respond.
@@ -373,7 +373,9 @@ func (s *Server) runChannelAgent(ch *Channel, agentName, message string, threadI
 }
 
 // runChannelAgentStreamed runs an agent and publishes events to the channel stream.
-func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentName, message string, threadID int64) {
+// userID identifies the requester for per-user memory namespacing; pass
+// "default" for system-initiated streams that have no user identity.
+func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentName, message string, threadID int64, userID string) {
 	proc, err := s.interp.EnsureAgent(agentName)
 	if err != nil {
 		slog.Error("channel: failed to ensure agent", "agent", agentName, "error", err)
@@ -385,7 +387,6 @@ func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentNa
 	}
 	s.hydrateAgent(proc, agentName)
 
-	userID := "default"
 	var memText string
 	if memories, err := s.store.GetUserMemory(userID, agentName); err == nil && len(memories) > 0 {
 		memText = formatMemoryForInjection(memories)

@@ -337,6 +337,22 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 
 // --- Chat Handlers ---
 
+// chatUserID returns the identity that owns this chat request. It reads
+// AuthClaims attached by the auth middleware (or by a product-owned
+// trusted-proxy middleware via WithClaims) and falls back to "default"
+// when no claims are present — preserving self-hosted single-user
+// behavior. The returned id is used for per-user memory namespacing and
+// memory extraction; chat history scoping happens via the agent name.
+//
+// See apexvega/docs/phase-2-auth-rfc.md Decision 9 for the migration
+// from the legacy X-Auth-User header to claims-based identity.
+func chatUserID(r *http.Request) string {
+	if c, ok := ClaimsFrom(r.Context()); ok && c.UserID != "" {
+		return c.UserID
+	}
+	return "default"
+}
+
 // ensureChatAgent ensures the named agent exists, auto-cloning from a base
 // when name uses the "base:suffix" form. This gives chat clients a way to
 // scope conversations (e.g. per-user, per-document) without registering
@@ -394,7 +410,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if i := strings.Index(name, ":"); i >= 0 {
 		baseAgent = name[:i]
 	}
-	userID := "default"
+	userID := chatUserID(r)
 
 	var req struct {
 		Message string `json:"message"`
@@ -474,7 +490,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	if i := strings.Index(name, ":"); i >= 0 {
 		baseAgent = name[:i]
 	}
-	userID := "default"
+	userID := chatUserID(r)
 
 	var req struct {
 		Message string `json:"message"`

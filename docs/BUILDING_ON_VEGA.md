@@ -194,6 +194,24 @@ See `govega/types/README.md` for full details.
 
 Self-hosted mode (no `APEX_TENANT_ID` on the backend) skips auth entirely; your frontend can detect this by checking whether unauthenticated requests succeed and adapt UX accordingly.
 
+### Authenticating without WorkOS
+
+Some products front Vega with their own session-bearing edge — a Next.js app with its own auth, an internal service that has already proven user identity, etc. — and prefer not to introduce a separate JWT issuer. Those products run a **trusted reverse-proxy** in front of Vega and inject identity directly into the request context:
+
+```go
+// In your product's middleware, after you've authenticated the user
+// (session cookie, API key, mTLS — whatever you trust):
+ctx := serve.WithClaims(r.Context(), serve.AuthClaims{
+    UserID:   "user_abc123",     // your product's stable user id
+    TenantID: "your-product",     // bookkeeping; informational here
+})
+next.ServeHTTP(w, r.WithContext(ctx))
+```
+
+Downstream handlers — including `handleChat`, `handleChatStream`, and the channel runner — call `serve.ClaimsFrom(ctx)` and use `claims.UserID` for per-user memory namespacing. If no claims are present, they fall back to `"default"` (preserving self-hosted single-user behavior).
+
+This pairs with leaving `APEX_TENANT_ID` unset so the bundled JWT middleware is a no-op and only your proxy's claims flow through. Lock down the deploy so nothing but your proxy can route to Vega (private network, shared-secret header, or origin allowlist) — `WithClaims` is a trust seam, not a validation seam. See `apexvega/docs/phase-2-auth-rfc.md` Decision 9 for the canonical claims-based identity model.
+
 ## 8. Workspace files (live preview)
 
 If your frontend renders agent-generated artifacts (a quick HTML site, an SVG, a markdown doc), those are served directly at `/workspace/*` on the tenant backend (no auth — public static files). Agents publish to that workspace via the runtime.
