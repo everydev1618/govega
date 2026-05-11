@@ -117,6 +117,47 @@ func TestAuthMiddleware_NonAPIPath_PassThrough(t *testing.T) {
 	}
 }
 
+// The middleware should also stash the raw token so tools downstream
+// can call back into the issuing product as the same user.
+func TestAuthMiddleware_StashesRawBearerToken(t *testing.T) {
+	f := newTestAuth(t, "acme")
+	tok := f.mintToken(t, validClaims("acme"))
+
+	var seen string
+	captured := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = BearerTokenFrom(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := authMiddleware(f.cfg)
+	srv := httptest.NewServer(mw(captured))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer res.Body.Close()
+
+	if seen != tok {
+		t.Errorf("BearerTokenFrom = %q, want the validated bearer token", seen)
+	}
+}
+
+func TestBearerToken_RoundTrips(t *testing.T) {
+	ctx := WithBearerToken(context.Background(), "eyJabc")
+	if got := BearerTokenFrom(ctx); got != "eyJabc" {
+		t.Errorf("BearerTokenFrom = %q, want %q", got, "eyJabc")
+	}
+}
+
+func TestBearerToken_AbsentReturnsEmpty(t *testing.T) {
+	if got := BearerTokenFrom(context.Background()); got != "" {
+		t.Errorf("BearerTokenFrom on empty ctx = %q, want \"\"", got)
+	}
+}
+
 func TestAuthMiddleware_ValidToken_InjectsClaims(t *testing.T) {
 	f := newTestAuth(t, "acme")
 	tok := f.mintToken(t, validClaims("acme"))

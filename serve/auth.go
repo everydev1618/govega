@@ -104,6 +104,29 @@ func WithClaims(ctx context.Context, c AuthClaims) context.Context {
 	return context.WithValue(ctx, authContextKey{}, c)
 }
 
+type bearerContextKey struct{}
+
+// BearerTokenFrom returns the raw Authorization bearer token the
+// auth middleware validated for this request, if any. Tools that
+// need to call back into the user's own product as that user (e.g.
+// a save_chapter MCP tool calling the product's REST API) read the
+// token here and pass it through, so identity remains a single JWT
+// for the duration of the chat turn. Returns "" when no middleware
+// stashed a token (self-hosted mode, or a code path that never
+// touched authMiddleware).
+func BearerTokenFrom(ctx context.Context) string {
+	v, _ := ctx.Value(bearerContextKey{}).(string)
+	return v
+}
+
+// WithBearerToken attaches a raw bearer token to ctx. Exposed for
+// product middleware that authenticates by means other than the
+// bundled JWT path but still wants downstream tools to be able to
+// call back with the same credential.
+func WithBearerToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, bearerContextKey{}, token)
+}
+
 // Verify validates a JWT against this AuthConfig's issuer/audience/key
 // expectations and returns its claims. It is the seam for handlers that
 // live outside the /api/v1 middleware (e.g. the Gmail OAuth handoff,
@@ -199,6 +222,7 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				Scopes:   claimScopes(claims),
 			}
 			ctx := context.WithValue(r.Context(), authContextKey{}, ac)
+			ctx = context.WithValue(ctx, bearerContextKey{}, raw)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
