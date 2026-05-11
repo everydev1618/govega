@@ -31,6 +31,12 @@ type Store interface {
 	// ListEvents returns recent events, newest first.
 	ListEvents(limit int) ([]StoreEvent, error)
 
+	// SearchEvents returns events matching the filter, newest first.
+	// Used by the activity log endpoint (refs govega#33). totalCount is
+	// the unpaginated match count so the FE can render a hit total
+	// without re-querying.
+	SearchEvents(filter ActivityFilter) (events []StoreEvent, totalCount int, err error)
+
 	// ListProcessSnapshots returns the latest snapshot per process.
 	ListProcessSnapshots() ([]ProcessSnapshot, error)
 
@@ -298,6 +304,27 @@ type ChatMessage struct {
 	// turn that produced this message. Empty for user messages; populated
 	// for assistant messages that invoked tools during streaming.
 	ToolActivities []vega.ToolActivity `json:"tool_activities,omitempty"`
+}
+
+// ActivityFilter is the search filter for the activity log endpoint
+// (refs govega#33). All fields are optional — a zero-value filter
+// returns the most recent events.
+type ActivityFilter struct {
+	// Query is a substring matched against type, agent_name, data,
+	// result, and error (case-insensitive LIKE). Empty means no text
+	// filter.
+	Query string
+	// Type narrows to one event type (e.g. "process.failed").
+	Type string
+	// Agent narrows to one agent_name.
+	Agent string
+	// From and To bound the timestamp range. Zero values are unbounded.
+	From time.Time
+	To   time.Time
+	// Limit caps the number of events returned. Defaults to 100; max 500.
+	Limit int
+	// Offset skips that many matching events (paginate alongside Limit).
+	Offset int
 }
 
 // StoreEvent is a persisted orchestration event.

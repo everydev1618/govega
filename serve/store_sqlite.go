@@ -732,6 +732,85 @@ func (s *SQLiteStore) ListScheduledJobs() ([]ScheduledJob, error) {
 	return jobs, rows.Err()
 }
 
+// SearchEvents matches the activity-log query against the events table
+// (refs govega#33). Search is a case-insensitive substring scan over
+// type, agent_name, data, result, and error — LIKE-based rather than
+// FTS5 to keep the schema migration cost down. At today's data volumes
+// the index scan on (timestamp, agent_name) plus a per-row LIKE pass is
+// well within the latency budget; the API shape is the same once FTS5
+// lands.
+func (s *SQLiteStore) SearchEvents(filter ActivityFilter) ([]StoreEvent, int, error) {
+	where := []string{"1=1"}
+	args := []any{}
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		where = append(where, `(
+			LOWER(type)       LIKE ? OR
+			LOWER(agent_name) LIKE ? OR
+			LOWER(data)       LIKE ? OR
+			LOWER(result)     LIKE ? OR
+			LOWER(error)      LIKE ?
+		)`)
+		pat := "%" + strings.ToLower(q) + "%"
+		args = append(args, pat, pat, pat, pat, pat)
+	}
+	if filter.Type != "" {
+		where = append(where, "type = ?")
+		args = append(args, filter.Type)
+	}
+	if filter.Agent != "" {
+		where = append(where, "agent_name = ?")
+		args = append(args, filter.Agent)
+	}
+	if !filter.From.IsZero() {
+		where = append(where, "timestamp >= ?")
+		args = append(args, filter.From)
+	}
+	if !filter.To.IsZero() {
+		where = append(where, "timestamp < ?")
+		args = append(args, filter.To)
+	}
+	whereClause := strings.Join(where, " AND ")
+
+	// Total count over the same filter — single round-trip, no need to
+	// materialize all matching rows.
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE `+whereClause, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	pageArgs := append(append([]any(nil), args...), limit, offset)
+	rows, err := s.db.Query(`
+SELECT id, type, process_id, agent_name, timestamp, data, result, error
+FROM events
+WHERE `+whereClause+`
+ORDER BY id DESC
+LIMIT ? OFFSET ?`, pageArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []StoreEvent
+	for rows.Next() {
+		var e StoreEvent
+		if err := rows.Scan(&e.ID, &e.Type, &e.ProcessID, &e.AgentName, &e.Timestamp, &e.Data, &e.Result, &e.Error); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, e)
+	}
+	return out, total, rows.Err()
+}
+
 // AgentSpendInPeriod sums cost_usd across the latest snapshot of every
 // process for agentName, optionally bounded by [from, to). Zero from/to
 // is treated as unbounded on that side. Used by the per-agent spend

@@ -511,6 +511,17 @@ type UpdateRoutineRequest struct {
 	Enabled      *bool     `json:"enabled,omitempty"`
 }
 
+// ActivityLogResponse is the wire shape for /api/v1/activity, the
+// searchable activity log endpoint (refs govega#33). Carries the page
+// of events plus a total match count so the FE can render pagination
+// without a follow-up count query.
+type ActivityLogResponse struct {
+	Events []StoreEvent `json:"events"`
+	Total  int          `json:"total"`
+	Limit  int          `json:"limit"`
+	Offset int          `json:"offset"`
+}
+
 // AgentSpendResponse is the wire shape for the per-agent spend rollup
 // endpoint (refs govega#47). Aggregates cost_usd across the latest
 // snapshot of every process for the agent within the queried period.

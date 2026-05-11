@@ -1218,6 +1218,72 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Activity log — govega#33 ────────────────────────────────────────
+  /api/v1/activity:
+    get:
+      tags: [System]
+      summary: Searchable activity log
+      description: |
+        Queryable view over the persisted `events` table. The /events
+        SSE stream is unfiltered and live-only; this endpoint is for
+        retracing history when something goes wrong — full-text search
+        across event type, agent name, data, result, error; time range
+        + per-agent + per-type filters; pagination; CSV export for
+        audit (`format=csv`).
+      operationId: searchActivity
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: Case-insensitive substring against type/agent/data/result/error.
+        - name: type
+          in: query
+          required: false
+          schema: { type: string }
+          description: Exact event-type filter (e.g. `process.failed`).
+        - name: agent
+          in: query
+          required: false
+          schema: { type: string }
+          description: Exact agent-name filter.
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: RFC 3339 inclusive lower bound on timestamp.
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: RFC 3339 exclusive upper bound on timestamp.
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 100, maximum: 500 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        "200":
+          description: Page of matching events (JSON) or CSV download.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityLogResponse"
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
   # ── Per-agent spend rollup — govega#47 ──────────────────────────────
   /api/v1/agents/{name}/spend:
     get:
@@ -3359,6 +3425,46 @@ components:
         created_at:
           type: string
           format: date-time
+
+    # Activity log — govega#33
+    ActivityLogResponse:
+      type: object
+      required: [events, total, limit, offset]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoreEvent"
+        total:
+          type: integer
+          description: Match count across the unpaginated filter — for FE pagination UI.
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    StoreEvent:
+      type: object
+      required: [id, type, timestamp]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+        process_id:
+          type: string
+        agent_name:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          type: string
+        result:
+          type: string
+        error:
+          type: string
 
     # Per-agent spend rollup — govega#47
     AgentSpend:
