@@ -31,16 +31,24 @@ type AgentIdentity struct {
 }
 
 func (s *Server) handleGetIdentity(w http.ResponseWriter, r *http.Request) {
+	orchTitle := s.cfg.Orchestrator.Title
+	if orchTitle == "" {
+		orchTitle = "Orchestrator"
+	}
+	builderTitle := s.cfg.Builder.Title
+	if builderTitle == "" {
+		builderTitle = "Agent Builder"
+	}
 	resp := IdentityResponse{
 		Orchestrator: AgentIdentity{
 			ID:          s.cfg.Orchestrator.Name,
 			DisplayName: s.cfg.Orchestrator.DisplayName,
-			Title:       "Orchestrator",
+			Title:       orchTitle,
 		},
 		Builder: AgentIdentity{
 			ID:          s.cfg.Builder.Name,
 			DisplayName: s.cfg.Builder.DisplayName,
-			Title:       "Agent Builder",
+			Title:       builderTitle,
 		},
 		ProductName: s.cfg.Orchestrator.ProductName,
 	}

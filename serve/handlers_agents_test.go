@@ -583,6 +583,36 @@ func TestHandleGetAgent_IsOrchestratorFlag(t *testing.T) {
 	}
 }
 
+// TestHandleGetAgent_OrchestratorTitle covers govega#59: the orchestrator
+// (Iris by default, ARIA in tenants) must surface a populated `title` field
+// — Cody flagged that the FE was reading it as empty / coming through on
+// the description field instead. IrisAgent now sets def.Title from
+// IrisConfig.Title (default "Orchestrator").
+func TestHandleGetAgent_OrchestratorTitle(t *testing.T) {
+	def := dsl.IrisAgent(dsl.DefaultIrisConfig())
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"iris": def,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/iris", nil)
+	req.SetPathValue("name", "iris")
+	w := httptest.NewRecorder()
+	s.handleGetAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var got AgentResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Title != "Orchestrator" {
+		t.Errorf("title = %q, want %q (govega#59 — title was empty)", got.Title, "Orchestrator")
+	}
+	if !got.IsOrchestrator {
+		t.Errorf("is_orchestrator = false, want true")
+	}
+}
+
 // TestHandleListAgents_IncludesNewFields makes sure the list endpoint
 // surfaces the same new fields (timestamps, icon, avatar_gradient).
 func TestHandleListAgents_IncludesNewFields(t *testing.T) {

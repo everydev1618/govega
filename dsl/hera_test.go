@@ -415,6 +415,56 @@ func TestHeraAgentDefaults(t *testing.T) {
 	}
 }
 
+// TestHeraCreateAgent_DefaultsIconAndGradient covers govega#60: agents
+// auto-spawned by the orchestrator (via Hera) must come with a populated
+// icon + avatar_gradient so the FE doesn't render blank placeholders.
+func TestHeraCreateAgent_DefaultsIconAndGradient(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	RegisterHeraTools(interp, DefaultHeraConfig(), nil)
+	ctx := context.Background()
+
+	_, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
+		"name":         "sofia",
+		"display_name": "Sofia",
+		"system":       "You are Sofia.",
+		"model":        "test-model",
+		"avatar":       "f1",
+	})
+	if err != nil {
+		t.Fatalf("create_agent: %v", err)
+	}
+
+	def := interp.Document().Agents["sofia"]
+	if def == nil {
+		t.Fatal("agent not registered")
+	}
+	if def.Icon == "" {
+		t.Error("Icon empty; expected default")
+	}
+	if len(def.AvatarGradient) != 2 {
+		t.Errorf("AvatarGradient = %v; want 2 stops", def.AvatarGradient)
+	}
+}
+
+// TestHeraAgentPopulatesTitle covers govega#59: the builder meta-agent must
+// carry a Title on its DSL def so /api/v1/agents surfaces "title": "Agent
+// Builder" (or the tenant override) rather than leaving it empty.
+func TestHeraAgentPopulatesTitle(t *testing.T) {
+	def := HeraAgent(DefaultHeraConfig())
+	if def.Title != "Agent Builder" {
+		t.Errorf("default title = %q, want %q", def.Title, "Agent Builder")
+	}
+
+	cfg := DefaultHeraConfig()
+	cfg.Title = "Forge Lead"
+	def = HeraAgent(cfg)
+	if def.Title != "Forge Lead" {
+		t.Errorf("title override = %q, want %q", def.Title, "Forge Lead")
+	}
+}
+
 func TestIsHeraTool(t *testing.T) {
 	if !IsHeraTool("create_agent") {
 		t.Error("create_agent should be a hera tool")

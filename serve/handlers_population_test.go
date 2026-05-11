@@ -194,6 +194,68 @@ func TestHandleCreateAgent_TeamAgentStillGetsDelegate(t *testing.T) {
 	}
 }
 
+// TestHandleCreateAgent_DefaultsIconAndGradient pins govega#60: an agent
+// created without icon / avatar_gradient must come back with both populated
+// — otherwise the FE renders blank placeholders until a user picks one in
+// settings. Defaults are deterministic per-name (see dsl.DefaultVisualIdentity).
+func TestHandleCreateAgent_DefaultsIconAndGradient(t *testing.T) {
+	s := populationTestServer(t)
+	body := `{"name":"sofia","model":"claude-sonnet-4-6"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	s.handleCreateAgent(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	def := s.interp.Document().Agents["sofia"]
+	if def == nil {
+		t.Fatal("agent def not registered")
+	}
+	if def.Icon == "" {
+		t.Error("def.Icon empty; expected default icon")
+	}
+	if len(def.AvatarGradient) != 2 {
+		t.Errorf("def.AvatarGradient = %v; want 2 stops", def.AvatarGradient)
+	}
+
+	// The defaults must also be persisted to composed_agents so a restart
+	// doesn't regress to blank placeholders.
+	composed, err := s.store.ListComposedAgents()
+	if err != nil {
+		t.Fatalf("ListComposedAgents: %v", err)
+	}
+	if len(composed) != 1 {
+		t.Fatalf("composed agents = %d, want 1", len(composed))
+	}
+	if composed[0].Icon != def.Icon {
+		t.Errorf("persisted Icon %q != def Icon %q", composed[0].Icon, def.Icon)
+	}
+	if len(composed[0].AvatarGradient) != 2 {
+		t.Errorf("persisted AvatarGradient = %v; want 2 stops", composed[0].AvatarGradient)
+	}
+}
+
+// TestHandleCreateAgent_PreservesExplicitVisualIdentity is a regression
+// guard: caller-supplied icon/color must not be overwritten by defaults.
+func TestHandleCreateAgent_PreservesExplicitVisualIdentity(t *testing.T) {
+	s := populationTestServer(t)
+	body := `{"name":"marcus","model":"claude-sonnet-4-6","icon":"Cpu","avatar_gradient":["#0EA5E9","#22D3EE"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	s.handleCreateAgent(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	def := s.interp.Document().Agents["marcus"]
+	if def.Icon != "Cpu" {
+		t.Errorf("def.Icon = %q, want Cpu", def.Icon)
+	}
+	if len(def.AvatarGradient) != 2 || def.AvatarGradient[0] != "#0EA5E9" {
+		t.Errorf("def.AvatarGradient = %v, want explicit values preserved", def.AvatarGradient)
+	}
+}
+
 // TestHandleCreateAgent_RejectsMissingName covers the existing 400 path so
 // the new fallback branches don't accidentally let a nameless request
 // through.

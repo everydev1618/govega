@@ -207,6 +207,15 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		toolNames = dsl.DefaultNonMetaToolNames(s.interp.Tools().Schema())
 	}
 
+	// Default the visual identity when the caller didn't supply one — the
+	// FE renders blank placeholders otherwise. Deterministic per-name so
+	// the agent's look survives a restart (refs govega#60).
+	icon := req.Icon
+	gradient := req.AvatarGradient
+	if icon == "" && len(gradient) == 0 {
+		icon, gradient = dsl.DefaultVisualIdentity(req.Name)
+	}
+
 	// Build DSL agent definition.
 	agentDef := &dsl.Agent{
 		Name:           req.Name,
@@ -214,8 +223,8 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Title:          req.Title,
 		Description:    req.Description,
 		Avatar:         req.Avatar,
-		Icon:           req.Icon,
-		AvatarGradient: req.AvatarGradient,
+		Icon:           icon,
+		AvatarGradient: gradient,
 		Model:          req.Model,
 		System:         system,
 		Tools:          toolNames,
@@ -235,8 +244,8 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Title:          req.Title,
 		Description:    req.Description,
 		Avatar:         req.Avatar,
-		Icon:           req.Icon,
-		AvatarGradient: req.AvatarGradient,
+		Icon:           icon,
+		AvatarGradient: gradient,
 		Model:          req.Model,
 		Persona:        req.Persona,
 		Skills:         req.Skills,

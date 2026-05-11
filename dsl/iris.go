@@ -24,6 +24,7 @@ const IrisAgentName = "iris"
 type IrisConfig struct {
 	Name               string // lowercase slug for routing/registration (default: "iris")
 	DisplayName        string // capitalized name shown in UI/prompt (default: "Iris")
+	Title              string // role label shown on agent cards (default: "Orchestrator")
 	BuilderName        string // companion builder's slug (default: "hera")
 	BuilderDisplayName string // companion builder's display name (default: "Hera")
 	ProductName        string // product/universe name (default: "Vega")
@@ -37,6 +38,7 @@ func DefaultIrisConfig() IrisConfig {
 	return IrisConfig{
 		Name:               IrisAgentName,
 		DisplayName:        "Iris",
+		Title:              "Orchestrator",
 		BuilderName:        HeraAgentName,
 		BuilderDisplayName: "Hera",
 		ProductName:        "Vega",
@@ -49,6 +51,9 @@ func (c *IrisConfig) applyDefaults() {
 	}
 	if c.DisplayName == "" {
 		c.DisplayName = "Iris"
+	}
+	if c.Title == "" {
+		c.Title = "Orchestrator"
 	}
 	if c.BuilderName == "" {
 		c.BuilderName = HeraAgentName
@@ -253,14 +258,18 @@ func IrisAgent(cfg IrisConfig) *Agent {
 	if fallback == "" {
 		fallback = "claude-haiku-4-5-20251001"
 	}
+	icon, gradient := DefaultVisualIdentity(cfg.Name)
 	return &Agent{
-		Name:          cfg.Name,
-		DisplayName:   cfg.DisplayName,
-		Model:         model,
-		FallbackModel: fallback,
-		System:        renderIrisPrompt(cfg),
-		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
-		IsMeta:        true,
+		Name:           cfg.Name,
+		DisplayName:    cfg.DisplayName,
+		Title:          cfg.Title,
+		Icon:           icon,
+		AvatarGradient: gradient,
+		Model:          model,
+		FallbackModel:  fallback,
+		System:         renderIrisPrompt(cfg),
+		Retry:          &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
+		IsMeta:         true,
 	}
 }
 

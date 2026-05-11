@@ -23,6 +23,7 @@ const HeraAgentName = "hera"
 type HeraConfig struct {
 	Name                    string // lowercase slug (default: "hera")
 	DisplayName             string // capitalized name (default: "Hera")
+	Title                   string // role label shown on agent cards (default: "Agent Builder")
 	OrchestratorName        string // companion orchestrator's slug (default: "iris")
 	OrchestratorDisplayName string // companion orchestrator's display name (default: "Iris")
 	ProductName             string // product/universe name (default: "Vega")
@@ -36,6 +37,7 @@ func DefaultHeraConfig() HeraConfig {
 	return HeraConfig{
 		Name:                    HeraAgentName,
 		DisplayName:             "Hera",
+		Title:                   "Agent Builder",
 		OrchestratorName:        IrisAgentName,
 		OrchestratorDisplayName: "Iris",
 		ProductName:             "Vega",
@@ -48,6 +50,9 @@ func (c *HeraConfig) applyDefaults() {
 	}
 	if c.DisplayName == "" {
 		c.DisplayName = "Hera"
+	}
+	if c.Title == "" {
+		c.Title = "Agent Builder"
 	}
 	if c.OrchestratorName == "" {
 		c.OrchestratorName = IrisAgentName
@@ -311,14 +316,18 @@ func HeraAgent(cfg HeraConfig) *Agent {
 	if fallback == "" {
 		fallback = "claude-haiku-4-5-20251001"
 	}
+	icon, gradient := DefaultVisualIdentity(cfg.Name)
 	return &Agent{
-		Name:          cfg.Name,
-		DisplayName:   cfg.DisplayName,
-		Model:         model,
-		FallbackModel: fallback,
-		System:        renderHeraPrompt(cfg),
-		Retry:         &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
-		IsMeta:        true,
+		Name:           cfg.Name,
+		DisplayName:    cfg.DisplayName,
+		Title:          cfg.Title,
+		Icon:           icon,
+		AvatarGradient: gradient,
+		Model:          model,
+		FallbackModel:  fallback,
+		System:         renderHeraPrompt(cfg),
+		Retry:          &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
+		IsMeta:         true,
 	}
 }
 
@@ -403,17 +412,25 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 				system = DefaultAgentSystem(displayName, name)
 			}
 
+			// Default the visual identity so FE cards render with an icon +
+			// color instead of blank placeholders (refs govega#60). Hera's
+			// tool params don't currently surface icon/gradient, so this is
+			// purely a default; deterministic per-name so the look is stable.
+			icon, gradient := DefaultVisualIdentity(name)
+
 			agentDef := &Agent{
-				Name:        name,
-				DisplayName: displayName,
-				Title:       title,
-				Description: description,
-				Avatar:      avatar,
-				Model:       model,
-				System:      system,
-				Tools:       toolNames,
-				Team:        team,
-				Knowledge:   knowledge,
+				Name:           name,
+				DisplayName:    displayName,
+				Title:          title,
+				Description:    description,
+				Avatar:         avatar,
+				Icon:           icon,
+				AvatarGradient: gradient,
+				Model:          model,
+				System:         system,
+				Tools:          toolNames,
+				Team:           team,
+				Knowledge:      knowledge,
 			}
 
 			if len(skillsDirs) > 0 {
