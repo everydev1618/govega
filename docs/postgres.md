@@ -120,24 +120,46 @@ paths:
 When `#32` ships, the cutover doc gets a real migration tool. Until
 then most installs that switch are early enough that path 1 is fine.
 
-## Testing
+## Local dev: spin up Postgres in one command
 
-Test code lives in `serve/store_dual_test.go` and `serve/store_dual_methods_test.go`.
+A containerized Postgres lives at `dev/docker-compose.yml` so you don't
+need Postgres installed locally to work on the dual-backend code path.
+Port `5433` is intentional — keeps the dev DB out of the way if you
+also run a host Postgres on the default `5432`.
 
 ```bash
-# SQLite only (no Postgres needed).
-go test ./serve
-
-# Both backends.
-createdb vega_test
-VEGA_TEST_POSTGRES_URL='postgres://localhost/vega_test?sslmode=disable' \
-    go test ./serve
+make pg-up      # start Postgres on localhost:5433, create vega_test
+make test-pg    # run the full suite against both SQLite and Postgres
+make pg-reset   # drop + recreate vega_test (fresh slate)
+make pg-shell   # interactive psql against vega_test
+make pg-down    # stop the container (keeps the data volume)
 ```
 
-Each dual-backend test runs as two subtests (`/sqlite` and `/postgres`).
-Postgres tests run in private schemas that drop on cleanup, so parallel
-runs don't collide. When `VEGA_TEST_POSTGRES_URL` isn't set the
-Postgres subtests skip cleanly — CI without Postgres just runs SQLite.
+The data volume `govega_pgdata` persists across `pg-down` / `pg-up` so
+restarts don't wipe state. To nuke storage entirely, run
+`docker volume rm govega_pgdata` after `pg-down`.
+
+If you already have Postgres running locally and don't want Docker:
+
+```bash
+createdb vega_test
+export VEGA_TEST_POSTGRES_URL='postgres://localhost/vega_test?sslmode=disable'
+go test ./serve
+```
+
+## Testing contract
+
+Test code lives in `serve/store_dual_test.go` and
+`serve/store_dual_methods_test.go`. Each dual-backend test runs as two
+subtests (`/sqlite` and `/postgres`). Postgres tests run in private
+schemas that drop on cleanup, so parallel runs don't collide. When
+`VEGA_TEST_POSTGRES_URL` isn't set the Postgres subtests skip cleanly
+— CI without Postgres just runs SQLite.
+
+```bash
+go test ./serve         # SQLite only — no infra needed
+make test-pg            # SQLite + Postgres via the dev container
+```
 
 ## Trade-offs
 

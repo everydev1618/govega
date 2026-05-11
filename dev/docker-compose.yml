@@ -1,0 +1,32 @@
+# Local Postgres for govega development (refs #61).
+#
+#   make pg-up      # start Postgres on localhost:5433
+#   make pg-down    # stop + remove
+#   make pg-reset   # drop the test database and recreate it
+#   make test-pg    # run the test suite against both backends
+#
+# Port 5433 is intentional — keeps this out of the way of a host
+# Postgres that's already on 5432 (Homebrew default, Postgres.app, etc).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: govega-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vega
+      POSTGRES_PASSWORD: vega
+      POSTGRES_DB: vega_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - govega_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vega -d vega_dev"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  govega_pgdata:
+    name: govega_pgdata
