@@ -171,7 +171,8 @@ func (s *SQLiteStore) Init() error {
 		team        TEXT DEFAULT '[]',
 		mode        TEXT DEFAULT '',
 		created_by  TEXT NOT NULL,
-		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS channel_messages (
@@ -272,6 +273,12 @@ func (s *SQLiteStore) Init() error {
 
 	// Migrate: add mode column to channels if missing.
 	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
+
+	// Migrate: add updated_at column. Backfill from created_at so existing
+	// rows surface a sensible value rather than null/epoch.
+	if _, err := s.db.Exec(`ALTER TABLE channels ADD COLUMN updated_at DATETIME`); err == nil {
+		s.db.Exec(`UPDATE channels SET updated_at = created_at WHERE updated_at IS NULL`)
+	}
 
 	// Migrate: add sender column to channel_messages for multi-user identity.
 	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN sender TEXT DEFAULT ''`)
@@ -1040,9 +1047,10 @@ func (s *SQLiteStore) CreateChannel(id, name, description, createdBy string, tea
 func (s *SQLiteStore) GetChannel(name string) (*Channel, error) {
 	var ch Channel
 	var teamJSON string
+	var updatedAt sql.NullTime
 	err := s.db.QueryRow(
-		`SELECT id, name, description, team, mode, created_by, created_at FROM channels WHERE name = ?`, name,
-	).Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt)
+		`SELECT id, name, description, team, mode, created_by, created_at, updated_at FROM channels WHERE name = ?`, name,
+	).Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1050,6 +1058,11 @@ func (s *SQLiteStore) GetChannel(name string) (*Channel, error) {
 		return nil, err
 	}
 	json.Unmarshal([]byte(teamJSON), &ch.Team)
+	if updatedAt.Valid {
+		ch.UpdatedAt = updatedAt.Time
+	} else {
+		ch.UpdatedAt = ch.CreatedAt
+	}
 	return &ch, nil
 }
 
@@ -1099,7 +1112,7 @@ func (s *SQLiteStore) ListChannels(userID string) ([]Channel, error) {
 		userID = "default"
 	}
 	rows, err := s.db.Query(`
-		SELECT c.id, c.name, c.description, c.team, c.mode, c.created_by, c.created_at,
+		SELECT c.id, c.name, c.description, c.team, c.mode, c.created_by, c.created_at, c.updated_at,
 		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL), 0),
 		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL
 		                 AND id > COALESCE((SELECT last_read_id FROM channel_read_cursors WHERE channel_id = c.id AND user_id = ?), 0)), 0)
@@ -1115,10 +1128,16 @@ func (s *SQLiteStore) ListChannels(userID string) ([]Channel, error) {
 	for rows.Next() {
 		var ch Channel
 		var teamJSON string
-		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt, &ch.MessageCount, &ch.UnreadCount); err != nil {
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt, &updatedAt, &ch.MessageCount, &ch.UnreadCount); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(teamJSON), &ch.Team)
+		if updatedAt.Valid {
+			ch.UpdatedAt = updatedAt.Time
+		} else {
+			ch.UpdatedAt = ch.CreatedAt
+		}
 		channels = append(channels, ch)
 	}
 	return channels, rows.Err()
@@ -1148,10 +1167,51 @@ func (s *SQLiteStore) DeleteChannel(name string) error {
 	return nil
 }
 
-// UpdateChannelTeam updates the team members of a channel.
+// UpdateChannelTeam updates the team members of a channel and bumps
+// updated_at.
 func (s *SQLiteStore) UpdateChannelTeam(name string, team []string) error {
 	teamJSON, _ := json.Marshal(team)
-	result, err := s.db.Exec(`UPDATE channels SET team = ? WHERE name = ?`, string(teamJSON), name)
+	result, err := s.db.Exec(
+		`UPDATE channels SET team = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?`,
+		string(teamJSON), name,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// UpdateChannelMeta partially updates a channel's display fields (name,
+// description). Pass nil/empty to leave a field unchanged. Bumps
+// updated_at. Returns sql.ErrNoRows if the channel doesn't exist.
+func (s *SQLiteStore) UpdateChannelMeta(currentName string, newName, newDescription *string) error {
+	if newName == nil && newDescription == nil {
+		// Nothing to update — still verify the channel exists so the
+		// caller can distinguish "no-op" from "not found."
+		var exists int
+		err := s.db.QueryRow(`SELECT 1 FROM channels WHERE name = ?`, currentName).Scan(&exists)
+		if err == sql.ErrNoRows {
+			return sql.ErrNoRows
+		}
+		return err
+	}
+	// Build the UPDATE dynamically.
+	sets := []string{"updated_at = CURRENT_TIMESTAMP"}
+	args := []any{}
+	if newName != nil {
+		sets = append(sets, "name = ?")
+		args = append(args, *newName)
+	}
+	if newDescription != nil {
+		sets = append(sets, "description = ?")
+		args = append(args, *newDescription)
+	}
+	args = append(args, currentName)
+	result, err := s.db.Exec(`UPDATE channels SET `+strings.Join(sets, ", ")+` WHERE name = ?`, args...)
 	if err != nil {
 		return err
 	}
@@ -1208,14 +1268,19 @@ func (s *SQLiteStore) InsertChannelMessage(channelID, agent, role, content strin
 	return result.LastInsertId()
 }
 
-// ListChannelMessages returns top-level messages for a channel with reply counts.
+// ListChannelMessages returns top-level messages for a channel with
+// reply count + latest reply timestamp + distinct reply senders, so the
+// channel UI can render thread indicators without an N+1 fetch.
 func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]ChannelMessage, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	rows, err := s.db.Query(
 		`SELECT m.id, m.channel_id, m.thread_id, m.agent, m.sender, m.role, m.content, m.metadata, m.created_at,
-		        COALESCE((SELECT COUNT(*) FROM channel_messages r WHERE r.thread_id = m.id), 0) as reply_count
+		        COALESCE((SELECT COUNT(*) FROM channel_messages r WHERE r.thread_id = m.id), 0) as reply_count,
+		        (SELECT MAX(created_at) FROM channel_messages r WHERE r.thread_id = m.id) as latest_reply_at,
+		        (SELECT GROUP_CONCAT(DISTINCT COALESCE(NULLIF(sender, ''), agent))
+		           FROM channel_messages r WHERE r.thread_id = m.id) as reply_senders
 		 FROM channel_messages m
 		 WHERE m.channel_id = ? AND m.thread_id IS NULL
 		 ORDER BY m.created_at ASC LIMIT ?`,
@@ -1230,11 +1295,26 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 	for rows.Next() {
 		var m ChannelMessage
 		var threadID sql.NullInt64
-		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt, &m.ReplyCount); err != nil {
+		var latestReplyAt sql.NullTime
+		var replySenders sql.NullString
+		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt, &m.ReplyCount, &latestReplyAt, &replySenders); err != nil {
 			return nil, err
 		}
 		if threadID.Valid {
 			m.ThreadID = &threadID.Int64
+		}
+		if latestReplyAt.Valid {
+			m.LatestReplyAt = &latestReplyAt.Time
+		}
+		if replySenders.Valid && replySenders.String != "" {
+			// GROUP_CONCAT returns a comma-separated list. Split + dedup
+			// (SQLite already DISTINCTs but trim spaces just in case).
+			for _, s := range strings.Split(replySenders.String, ",") {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					m.ReplySenders = append(m.ReplySenders, s)
+				}
+			}
 		}
 		messages = append(messages, m)
 	}

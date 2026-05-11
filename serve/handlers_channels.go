@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,53 @@ import (
 )
 
 var mentionRe = regexp.MustCompile(`@(\w+)`)
+
+// enrichChannelMessages populates the `icon` and `avatar_gradient`
+// fields on each message by looking up the sending agent. Decouples
+// channel UIs from a separate /api/v1/agents fetch (refs #55). One
+// scan over composed_agents + doc.Agents per call, not per message.
+func (s *Server) enrichChannelMessages(messages []ChannelMessage) {
+	if len(messages) == 0 {
+		return
+	}
+	doc := s.interp.Document()
+	if doc == nil {
+		return
+	}
+	composedMap := make(map[string]ComposedAgent)
+	if composed, err := s.store.ListComposedAgents(); err == nil {
+		for _, a := range composed {
+			composedMap[a.Name] = a
+		}
+	}
+	for i := range messages {
+		senderName := messages[i].Agent
+		if senderName == "" {
+			senderName = messages[i].Sender
+		}
+		if senderName == "" {
+			continue
+		}
+		// Strip per-user clone suffix so "iris:Etienne" maps to "iris".
+		if idx := strings.Index(senderName, ":"); idx > 0 {
+			senderName = senderName[:idx]
+		}
+		def, ok := doc.Agents[senderName]
+		if ok {
+			messages[i].Icon = def.Icon
+			messages[i].AvatarGradient = def.AvatarGradient
+		}
+		// Composed agents override the def (runtime edits should win).
+		if ca, ok := composedMap[senderName]; ok {
+			if ca.Icon != "" {
+				messages[i].Icon = ca.Icon
+			}
+			if len(ca.AvatarGradient) > 0 {
+				messages[i].AvatarGradient = ca.AvatarGradient
+			}
+		}
+	}
+}
 
 // channelStreams tracks active channel streams keyed by channel name.
 var (
@@ -53,7 +101,7 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
-	if err := s.store.CreateChannel(id, req.Name, req.Description, userID, req.Team, ""); err != nil {
+	if err := s.store.CreateChannel(id, req.Name, req.Description, userID, req.Team, req.Mode); err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -105,6 +153,33 @@ func (s *Server) handleUpdateChannelTeam(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
+// handleUpdateChannel partially updates a channel's display fields
+// (name, description). Pointer-valued fields in the request distinguish
+// "not set" (leave unchanged) from "set to empty."
+func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
+	currentName := r.PathValue("name")
+	var req UpdateChannelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+	if err := s.store.UpdateChannelMeta(currentName, req.Name, req.Description); err != nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "channel not found"})
+		return
+	}
+	// Return the post-update channel.
+	lookupName := currentName
+	if req.Name != nil && *req.Name != "" {
+		lookupName = *req.Name
+	}
+	ch, _ := s.store.GetChannel(lookupName)
+	if ch == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+		return
+	}
+	writeJSON(w, http.StatusOK, ch)
+}
+
 // --- Channel Message Handlers ---
 
 func (s *Server) handleListChannelMessages(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +205,7 @@ func (s *Server) handleListChannelMessages(w http.ResponseWriter, r *http.Reques
 	if messages == nil {
 		messages = []ChannelMessage{}
 	}
+	s.enrichChannelMessages(messages)
 	writeJSON(w, http.StatusOK, messages)
 }
 
@@ -156,6 +232,7 @@ func (s *Server) handleListThreadMessages(w http.ResponseWriter, r *http.Request
 	if messages == nil {
 		messages = []ChannelMessage{}
 	}
+	s.enrichChannelMessages(messages)
 	writeJSON(w, http.StatusOK, messages)
 }
 

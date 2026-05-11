@@ -136,6 +136,11 @@ type Store interface {
 	// UpdateChannelTeam updates the team members of a channel.
 	UpdateChannelTeam(name string, team []string) error
 
+	// UpdateChannelMeta partially updates a channel's display fields.
+	// Pass nil to leave a field unchanged; empty-string pointer clears.
+	// Returns sql.ErrNoRows if the channel doesn't exist.
+	UpdateChannelMeta(currentName string, newName, newDescription *string) error
+
 	// FindChannelForAgents returns the channel where both agents are team members.
 	FindChannelForAgents(agent1, agent2 string) (channelID string, channelName string, err error)
 

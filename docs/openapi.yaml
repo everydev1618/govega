@@ -817,6 +817,34 @@ paths:
                 $ref: "#/components/schemas/Channel"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Channels]
+      summary: Partially update a channel's display fields (name, description)
+      description: |
+        Use this for renaming and editing description. Team-member
+        updates go through `PUT /channels/{name}/team` (separate endpoint
+        because team changes have downstream implications — channel
+        membership affects delegation and chat routing).
+      operationId: updateChannel
+      parameters:
+        - $ref: "#/components/parameters/ChannelName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRequest"
+      responses:
+        "200":
+          description: Channel updated (returns the post-update Channel)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       tags: [Channels]
       summary: Delete a channel
@@ -2694,12 +2722,20 @@ components:
             type: string
         mode:
           type: string
-          description: '"social" = all members respond, default = team lead only'
+          enum: ["", social, reactive]
+          description: |
+            "" (default) — only the team lead responds to non-mentioned posts.
+            "social" — every team member responds to every message.
+            "reactive" — members respond when the message looks work-relevant.
         created_by:
           type: string
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          description: When the channel's metadata (name, description, team) was last changed.
         message_count:
           type: integer
 
@@ -2716,6 +2752,8 @@ components:
           format: int64
         agent:
           type: string
+        sender:
+          type: string
         role:
           type: string
           enum: [user, assistant]
@@ -2726,8 +2764,26 @@ components:
         created_at:
           type: string
           format: date-time
+        icon:
+          type: string
+          description: Lucide icon name echoed from the sending agent. Lets channel UIs render sender identity without a separate /api/v1/agents lookup.
+        avatar_gradient:
+          type: array
+          items:
+            type: string
+          description: Echoed from the sending agent. See `icon`.
         reply_count:
           type: integer
+          description: Number of replies in this thread (only set for top-level messages).
+        latest_reply_at:
+          type: string
+          format: date-time
+          description: Timestamp of the most recent reply (only set for top-level messages with replies).
+        reply_senders:
+          type: array
+          items:
+            type: string
+          description: Distinct sender names across all replies in this thread. Useful for "X and Y replied" indicators.
 
     CreateChannelRequest:
       type: object
@@ -2741,6 +2797,20 @@ components:
           type: array
           items:
             type: string
+        mode:
+          type: string
+          enum: ["", social, reactive]
+          description: Channel response mode. See Channel.mode.
+
+    UpdateChannelRequest:
+      type: object
+      description: Partial update — omitted fields are left unchanged. Use `PUT /channels/{name}/team` for team-member updates.
+      properties:
+        name:
+          type: string
+          description: New name (for renaming)
+        description:
+          type: string
 
     ChannelPostRequest:
       type: object
@@ -2758,7 +2828,7 @@ components:
 
     ChannelEvent:
       type: object
-      description: SSE event for channel activity
+      description: SSE event for channel activity. Tool-call fields are present on `channel.tool_start` / `channel.tool_end` events, mirroring ChatStreamEvent.
       properties:
         type:
           type: string
@@ -2781,11 +2851,28 @@ components:
           format: int64
         agent:
           type: string
+        sender:
+          type: string
         role:
           type: string
         content:
           type: string
         delta:
+          type: string
+        tool_call_id:
+          type: string
+          description: Set on `channel.tool_start` / `channel.tool_end`.
+        tool_name:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        result:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        error:
           type: string
         metrics:
           type: object

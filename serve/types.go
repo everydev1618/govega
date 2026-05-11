@@ -262,6 +262,7 @@ type Channel struct {
 	Mode         string    `json:"mode,omitempty"` // "" = default (team-lead responds), "social" = all members respond
 	CreatedBy    string    `json:"created_by"`
 	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 	MessageCount int       `json:"message_count"`
 	UnreadCount  int       `json:"unread_count"`
 }
@@ -277,7 +278,17 @@ type ChannelMessage struct {
 	Content    string    `json:"content"`
 	Metadata   string    `json:"metadata,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
-	ReplyCount int       `json:"reply_count,omitempty"`
+	// Icon / AvatarGradient are echoed from the sending agent so channel
+	// UIs don't need a separate /api/v1/agents lookup to render identity.
+	Icon           string   `json:"icon,omitempty"`
+	AvatarGradient []string `json:"avatar_gradient,omitempty"`
+	// Thread summary fields — populated for top-level messages (ThreadID nil).
+	ReplyCount    int        `json:"reply_count,omitempty"`
+	LatestReplyAt *time.Time `json:"latest_reply_at,omitempty"`
+	// ReplySenders is the distinct list of sender names across all replies
+	// in the thread. Lets the channel list show "Riley and Alex replied"
+	// without a follow-up fetch per thread.
+	ReplySenders []string `json:"reply_senders,omitempty"`
 }
 
 // CreateChannelRequest is the request to create a channel.
@@ -285,6 +296,18 @@ type CreateChannelRequest struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	Team        []string `json:"team"`
+	// Mode: "" (default — team-lead responds), "social" (all members
+	// respond to every message), or "reactive" (members respond when
+	// work-relevant). Defaults to "" if omitted.
+	Mode string `json:"mode,omitempty"`
+}
+
+// UpdateChannelRequest is the request to partially update a channel's
+// display fields. Pointer fields distinguish "not set" (omit, leave
+// unchanged) from "set to empty."
+type UpdateChannelRequest struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
 // ChannelPostRequest is the request to post a message to a channel.
@@ -305,7 +328,15 @@ type ChannelEvent struct {
 	Role      string `json:"role,omitempty"`
 	Content   string `json:"content,omitempty"`
 	Delta     string `json:"delta,omitempty"`
-	Metrics   any    `json:"metrics,omitempty"`
+	// Tool-call fields — parity with ChatStreamEvent. Already on the wire
+	// in the channel stream; documenting them on the schema (refs #55).
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+	ToolName   string         `json:"tool_name,omitempty"`
+	Arguments  map[string]any `json:"arguments,omitempty"`
+	Result     string         `json:"result,omitempty"`
+	DurationMs int64          `json:"duration_ms,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	Metrics    any            `json:"metrics,omitempty"`
 }
 
 // InboxItem is a message posted to Iris's inbox by an agent.

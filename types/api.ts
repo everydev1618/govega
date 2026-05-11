@@ -523,7 +523,14 @@ export interface paths {
         delete: operations["deleteChannel"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Partially update a channel's display fields (name, description)
+         * @description Use this for renaming and editing description. Team-member
+         *     updates go through `PUT /channels/{name}/team` (separate endpoint
+         *     because team changes have downstream implications — channel
+         *     membership affects delegation and chat routing).
+         */
+        patch: operations["updateChannel"];
         trace?: never;
     };
     "/api/v1/channels/{name}/team": {
@@ -1602,11 +1609,21 @@ export interface components {
             name?: string;
             description?: string;
             team?: string[];
-            /** @description "social" = all members respond, default = team lead only */
-            mode?: string;
+            /**
+             * @description "" (default) — only the team lead responds to non-mentioned posts.
+             *     "social" — every team member responds to every message.
+             *     "reactive" — members respond when the message looks work-relevant.
+             * @enum {string}
+             */
+            mode?: "" | "social" | "reactive";
             created_by?: string;
             /** Format: date-time */
             created_at?: string;
+            /**
+             * Format: date-time
+             * @description When the channel's metadata (name, description, team) was last changed.
+             */
+            updated_at?: string;
             message_count?: number;
         };
         ChannelMessage: {
@@ -1616,18 +1633,42 @@ export interface components {
             /** Format: int64 */
             thread_id?: number;
             agent?: string;
+            sender?: string;
             /** @enum {string} */
             role?: "user" | "assistant";
             content?: string;
             metadata?: string;
             /** Format: date-time */
             created_at?: string;
+            /** @description Lucide icon name echoed from the sending agent. Lets channel UIs render sender identity without a separate /api/v1/agents lookup. */
+            icon?: string;
+            /** @description Echoed from the sending agent. See `icon`. */
+            avatar_gradient?: string[];
+            /** @description Number of replies in this thread (only set for top-level messages). */
             reply_count?: number;
+            /**
+             * Format: date-time
+             * @description Timestamp of the most recent reply (only set for top-level messages with replies).
+             */
+            latest_reply_at?: string;
+            /** @description Distinct sender names across all replies in this thread. Useful for "X and Y replied" indicators. */
+            reply_senders?: string[];
         };
         CreateChannelRequest: {
             name: string;
             description?: string;
             team?: string[];
+            /**
+             * @description Channel response mode. See Channel.mode.
+             * @enum {string}
+             */
+            mode?: "" | "social" | "reactive";
+        };
+        /** @description Partial update — omitted fields are left unchanged. Use `PUT /channels/{name}/team` for team-member updates. */
+        UpdateChannelRequest: {
+            /** @description New name (for renaming) */
+            name?: string;
+            description?: string;
         };
         ChannelPostRequest: {
             message: string;
@@ -1639,7 +1680,7 @@ export interface components {
             /** @description Target a specific agent (defaults to team lead) */
             agent?: string;
         };
-        /** @description SSE event for channel activity */
+        /** @description SSE event for channel activity. Tool-call fields are present on `channel.tool_start` / `channel.tool_end` events, mirroring ChatStreamEvent. */
         ChannelEvent: {
             /** @enum {string} */
             type?: "channel.message" | "channel.typing" | "channel.text_delta" | "channel.tool_start" | "channel.tool_end" | "channel.thread_reply" | "channel.error" | "channel.done";
@@ -1649,9 +1690,20 @@ export interface components {
             /** Format: int64 */
             thread_id?: number;
             agent?: string;
+            sender?: string;
             role?: string;
             content?: string;
             delta?: string;
+            /** @description Set on `channel.tool_start` / `channel.tool_end`. */
+            tool_call_id?: string;
+            tool_name?: string;
+            arguments?: {
+                [key: string]: unknown;
+            };
+            result?: string;
+            /** Format: int64 */
+            duration_ms?: number;
+            error?: string;
             metrics?: {
                 [key: string]: unknown;
             };
@@ -2968,6 +3020,35 @@ export interface operations {
                     "application/json": components["schemas"]["StatusResponse"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Channel name */
+                name: components["parameters"]["ChannelName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description Channel updated (returns the post-update Channel) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
         };
     };

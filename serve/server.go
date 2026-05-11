@@ -944,6 +944,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/channels", s.handleCreateChannel)
 	mux.HandleFunc("GET /api/v1/channels/{name}", s.handleGetChannel)
 	mux.HandleFunc("DELETE /api/v1/channels/{name}", s.handleDeleteChannel)
+	mux.HandleFunc("PATCH /api/v1/channels/{name}", s.handleUpdateChannel)
 	mux.HandleFunc("PUT /api/v1/channels/{name}/team", s.handleUpdateChannelTeam)
 	mux.HandleFunc("GET /api/v1/channels/{name}/messages", s.handleListChannelMessages)
 	mux.HandleFunc("GET /api/v1/channels/{name}/messages/{id}/thread", s.handleListThreadMessages)
