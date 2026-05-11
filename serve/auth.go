@@ -22,28 +22,33 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/everydev1618/govega/internal/envcompat"
 )
 
-// LoadAuthConfig builds an AuthConfig from environment. APEX_TENANT_ID empty
-// => self-hosted pass-through (zero-valued config). Otherwise APEX_JWT_ISSUER
-// and APEX_JWKS_URL are required.
+// LoadAuthConfig builds an AuthConfig from environment. VEGA_TENANT_ID empty
+// => self-hosted pass-through (zero-valued config). Otherwise VEGA_JWT_ISSUER
+// and VEGA_JWKS_URL are required.
+//
+// The legacy APEX_-prefixed names (APEX_TENANT_ID, APEX_JWT_ISSUER, APEX_JWKS_URL)
+// are still honored as a fallback, with a one-time deprecation warning per
+// process so existing apex deployments keep working while operators migrate.
 //
 // The Keyfunc is backed by MicahParks/keyfunc/v3, which auto-refreshes the
 // JWKS in the background; pass ctx to bound its lifetime to the server.
 func LoadAuthConfig(ctx context.Context) (AuthConfig, error) {
-	tenantID := os.Getenv("APEX_TENANT_ID")
+	tenantID := envcompat.Get("VEGA_TENANT_ID")
 	if tenantID == "" {
 		return AuthConfig{}, nil
 	}
-	issuer := os.Getenv("APEX_JWT_ISSUER")
-	jwksURL := os.Getenv("APEX_JWKS_URL")
+	issuer := envcompat.Get("VEGA_JWT_ISSUER")
+	jwksURL := envcompat.Get("VEGA_JWKS_URL")
 	if issuer == "" || jwksURL == "" {
-		return AuthConfig{}, fmt.Errorf("APEX_TENANT_ID is set; APEX_JWT_ISSUER and APEX_JWKS_URL are required")
+		return AuthConfig{}, fmt.Errorf("VEGA_TENANT_ID is set; VEGA_JWT_ISSUER and VEGA_JWKS_URL are required")
 	}
 	k, err := keyfunc.NewDefaultCtx(ctx, []string{jwksURL})
 	if err != nil {

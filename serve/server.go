@@ -15,6 +15,7 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/internal/envcompat"
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/vega-population/population"
@@ -809,7 +810,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("load auth config: %w", err)
 	}
 	s.authCfg = authCfg
-	s.controlPlaneURL = strings.TrimRight(os.Getenv("APEX_CONTROL_PLANE_URL"), "/")
+	s.controlPlaneURL = strings.TrimRight(envcompat.Get("VEGA_CONTROL_PLANE_URL"), "/")
 
 	// Compose the request pipeline: CORS → auth → product middleware → mux.
 	// Product middleware runs innermost so any claims injected via

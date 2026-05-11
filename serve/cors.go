@@ -1,9 +1,9 @@
 // Package serve — cors.go
 //
-// Reflective CORS allowlist driven by APEX_ALLOWED_ORIGINS. Default-deny:
-// when the env is unset or empty, no cross-origin response carries an
-// Access-Control-Allow-Origin header, and browsers therefore reject every
-// cross-origin request.
+// Reflective CORS allowlist driven by VEGA_ALLOWED_ORIGINS (legacy:
+// APEX_ALLOWED_ORIGINS). Default-deny: when the env is unset or empty,
+// no cross-origin response carries an Access-Control-Allow-Origin
+// header, and browsers therefore reject every cross-origin request.
 //
 // Decision 4 of the Phase 2 RFC means production cloud traffic is always
 // same-origin (Cloudflare path-routes /api/v1/* to the tenant backend on
@@ -15,14 +15,16 @@ package serve
 
 import (
 	"net/http"
-	"os"
 	"strings"
+
+	"github.com/everydev1618/govega/internal/envcompat"
 )
 
-// LoadCORSConfig reads APEX_ALLOWED_ORIGINS (comma-separated exact-match list).
+// LoadCORSConfig reads VEGA_ALLOWED_ORIGINS (comma-separated exact-match list),
+// falling back to the legacy APEX_ALLOWED_ORIGINS with a deprecation warning.
 // Empty/unset → nil → no cross-origin allowed.
 func LoadCORSConfig() map[string]bool {
-	raw := os.Getenv("APEX_ALLOWED_ORIGINS")
+	raw := envcompat.Get("VEGA_ALLOWED_ORIGINS")
 	if raw == "" {
 		return nil
 	}

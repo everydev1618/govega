@@ -1,31 +1,32 @@
-// Command control-plane is the auth+tenant control plane for Apex's
-// multi-tenant cloud deployment. Tenant backends point their APEX_JWKS_URL
-// at this service; the SPA (eventually) hits it for login + tenant
+// Command control-plane is the auth+tenant control plane for govega
+// multi-tenant cloud deployments. Tenant backends point their VEGA_JWKS_URL
+// at this service; product SPAs (eventually) hit it for login + tenant
 // resolution + token exchange.
 //
 // Phase 2C skeleton — only /healthz, /jwks, and a guarded /dev/mint are
 // implemented. Real flows (WorkOS callback, /exchange, /signup with
 // invite codes, refresh-cookie management) land in 2C.2.
 //
-// Configuration (env vars):
+// Configuration (env vars). The legacy APEX_-prefixed names are still
+// honored as a fallback with a one-time deprecation warning; new
+// deployments should use the VEGA_-prefixed names.
 //
 //   CONTROL_PLANE_PORT          listen port, default 9001
 //   CONTROL_PLANE_ISSUER        iss claim baked into tokens, default
 //                               http://localhost:<port>
-//   APEX_DEV_SECRET             shared secret for /dev/mint; if unset,
+//   VEGA_DEV_SECRET             shared secret for /dev/mint; if unset,
 //                               the dev-mint endpoint returns 503
 //
 // Gmail OAuth (Phase 2E) — all optional; if unset the /oauth/gmail/*
 // endpoints return 503 and Gmail integration is unavailable in cloud
 // mode (manual paste flow on the tenant still works):
 //
-//   APEX_GOOGLE_CLIENT_ID       OAuth client id from Google Cloud Console
-//   APEX_GOOGLE_CLIENT_SECRET   OAuth client secret
-//   APEX_GOOGLE_REDIRECT_URI    redirect URI registered with Google;
+//   VEGA_GOOGLE_CLIENT_ID       OAuth client id from Google Cloud Console
+//   VEGA_GOOGLE_CLIENT_SECRET   OAuth client secret
+//   VEGA_GOOGLE_REDIRECT_URI    redirect URI registered with Google;
 //                               typically <CONTROL_PLANE_ISSUER>/oauth/gmail/callback
-//   APEX_RETURN_URL_PATTERN     optional regex; return URLs in
+//   VEGA_RETURN_URL_PATTERN     optional regex; return URLs in
 //                               /oauth/gmail/init bodies must match.
-//                               Production: ^https://[a-z0-9-]+\.apex\.io/.*$
 //
 // The signing key is generated fresh on every start (ephemeral). Tenant
 // backends must therefore re-fetch JWKS after a control plane restart;
@@ -41,6 +42,7 @@ import (
 	"regexp"
 
 	"github.com/everydev1618/govega/internal/authmint"
+	"github.com/everydev1618/govega/internal/envcompat"
 )
 
 func main() {
@@ -59,33 +61,33 @@ func main() {
 	cfg := Config{
 		Signer:             signer,
 		Issuer:             issuer,
-		DevSecret:          os.Getenv("APEX_DEV_SECRET"),
-		GoogleClientID:     os.Getenv("APEX_GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("APEX_GOOGLE_CLIENT_SECRET"),
-		GoogleRedirectURI:  os.Getenv("APEX_GOOGLE_REDIRECT_URI"),
+		DevSecret:          envcompat.Get("VEGA_DEV_SECRET"),
+		GoogleClientID:     envcompat.Get("VEGA_GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: envcompat.Get("VEGA_GOOGLE_CLIENT_SECRET"),
+		GoogleRedirectURI:  envcompat.Get("VEGA_GOOGLE_REDIRECT_URI"),
 		GoogleAuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
 		GoogleTokenURL:     "https://oauth2.googleapis.com/token",
 	}
 	if cfg.GoogleRedirectURI == "" && cfg.GoogleClientID != "" {
 		cfg.GoogleRedirectURI = issuer + "/oauth/gmail/callback"
 	}
-	if pat := os.Getenv("APEX_RETURN_URL_PATTERN"); pat != "" {
+	if pat := envcompat.Get("VEGA_RETURN_URL_PATTERN"); pat != "" {
 		re, err := regexp.Compile(pat)
 		if err != nil {
-			slog.Error("APEX_RETURN_URL_PATTERN compile", "err", err)
+			slog.Error("VEGA_RETURN_URL_PATTERN compile", "err", err)
 			os.Exit(1)
 		}
 		cfg.ReturnURLPattern = re
 	}
 
 	if cfg.DevSecret == "" {
-		slog.Warn("APEX_DEV_SECRET unset — /dev/mint endpoint will return 503")
+		slog.Warn("VEGA_DEV_SECRET unset — /dev/mint endpoint will return 503")
 	}
 	if cfg.GoogleClientID == "" {
-		slog.Warn("APEX_GOOGLE_CLIENT_ID unset — /oauth/gmail/* endpoints will return 503")
+		slog.Warn("VEGA_GOOGLE_CLIENT_ID unset — /oauth/gmail/* endpoints will return 503")
 	}
 	if cfg.ReturnURLPattern == nil {
-		slog.Warn("APEX_RETURN_URL_PATTERN unset — /oauth/gmail/init accepts any return URL (dev-only behavior)")
+		slog.Warn("VEGA_RETURN_URL_PATTERN unset — /oauth/gmail/init accepts any return URL (dev-only behavior)")
 	}
 
 	addr := ":" + port

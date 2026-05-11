@@ -34,7 +34,7 @@ Three terminals, one per process.
 
 ```sh
 cd govega
-APEX_DEV_SECRET=shh go run ./cmd/control-plane
+VEGA_DEV_SECRET=shh go run ./cmd/control-plane
 ```
 
 You'll see:
@@ -50,16 +50,18 @@ Leave it running. In production this will be backed by WorkOS; in dev it just si
 
 ```sh
 cd apexvega
-export APEX_TENANT_ID="acme"
-export APEX_JWT_ISSUER="http://localhost:9001"
-export APEX_JWKS_URL="http://localhost:9001/jwks"
-export APEX_ALLOWED_ORIGINS="http://localhost:5173"
+export VEGA_TENANT_ID="acme"
+export VEGA_JWT_ISSUER="http://localhost:9001"
+export VEGA_JWKS_URL="http://localhost:9001/jwks"
+export VEGA_ALLOWED_ORIGINS="http://localhost:5173"
 make run PORT=8081
 ```
 
 Now `http://localhost:8081/api/v1/*` is auth-enforced and pointed at the dev control plane.
 
-(For a no-auth single-binary experience — useful for very early dev — drop `APEX_TENANT_ID` and the others. The auth middleware becomes a no-op and you get the embedded SPA at `http://localhost:8080`. This is the self-hosted mode.)
+(For a no-auth single-binary experience — useful for very early dev — drop `VEGA_TENANT_ID` and the others. The auth middleware becomes a no-op and you get the embedded SPA at `http://localhost:8080`. This is the self-hosted mode.)
+
+> **Note on legacy names**: the env vars above were originally named `APEX_*`. Both names work as of govega `4b844d5` — the platform reads `VEGA_*` first and falls back to `APEX_*` with a one-time deprecation log line. New deployments should use the `VEGA_*` names. Apex existing deployments don't need to migrate immediately; they'll just see a warning until they do.
 
 ### Terminal 3 — your frontend dev server
 
@@ -192,7 +194,7 @@ See `govega/types/README.md` for full details.
 | 401 response | Token missing/expired/invalid → tell user to re-login |
 | 403 response | Token valid but for a different tenant — wrong subdomain/instance |
 
-Self-hosted mode (no `APEX_TENANT_ID` on the backend) skips auth entirely; your frontend can detect this by checking whether unauthenticated requests succeed and adapt UX accordingly.
+Self-hosted mode (no `VEGA_TENANT_ID` on the backend) skips auth entirely; your frontend can detect this by checking whether unauthenticated requests succeed and adapt UX accordingly.
 
 ### Authenticating without WorkOS
 
@@ -210,7 +212,7 @@ next.ServeHTTP(w, r.WithContext(ctx))
 
 Downstream handlers — including `handleChat`, `handleChatStream`, and the channel runner — call `serve.ClaimsFrom(ctx)` and use `claims.UserID` for per-user memory namespacing. If no claims are present, they fall back to `"default"` (preserving self-hosted single-user behavior).
 
-This pairs with leaving `APEX_TENANT_ID` unset so the bundled JWT middleware is a no-op and only your proxy's claims flow through. Lock down the deploy so nothing but your proxy can route to Vega (private network, shared-secret header, or origin allowlist) — `WithClaims` is a trust seam, not a validation seam. See `apexvega/docs/phase-2-auth-rfc.md` Decision 9 for the canonical claims-based identity model.
+This pairs with leaving `VEGA_TENANT_ID` unset so the bundled JWT middleware is a no-op and only your proxy's claims flow through. Lock down the deploy so nothing but your proxy can route to Vega (private network, shared-secret header, or origin allowlist) — `WithClaims` is a trust seam, not a validation seam. See `apexvega/docs/phase-2-auth-rfc.md` Decision 9 for the canonical claims-based identity model.
 
 ## 8. Workspace files (live preview)
 
@@ -218,9 +220,9 @@ If your frontend renders agent-generated artifacts (a quick HTML site, an SVG, a
 
 ## 9. CORS notes
 
-Tenant backend default-denies cross-origin. Set `APEX_ALLOWED_ORIGINS` on the backend to permit your frontend's origin during dev:
+Tenant backend default-denies cross-origin. Set `VEGA_ALLOWED_ORIGINS` on the backend to permit your frontend's origin during dev:
 ```sh
-APEX_ALLOWED_ORIGINS=http://localhost:5173 make run
+VEGA_ALLOWED_ORIGINS=http://localhost:5173 make run
 ```
 
 In production this is mechanical: every tenant's frontend lives at `https://app.apex.io` (or wherever Apex is hosted) and the allowlist is constant.
@@ -241,5 +243,5 @@ In production this is mechanical: every tenant's frontend lives at `https://app.
 - **"My SPA loads but every fetch returns 401."** Check the `Authorization` header is being sent (browser devtools → Network → Request Headers). Common cause: same-origin requests don't preflight, but cross-origin POSTs do, and CORS preflight without `Authorization` in `Access-Control-Allow-Headers` will block. The Apex backend already advertises `Authorization` when an origin is allowlisted.
 - **"SSE works locally but breaks behind my reverse proxy."** Disable response buffering and increase read timeout for `/api/v1/events`. Cloudflare needs `cache-control: no-store` (already set by the backend).
 - **"401 on `/api/v1/events` despite a valid token."** EventSource doesn't send headers; use `?access_token=` instead.
-- **"Wrong tenant — getting 403."** Your token's `aud` claim doesn't match `APEX_TENANT_ID` on the backend. In dev, mint a fresh token with the right tenant; in production, the user is hitting the wrong subdomain.
+- **"Wrong tenant — getting 403."** Your token's `aud` claim doesn't match `VEGA_TENANT_ID` on the backend. In dev, mint a fresh token with the right tenant; in production, the user is hitting the wrong subdomain.
 - **"My types are stale."** `make types` regenerates `types/api.ts` from `docs/openapi.yaml`. Pair with `make types-verify` in CI to catch drift.
