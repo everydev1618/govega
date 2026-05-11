@@ -61,10 +61,6 @@ func (s *PostgresStore) Init() error {
 	return nil
 }
 
-// errPostgresNotImplemented is returned by the few remaining stubs that
-// the rest of the Phase 3 port hasn't reached yet. Tracked in govega#61.
-var errPostgresNotImplemented = fmt.Errorf("postgres: method not yet implemented (refs govega#61)")
-
 // --- Events ---
 
 func (s *PostgresStore) InsertEvent(e StoreEvent) error {
@@ -738,107 +734,1016 @@ func nullableTime(t time.Time) any {
 	return t
 }
 
-// --- Stubs for the remainder; ported in follow-up commits ---
+// --- Memory items ---
 
-func (s *PostgresStore) InsertMemoryItem(MemoryItem) (int64, error) { return 0, errPostgresNotImplemented }
-func (s *PostgresStore) SearchMemoryItems(string, string, string, int) ([]MemoryItem, error) {
-	return nil, errPostgresNotImplemented
-}
-func (s *PostgresStore) SearchMemoryItemsByType(string, string, string, MemoryType, int) ([]MemoryItem, error) {
-	return nil, errPostgresNotImplemented
-}
-func (s *PostgresStore) DeleteMemoryItem(int64) error { return errPostgresNotImplemented }
-func (s *PostgresStore) ListMemoryItemsByTopic(string, string, string) ([]MemoryItem, error) {
-	return nil, errPostgresNotImplemented
+func (s *PostgresStore) InsertMemoryItem(item MemoryItem) (int64, error) {
+	if item.Type == "" {
+		item.Type = MemoryTypeReference
+	}
+	// Dedup on (user_id, agent, type, content) — merge tags if a match exists.
+	var existingID int64
+	var existingTags string
+	err := s.db.QueryRow(
+		`SELECT id, tags FROM memory_items
+		 WHERE user_id = $1 AND agent = $2 AND type = $3 AND content = $4
+		 LIMIT 1`,
+		item.UserID, item.Agent, string(item.Type), item.Content,
+	).Scan(&existingID, &existingTags)
+	switch {
+	case err == nil:
+		merged := mergeTags(existingTags, item.Tags)
+		if _, err := s.db.Exec(
+			`UPDATE memory_items SET tags = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+			merged, existingID,
+		); err != nil {
+			return 0, err
+		}
+		return existingID, nil
+	case err == sql.ErrNoRows:
+		// fall through to insert
+	default:
+		return 0, err
+	}
+	var newID int64
+	err = s.db.QueryRow(
+		`INSERT INTO memory_items (user_id, agent, type, topic, content, tags)
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		item.UserID, item.Agent, string(item.Type), item.Topic, item.Content, item.Tags,
+	).Scan(&newID)
+	return newID, err
 }
 
-func (s *PostgresStore) CreateChannel(string, string, string, string, []string, string) error {
-	return errPostgresNotImplemented
+func (s *PostgresStore) SearchMemoryItems(userID, agent, query string, limit int) ([]MemoryItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
+		 FROM memory_items
+		 WHERE user_id = $1 AND agent = $2
+		   AND (topic LIKE $3 OR content LIKE $3 OR tags LIKE $3)
+		 ORDER BY updated_at DESC LIMIT $4`,
+		userID, agent, pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MemoryItem
+	for rows.Next() {
+		var m MemoryItem
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Type, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
 }
-func (s *PostgresStore) GetChannel(string) (*Channel, error)        { return nil, errPostgresNotImplemented }
-func (s *PostgresStore) GetChannelByName(string) (*dsl.ChannelInfo, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) SearchMemoryItemsByType(userID, agent, query string, typ MemoryType, limit int) ([]MemoryItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
+		 FROM memory_items
+		 WHERE user_id = $1 AND agent = $2 AND type = $3
+		   AND (topic LIKE $4 OR content LIKE $4 OR tags LIKE $4)
+		 ORDER BY updated_at DESC LIMIT $5`,
+		userID, agent, string(typ), pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MemoryItem
+	for rows.Next() {
+		var m MemoryItem
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Type, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
 }
+
+func (s *PostgresStore) DeleteMemoryItem(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM memory_items WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *PostgresStore) ListMemoryItemsByTopic(userID, agent, topic string) ([]MemoryItem, error) {
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
+		 FROM memory_items
+		 WHERE user_id = $1 AND agent = $2 AND topic = $3
+		 ORDER BY created_at ASC`,
+		userID, agent, topic,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MemoryItem
+	for rows.Next() {
+		var m MemoryItem
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &m.Type, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
+}
+
+// --- Channels ---
+
+func (s *PostgresStore) CreateChannel(id, name, description, createdBy string, team []string, mode string) error {
+	teamJSON, _ := json.Marshal(team)
+	_, err := s.db.Exec(
+		`INSERT INTO channels (id, name, description, team, mode, created_by)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		id, name, description, string(teamJSON), mode, createdBy,
+	)
+	return err
+}
+
+func (s *PostgresStore) GetChannel(name string) (*Channel, error) {
+	var ch Channel
+	var teamJSON string
+	var updatedAt sql.NullTime
+	err := s.db.QueryRow(
+		`SELECT id, name, description, team, mode, created_by, created_at, updated_at
+		 FROM channels WHERE name = $1`, name,
+	).Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy, &ch.CreatedAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(teamJSON), &ch.Team)
+	if updatedAt.Valid {
+		ch.UpdatedAt = updatedAt.Time
+	} else {
+		ch.UpdatedAt = ch.CreatedAt
+	}
+	return &ch, nil
+}
+
+func (s *PostgresStore) GetChannelByName(name string) (*dsl.ChannelInfo, error) {
+	ch, err := s.GetChannel(name)
+	if err != nil || ch == nil {
+		return nil, err
+	}
+	return &dsl.ChannelInfo{ID: ch.ID, Name: ch.Name, Team: ch.Team}, nil
+}
+
 func (s *PostgresStore) ListAllChannels() ([]dsl.ChannelInfo, error) {
-	return nil, errPostgresNotImplemented
+	channels, err := s.ListChannels("default")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dsl.ChannelInfo, len(channels))
+	for i, ch := range channels {
+		out[i] = dsl.ChannelInfo{ID: ch.ID, Name: ch.Name, Team: ch.Team}
+	}
+	return out, nil
 }
-func (s *PostgresStore) ListChannelsForAgent(string) ([]dsl.ChannelInfo, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) ListChannelsForAgent(agent string) ([]dsl.ChannelInfo, error) {
+	channels, err := s.ListChannels("default")
+	if err != nil {
+		return nil, err
+	}
+	var out []dsl.ChannelInfo
+	for _, ch := range channels {
+		for _, m := range ch.Team {
+			if m == agent {
+				out = append(out, dsl.ChannelInfo{ID: ch.ID, Name: ch.Name, Team: ch.Team})
+				break
+			}
+		}
+	}
+	return out, nil
 }
-func (s *PostgresStore) ListChannels(string) ([]Channel, error)     { return nil, errPostgresNotImplemented }
-func (s *PostgresStore) DeleteChannel(string) error                 { return errPostgresNotImplemented }
-func (s *PostgresStore) UpdateChannelTeam(string, []string) error   { return errPostgresNotImplemented }
-func (s *PostgresStore) UpdateChannelMeta(string, *string, *string) error {
-	return errPostgresNotImplemented
+
+func (s *PostgresStore) ListChannels(userID string) ([]Channel, error) {
+	if userID == "" {
+		userID = "default"
+	}
+	rows, err := s.db.Query(`
+		SELECT c.id, c.name, c.description, c.team, c.mode, c.created_by, c.created_at, c.updated_at,
+		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL), 0),
+		       COALESCE((SELECT COUNT(*) FROM channel_messages WHERE channel_id = c.id AND thread_id IS NULL
+		                 AND id > COALESCE((SELECT last_read_id FROM channel_read_cursors WHERE channel_id = c.id AND user_id = $1), 0)), 0)
+		FROM channels c
+		ORDER BY c.created_at ASC`, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var channels []Channel
+	for rows.Next() {
+		var ch Channel
+		var teamJSON string
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &teamJSON, &ch.Mode, &ch.CreatedBy,
+			&ch.CreatedAt, &updatedAt, &ch.MessageCount, &ch.UnreadCount); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(teamJSON), &ch.Team)
+		if updatedAt.Valid {
+			ch.UpdatedAt = updatedAt.Time
+		} else {
+			ch.UpdatedAt = ch.CreatedAt
+		}
+		channels = append(channels, ch)
+	}
+	return channels, rows.Err()
 }
-func (s *PostgresStore) FindChannelForAgents(string, string) (string, string, error) {
-	return "", "", errPostgresNotImplemented
+
+func (s *PostgresStore) DeleteChannel(name string) error {
+	var id string
+	err := s.db.QueryRow(`SELECT id FROM channels WHERE name = $1`, name).Scan(&id)
+	if err == sql.ErrNoRows {
+		return sql.ErrNoRows
+	}
+	if err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`DELETE FROM channel_messages WHERE channel_id = $1`, id)
+	res, err := s.db.Exec(`DELETE FROM channels WHERE name = $1`, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
-func (s *PostgresStore) InsertInboxItem(string, string, string, string) (int64, error) {
-	return 0, errPostgresNotImplemented
+
+func (s *PostgresStore) UpdateChannelTeam(name string, team []string) error {
+	teamJSON, _ := json.Marshal(team)
+	res, err := s.db.Exec(
+		`UPDATE channels SET team = $1, updated_at = CURRENT_TIMESTAMP WHERE name = $2`,
+		string(teamJSON), name,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
-func (s *PostgresStore) ListInboxItems(string, int) ([]InboxItem, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) UpdateChannelMeta(currentName string, newName, newDescription *string) error {
+	if newName == nil && newDescription == nil {
+		var exists int
+		err := s.db.QueryRow(`SELECT 1 FROM channels WHERE name = $1`, currentName).Scan(&exists)
+		if err == sql.ErrNoRows {
+			return sql.ErrNoRows
+		}
+		return err
+	}
+	sets := []string{"updated_at = CURRENT_TIMESTAMP"}
+	args := []any{}
+	next := func() string { return fmt.Sprintf("$%d", len(args)) }
+	if newName != nil {
+		args = append(args, *newName)
+		sets = append(sets, "name = "+next())
+	}
+	if newDescription != nil {
+		args = append(args, *newDescription)
+		sets = append(sets, "description = "+next())
+	}
+	args = append(args, currentName)
+	res, err := s.db.Exec(`UPDATE channels SET `+strings.Join(sets, ", ")+` WHERE name = `+next(), args...)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
-func (s *PostgresStore) GetInboxItem(int64) (*InboxItem, error)    { return nil, errPostgresNotImplemented }
-func (s *PostgresStore) ResolveInboxItem(int64, string) error      { return errPostgresNotImplemented }
+
+func (s *PostgresStore) FindChannelForAgents(agent1, agent2 string) (string, string, error) {
+	rows, err := s.db.Query(`SELECT id, name, team FROM channels`)
+	if err != nil {
+		return "", "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, name, teamJSON string
+		if err := rows.Scan(&id, &name, &teamJSON); err != nil {
+			return "", "", err
+		}
+		var team []string
+		_ = json.Unmarshal([]byte(teamJSON), &team)
+		has1, has2 := false, false
+		for _, m := range team {
+			if m == agent1 {
+				has1 = true
+			}
+			if m == agent2 {
+				has2 = true
+			}
+		}
+		if has1 && has2 {
+			return id, name, nil
+		}
+	}
+	return "", "", rows.Err()
+}
+
+// --- Channel messages ---
+
+func (s *PostgresStore) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string, activities []vega.ToolActivity) (int64, error) {
+	if metadata == "" {
+		metadata = "{}"
+	}
+	activitiesJSON := []byte("[]")
+	if len(activities) > 0 {
+		if b, err := json.Marshal(activities); err == nil {
+			activitiesJSON = b
+		}
+	}
+	var id int64
+	err := s.db.QueryRow(
+		`INSERT INTO channel_messages (channel_id, thread_id, agent, role, content, metadata, sender, tool_activities)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		channelID, threadID, agent, role, content, metadata, sender, string(activitiesJSON),
+	).Scan(&id)
+	return id, err
+}
+
+func (s *PostgresStore) ListChannelMessages(channelID string, limit int) ([]ChannelMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	// Postgres uses string_agg instead of SQLite's GROUP_CONCAT.
+	rows, err := s.db.Query(
+		`SELECT m.id, m.channel_id, m.thread_id, m.agent, m.sender, m.role, m.content, m.metadata, m.tool_activities, m.created_at,
+		        COALESCE((SELECT COUNT(*) FROM channel_messages r WHERE r.thread_id = m.id), 0) AS reply_count,
+		        (SELECT MAX(created_at) FROM channel_messages r WHERE r.thread_id = m.id) AS latest_reply_at,
+		        (SELECT string_agg(DISTINCT COALESCE(NULLIF(sender, ''), agent), ',')
+		           FROM channel_messages r WHERE r.thread_id = m.id) AS reply_senders
+		 FROM channel_messages m
+		 WHERE m.channel_id = $1 AND m.thread_id IS NULL
+		 ORDER BY m.created_at ASC LIMIT $2`,
+		channelID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var messages []ChannelMessage
+	for rows.Next() {
+		var m ChannelMessage
+		var threadID sql.NullInt64
+		var latestReplyAt sql.NullTime
+		var replySenders sql.NullString
+		var activitiesJSON string
+		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata,
+			&activitiesJSON, &m.CreatedAt, &m.ReplyCount, &latestReplyAt, &replySenders); err != nil {
+			return nil, err
+		}
+		if activitiesJSON != "" && activitiesJSON != "[]" {
+			_ = json.Unmarshal([]byte(activitiesJSON), &m.ToolActivities)
+		}
+		if threadID.Valid {
+			m.ThreadID = &threadID.Int64
+		}
+		if latestReplyAt.Valid {
+			m.LatestReplyAt = &latestReplyAt.Time
+		}
+		if replySenders.Valid && replySenders.String != "" {
+			for _, s := range strings.Split(replySenders.String, ",") {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					m.ReplySenders = append(m.ReplySenders, s)
+				}
+			}
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
+}
+
+func (s *PostgresStore) RecentChannelMessages(channelID string, limit int) ([]dsl.ChannelMessage, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	rows, err := s.db.Query(
+		`SELECT agent, sender, content FROM channel_messages
+		 WHERE channel_id = $1 AND thread_id IS NULL
+		 ORDER BY created_at DESC LIMIT $2`,
+		channelID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []dsl.ChannelMessage
+	for rows.Next() {
+		var m dsl.ChannelMessage
+		if err := rows.Scan(&m.Agent, &m.Sender, &m.Content); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs, rows.Err()
+}
+
+func (s *PostgresStore) ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error) {
+	rows, err := s.db.Query(
+		`SELECT id, channel_id, thread_id, agent, sender, role, content, metadata, tool_activities, created_at
+		 FROM channel_messages
+		 WHERE channel_id = $1 AND (id = $2 OR thread_id = $2)
+		 ORDER BY created_at ASC`,
+		channelID, threadID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var messages []ChannelMessage
+	for rows.Next() {
+		var m ChannelMessage
+		var tid sql.NullInt64
+		var activitiesJSON string
+		if err := rows.Scan(&m.ID, &m.ChannelID, &tid, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &activitiesJSON, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		if tid.Valid {
+			m.ThreadID = &tid.Int64
+		}
+		if activitiesJSON != "" && activitiesJSON != "[]" {
+			_ = json.Unmarshal([]byte(activitiesJSON), &m.ToolActivities)
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
+}
+
+func (s *PostgresStore) MarkChannelRead(channelID, userID string) error {
+	if userID == "" {
+		userID = "default"
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO channel_read_cursors (channel_id, user_id, last_read_id, updated_at)
+		VALUES ($1, $2,
+		    COALESCE((SELECT MAX(id) FROM channel_messages WHERE channel_id = $1 AND thread_id IS NULL), 0),
+		    CURRENT_TIMESTAMP)
+		ON CONFLICT (channel_id, user_id) DO UPDATE SET
+		    last_read_id = COALESCE((SELECT MAX(id) FROM channel_messages WHERE channel_id = EXCLUDED.channel_id AND thread_id IS NULL), 0),
+		    updated_at = CURRENT_TIMESTAMP`,
+		channelID, userID,
+	)
+	return err
+}
+
+func (s *PostgresStore) MarkChatRead(agent, userID string) error {
+	if userID == "" {
+		userID = "default"
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO chat_read_cursors (agent, user_id, last_read_id, updated_at)
+		VALUES ($1, $2,
+		    COALESCE((SELECT MAX(id) FROM chat_messages WHERE agent = $1), 0),
+		    CURRENT_TIMESTAMP)
+		ON CONFLICT (agent, user_id) DO UPDATE SET
+		    last_read_id = COALESCE((SELECT MAX(id) FROM chat_messages WHERE agent = EXCLUDED.agent), 0),
+		    updated_at = CURRENT_TIMESTAMP`,
+		agent, userID,
+	)
+	return err
+}
+
+func (s *PostgresStore) ChatUnreadCounts(userID string) (map[string]int, error) {
+	if userID == "" {
+		userID = "default"
+	}
+	rows, err := s.db.Query(`
+		SELECT cm.agent, COUNT(*) AS unread
+		FROM chat_messages cm
+		LEFT JOIN chat_read_cursors crc ON cm.agent = crc.agent AND crc.user_id = $1
+		WHERE cm.role = 'assistant'
+		  AND cm.id > COALESCE(crc.last_read_id, 0)
+		GROUP BY cm.agent`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := make(map[string]int)
+	for rows.Next() {
+		var agent string
+		var count int
+		if err := rows.Scan(&agent, &count); err != nil {
+			return nil, err
+		}
+		counts[agent] = count
+	}
+	return counts, rows.Err()
+}
+
+// --- Inbox (agent_inbox + inbox_replies) ---
+
+func (s *PostgresStore) InsertInboxItem(fromAgent, subject, body, priority string) (int64, error) {
+	var id int64
+	err := s.db.QueryRow(
+		`INSERT INTO agent_inbox (from_agent, subject, body, priority)
+		 VALUES ($1, $2, $3, $4) RETURNING id`,
+		fromAgent, subject, body, priority,
+	).Scan(&id)
+	return id, err
+}
+
+func (s *PostgresStore) ListInboxItems(status string, limit int) ([]InboxItem, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var rows *sql.Rows
+	var err error
+	if status == "all" || status == "" {
+		rows, err = s.db.Query(
+			`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+			 FROM agent_inbox ORDER BY created_at DESC LIMIT $1`, limit)
+	} else {
+		rows, err = s.db.Query(
+			`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+			 FROM agent_inbox WHERE status = $1 ORDER BY created_at DESC LIMIT $2`, status, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InboxItem
+	for rows.Next() {
+		var item InboxItem
+		var resolution sql.NullString
+		var resolvedAt sql.NullTime
+		if err := rows.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
+			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+			return nil, err
+		}
+		if resolution.Valid {
+			item.Resolution = resolution.String
+		}
+		if resolvedAt.Valid {
+			item.ResolvedAt = &resolvedAt.Time
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *PostgresStore) GetInboxItem(id int64) (*InboxItem, error) {
+	row := s.db.QueryRow(
+		`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		 FROM agent_inbox WHERE id = $1`, id)
+	var item InboxItem
+	var resolution sql.NullString
+	var resolvedAt sql.NullTime
+	if err := row.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
+		&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if resolution.Valid {
+		item.Resolution = resolution.String
+	}
+	if resolvedAt.Valid {
+		item.ResolvedAt = &resolvedAt.Time
+	}
+	return &item, nil
+}
+
+func (s *PostgresStore) ResolveInboxItem(id int64, resolution string) error {
+	res, err := s.db.Exec(
+		`UPDATE agent_inbox SET status = 'resolved', resolution = $1, resolved_at = CURRENT_TIMESTAMP WHERE id = $2`,
+		resolution, id,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *PostgresStore) DeleteResolvedInboxItems() (int64, error) {
-	return 0, errPostgresNotImplemented
+	// Cascading FK on inbox_replies handles replies cleanup.
+	res, err := s.db.Exec(`DELETE FROM agent_inbox WHERE status = 'resolved'`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
-func (s *PostgresStore) InsertChannelMessage(string, string, string, string, *int64, string, string, []vega.ToolActivity) (int64, error) {
-	return 0, errPostgresNotImplemented
+
+// --- Prompt history ---
+
+func (s *PostgresStore) InsertPromptHistory(prompt string) (int64, error) {
+	var id int64
+	err := s.db.QueryRow(`INSERT INTO prompt_history (prompt) VALUES ($1) RETURNING id`, prompt).Scan(&id)
+	return id, err
 }
-func (s *PostgresStore) ListChannelMessages(string, int) ([]ChannelMessage, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) ListPromptHistory(limit int) ([]PromptHistoryItem, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(
+		`SELECT id, prompt, created_at FROM prompt_history ORDER BY id DESC LIMIT $1`, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PromptHistoryItem
+	for rows.Next() {
+		var item PromptHistoryItem
+		if err := rows.Scan(&item.ID, &item.Prompt, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
-func (s *PostgresStore) RecentChannelMessages(string, int) ([]dsl.ChannelMessage, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) SearchPromptHistory(query string, limit int) ([]PromptHistoryItem, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, prompt, created_at FROM prompt_history
+		 WHERE prompt LIKE $1 ORDER BY id DESC LIMIT $2`,
+		pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PromptHistoryItem
+	for rows.Next() {
+		var item PromptHistoryItem
+		if err := rows.Scan(&item.ID, &item.Prompt, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
-func (s *PostgresStore) ListThreadMessages(string, int64) ([]ChannelMessage, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) DeletePromptHistory(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM prompt_history WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
-func (s *PostgresStore) MarkChannelRead(string, string) error      { return errPostgresNotImplemented }
-func (s *PostgresStore) MarkChatRead(string, string) error         { return errPostgresNotImplemented }
-func (s *PostgresStore) ChatUnreadCounts(string) (map[string]int, error) {
-	return nil, errPostgresNotImplemented
+
+// --- Tasks ---
+
+func (s *PostgresStore) InsertTask(t Task) error {
+	if t.ID == "" {
+		return fmt.Errorf("task id is required")
+	}
+	if t.Title == "" {
+		return fmt.Errorf("task title is required")
+	}
+	if t.Status == "" {
+		t.Status = TaskStatusTodo
+	}
+	if t.Priority == "" {
+		t.Priority = TaskPriorityNormal
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO tasks (id, title, description, status, priority, assignee, tags, created_by, due_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		t.ID, t.Title, t.Description, t.Status, t.Priority, t.Assignee, t.Tags, t.CreatedBy, t.DueAt,
+	)
+	return err
 }
-func (s *PostgresStore) ResetData() error                          { return errPostgresNotImplemented }
-func (s *PostgresStore) InsertPromptHistory(string) (int64, error) { return 0, errPostgresNotImplemented }
-func (s *PostgresStore) ListPromptHistory(int) ([]PromptHistoryItem, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) GetTask(id string) (*Task, error) {
+	row := s.db.QueryRow(
+		`SELECT id, title, description, status, priority, assignee, tags, created_by, created_at, updated_at, due_at
+		 FROM tasks WHERE id = $1`, id,
+	)
+	t := &Task{}
+	var due sql.NullTime
+	if err := row.Scan(&t.ID, &t.Title, &t.Description, &t.Status, &t.Priority, &t.Assignee, &t.Tags, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &due); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if due.Valid {
+		t.DueAt = &due.Time
+	}
+	return t, nil
 }
-func (s *PostgresStore) SearchPromptHistory(string, int) ([]PromptHistoryItem, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) ListTasks(f TaskFilter) ([]Task, error) {
+	q := `SELECT id, title, description, status, priority, assignee, tags, created_by, created_at, updated_at, due_at FROM tasks`
+	var clauses []string
+	var args []any
+	next := func() string { return fmt.Sprintf("$%d", len(args)) }
+	if len(f.Status) > 0 {
+		placeholders := make([]string, len(f.Status))
+		for i, v := range f.Status {
+			args = append(args, v)
+			placeholders[i] = next()
+		}
+		clauses = append(clauses, "status IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if len(f.Assignee) > 0 {
+		placeholders := make([]string, len(f.Assignee))
+		for i, v := range f.Assignee {
+			args = append(args, v)
+			placeholders[i] = next()
+		}
+		clauses = append(clauses, "assignee IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if len(f.Tag) > 0 {
+		var tagClauses []string
+		for _, tg := range f.Tag {
+			args = append(args, "%,"+tg+",%")
+			tagClauses = append(tagClauses, fmt.Sprintf("(',' || tags || ',') LIKE %s", next()))
+		}
+		clauses = append(clauses, "("+strings.Join(tagClauses, " OR ")+")")
+	}
+	if len(clauses) > 0 {
+		q += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	q += " ORDER BY updated_at DESC"
+	if f.Limit > 0 {
+		q += fmt.Sprintf(" LIMIT %d OFFSET %d", f.Limit, f.Offset)
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Task{}
+	for rows.Next() {
+		t := Task{}
+		var due sql.NullTime
+		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.Status, &t.Priority, &t.Assignee, &t.Tags, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &due); err != nil {
+			return nil, err
+		}
+		if due.Valid {
+			t.DueAt = &due.Time
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
-func (s *PostgresStore) DeletePromptHistory(int64) error { return errPostgresNotImplemented }
-func (s *PostgresStore) InsertTask(Task) error           { return errPostgresNotImplemented }
-func (s *PostgresStore) GetTask(string) (*Task, error)  { return nil, errPostgresNotImplemented }
-func (s *PostgresStore) ListTasks(TaskFilter) ([]Task, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) UpdateTask(id string, u TaskUpdate) error {
+	if u.Status != nil && !validTaskStatus(*u.Status) {
+		return fmt.Errorf("invalid status %q", *u.Status)
+	}
+	var sets []string
+	var args []any
+	next := func() string { return fmt.Sprintf("$%d", len(args)) }
+	if u.Title != nil {
+		args = append(args, *u.Title)
+		sets = append(sets, "title = "+next())
+	}
+	if u.Description != nil {
+		args = append(args, *u.Description)
+		sets = append(sets, "description = "+next())
+	}
+	if u.Status != nil {
+		args = append(args, *u.Status)
+		sets = append(sets, "status = "+next())
+	}
+	if u.Priority != nil {
+		args = append(args, *u.Priority)
+		sets = append(sets, "priority = "+next())
+	}
+	if u.Assignee != nil {
+		args = append(args, *u.Assignee)
+		sets = append(sets, "assignee = "+next())
+	}
+	if u.Tags != nil {
+		args = append(args, *u.Tags)
+		sets = append(sets, "tags = "+next())
+	}
+	if u.DueAt != nil {
+		args = append(args, *u.DueAt)
+		sets = append(sets, "due_at = "+next())
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
+	args = append(args, id)
+	res, err := s.db.Exec("UPDATE tasks SET "+strings.Join(sets, ", ")+" WHERE id = "+next(), args...)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
-func (s *PostgresStore) UpdateTask(string, TaskUpdate) error { return errPostgresNotImplemented }
-func (s *PostgresStore) DeleteTask(string) error            { return errPostgresNotImplemented }
-func (s *PostgresStore) AddTaskComment(string, string, string) (int64, error) {
-	return 0, errPostgresNotImplemented
+
+func (s *PostgresStore) DeleteTask(id string) error {
+	// ON DELETE CASCADE on the FK handles comments + processes.
+	res, err := s.db.Exec(`DELETE FROM tasks WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
-func (s *PostgresStore) ListTaskComments(string) ([]TaskComment, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) AddTaskComment(taskID, author, content string) (int64, error) {
+	if content == "" {
+		return 0, fmt.Errorf("comment content is required")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var id int64
+	if err := tx.QueryRow(
+		`INSERT INTO task_comments (task_id, author, content) VALUES ($1, $2, $3) RETURNING id`,
+		taskID, author, content,
+	).Scan(&id); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`UPDATE tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`, taskID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
-func (s *PostgresStore) LinkTaskProcess(string, string) error { return errPostgresNotImplemented }
-func (s *PostgresStore) ListTaskProcesses(string) ([]string, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) ListTaskComments(taskID string) ([]TaskComment, error) {
+	rows, err := s.db.Query(
+		`SELECT id, task_id, author, content, created_at
+		 FROM task_comments WHERE task_id = $1 ORDER BY created_at ASC, id ASC`,
+		taskID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []TaskComment{}
+	for rows.Next() {
+		c := TaskComment{}
+		if err := rows.Scan(&c.ID, &c.TaskID, &c.Author, &c.Content, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
-func (s *PostgresStore) ListMyTasks(string, []string, int) ([]Task, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) LinkTaskProcess(taskID, processID string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO task_processes (task_id, process_id) VALUES ($1, $2)
+		 ON CONFLICT (task_id, process_id) DO NOTHING`,
+		taskID, processID,
+	)
+	return err
 }
-func (s *PostgresStore) ListUnassignedTasks(int) ([]Task, error) {
-	return nil, errPostgresNotImplemented
+
+func (s *PostgresStore) ListTaskProcesses(taskID string) ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT process_id FROM task_processes WHERE task_id = $1 ORDER BY created_at ASC`,
+		taskID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var pid string
+		if err := rows.Scan(&pid); err != nil {
+			return nil, err
+		}
+		out = append(out, pid)
+	}
+	return out, rows.Err()
 }
-func (s *PostgresStore) UpdateTaskStatus(string, string) error { return errPostgresNotImplemented }
-func (s *PostgresStore) AssignTask(string, string) error       { return errPostgresNotImplemented }
-func (s *PostgresStore) ClaimTask(string, string) error        { return errPostgresNotImplemented }
+
+func (s *PostgresStore) ListMyTasks(assignee string, status []string, limit int) ([]Task, error) {
+	return s.ListTasks(TaskFilter{Assignee: []string{assignee}, Status: status, Limit: limit})
+}
+
+func (s *PostgresStore) ListUnassignedTasks(limit int) ([]Task, error) {
+	return s.ListTasks(TaskFilter{Assignee: []string{""}, Limit: limit})
+}
+
+func (s *PostgresStore) UpdateTaskStatus(id, status string) error {
+	return s.UpdateTask(id, TaskUpdate{Status: &status})
+}
+
+func (s *PostgresStore) AssignTask(id, assignee string) error {
+	return s.UpdateTask(id, TaskUpdate{Assignee: &assignee})
+}
+
+func (s *PostgresStore) ClaimTask(id, assignee string) error {
+	doing := TaskStatusDoing
+	return s.UpdateTask(id, TaskUpdate{Assignee: &assignee, Status: &doing})
+}
+
 func (s *PostgresStore) TaskStatsByAssignee() (map[string]AgentStatsResponse, error) {
-	return nil, errPostgresNotImplemented
+	rows, err := s.db.Query(
+		`SELECT assignee, status, COUNT(*) FROM tasks WHERE assignee <> '' GROUP BY assignee, status`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type counts struct{ assigned, done, canceled int }
+	raw := make(map[string]*counts)
+	for rows.Next() {
+		var assignee, status string
+		var n int
+		if err := rows.Scan(&assignee, &status, &n); err != nil {
+			return nil, err
+		}
+		c, ok := raw[assignee]
+		if !ok {
+			c = &counts{}
+			raw[assignee] = c
+		}
+		switch status {
+		case TaskStatusTodo, TaskStatusDoing, TaskStatusBlocked:
+			c.assigned += n
+		case TaskStatusDone:
+			c.done += n
+		case TaskStatusCanceled:
+			c.canceled += n
+		}
+	}
+	out := make(map[string]AgentStatsResponse, len(raw))
+	for assignee, c := range raw {
+		stats := AgentStatsResponse{AssignedTasks: c.assigned, CompletedTasks: c.done}
+		if c.done+c.canceled > 0 {
+			rate := float64(c.done) / float64(c.done+c.canceled)
+			stats.SuccessRate = &rate
+		}
+		out[assignee] = stats
+	}
+	return out, rows.Err()
+}
+
+// --- Reset ---
+
+// ResetData clears every transient table but preserves settings + mcp_servers.
+// Mirrors SQLiteStore.ResetData behavior.
+func (s *PostgresStore) ResetData() error {
+	// TRUNCATE ... CASCADE handles FK chains in one go.
+	_, err := s.db.Exec(`
+TRUNCATE TABLE
+    composed_agents, chat_messages, user_memory, memory_items,
+    events, process_snapshots, workflow_runs, scheduled_jobs,
+    channel_messages, channels, inbox_replies, agent_inbox,
+    workspace_files, channel_read_cursors, chat_read_cursors,
+    task_processes, task_comments, tasks
+RESTART IDENTITY CASCADE`)
+	return err
 }
 
 // Compile-time assertion that PostgresStore satisfies Store.

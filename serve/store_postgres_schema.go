@@ -155,54 +155,67 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
 CREATE TABLE IF NOT EXISTS channels (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
-    description TEXT NOT NULL DEFAULT '',
-    created_by  TEXT NOT NULL DEFAULT '',
-    team        TEXT NOT NULL DEFAULT '[]',
-    mode        TEXT NOT NULL DEFAULT '',
+    description TEXT DEFAULT '',
+    team        TEXT DEFAULT '[]',
+    mode        TEXT DEFAULT '',
+    created_by  TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  TIMESTAMPTZ
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS channel_messages (
     id              BIGSERIAL PRIMARY KEY,
     channel_id      TEXT NOT NULL,
-    agent           TEXT NOT NULL,
+    thread_id       BIGINT,
+    agent           TEXT DEFAULT '',
     role            TEXT NOT NULL,
     content         TEXT NOT NULL,
-    thread_id       BIGINT,
-    metadata        TEXT NOT NULL DEFAULT '',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata        TEXT DEFAULT '{}',
     tool_activities TEXT NOT NULL DEFAULT '[]',
-    sender          TEXT NOT NULL DEFAULT ''
+    sender          TEXT NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_channel_messages_channel ON channel_messages(channel_id);
+CREATE INDEX IF NOT EXISTS idx_channel_messages_channel ON channel_messages(channel_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_channel_messages_thread ON channel_messages(thread_id);
 
-CREATE TABLE IF NOT EXISTS channel_reads (
+CREATE TABLE IF NOT EXISTS channel_read_cursors (
     channel_id   TEXT NOT NULL,
-    user_id      TEXT NOT NULL,
-    last_read_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id      TEXT NOT NULL DEFAULT 'default',
+    last_read_id BIGINT NOT NULL DEFAULT 0,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (channel_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS chat_reads (
+CREATE TABLE IF NOT EXISTS chat_read_cursors (
     agent        TEXT NOT NULL,
-    user_id      TEXT NOT NULL,
-    last_read_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id      TEXT NOT NULL DEFAULT 'default',
+    last_read_id BIGINT NOT NULL DEFAULT 0,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (agent, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS inbox_items (
+CREATE TABLE IF NOT EXISTS agent_inbox (
     id          BIGSERIAL PRIMARY KEY,
     from_agent  TEXT NOT NULL,
     subject     TEXT NOT NULL,
-    body        TEXT NOT NULL,
+    body        TEXT NOT NULL DEFAULT '',
     priority    TEXT NOT NULL DEFAULT 'normal',
     status      TEXT NOT NULL DEFAULT 'pending',
-    resolution  TEXT NOT NULL DEFAULT '',
+    resolution  TEXT DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     resolved_at TIMESTAMPTZ
 );
+CREATE INDEX IF NOT EXISTS idx_agent_inbox_status ON agent_inbox(status, created_at);
+
+CREATE TABLE IF NOT EXISTS inbox_replies (
+    id         BIGSERIAL PRIMARY KEY,
+    inbox_id   BIGINT NOT NULL REFERENCES agent_inbox(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL,
+    agent      TEXT NOT NULL DEFAULT '',
+    content    TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_replies_inbox ON inbox_replies(inbox_id, created_at);
 
 CREATE TABLE IF NOT EXISTS prompt_history (
     id         BIGSERIAL PRIMARY KEY,
@@ -217,28 +230,28 @@ CREATE TABLE IF NOT EXISTS tasks (
     status      TEXT NOT NULL DEFAULT 'todo',
     priority    TEXT NOT NULL DEFAULT 'normal',
     assignee    TEXT NOT NULL DEFAULT '',
-    creator     TEXT NOT NULL DEFAULT '',
-    parent_id   TEXT NOT NULL DEFAULT '',
     tags        TEXT NOT NULL DEFAULT '',
+    created_by  TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_at      TIMESTAMPTZ
 );
+CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 
 CREATE TABLE IF NOT EXISTS task_comments (
     id         BIGSERIAL PRIMARY KEY,
-    task_id    TEXT NOT NULL,
-    author     TEXT NOT NULL,
+    task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    author     TEXT NOT NULL DEFAULT '',
     content    TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);
 
 CREATE TABLE IF NOT EXISTS task_processes (
-    task_id    TEXT NOT NULL,
+    task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     process_id TEXT NOT NULL,
-    linked_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (task_id, process_id)
 );
 `

@@ -44,8 +44,9 @@ func TestPostgresInit_CreatesSchema(t *testing.T) {
 		"events", "process_snapshots", "workflow_runs", "composed_agents",
 		"chat_messages", "user_memory", "scheduled_jobs", "agent_brain_files",
 		"memory_items", "workspace_files", "settings", "mcp_servers",
-		"channels", "channel_messages", "channel_reads", "chat_reads",
-		"inbox_items", "prompt_history", "tasks", "task_comments", "task_processes",
+		"channels", "channel_messages", "channel_read_cursors", "chat_read_cursors",
+		"agent_inbox", "inbox_replies", "prompt_history",
+		"tasks", "task_comments", "task_processes",
 	}
 	for _, table := range wantTables {
 		var exists bool

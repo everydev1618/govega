@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -325,6 +326,304 @@ func TestDualStore_AgentSpendRollup(t *testing.T) {
 		want := 3.0 + 2.5
 		if total != want {
 			t.Errorf("total = %v, want %v", total, want)
+		}
+	})
+}
+
+func TestDualStore_MemoryItemsDedup(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		id1, err := store.InsertMemoryItem(MemoryItem{
+			UserID: "u1", Agent: "riley", Type: MemoryTypeReference,
+			Topic: "weather", Content: "sunny in NYC", Tags: "weather",
+		})
+		if err != nil {
+			t.Fatalf("InsertMemoryItem: %v", err)
+		}
+		// Same content → dedups to same id, merges tags.
+		id2, err := store.InsertMemoryItem(MemoryItem{
+			UserID: "u1", Agent: "riley", Type: MemoryTypeReference,
+			Topic: "weather", Content: "sunny in NYC", Tags: "city",
+		})
+		if err != nil {
+			t.Fatalf("InsertMemoryItem dedup: %v", err)
+		}
+		if id1 != id2 {
+			t.Errorf("dedup failed: id1=%d id2=%d", id1, id2)
+		}
+
+		hits, err := store.SearchMemoryItems("u1", "riley", "sunny", 10)
+		if err != nil {
+			t.Fatalf("SearchMemoryItems: %v", err)
+		}
+		if len(hits) != 1 {
+			t.Errorf("search len = %d, want 1", len(hits))
+		}
+		// Merged tags include both "weather" and "city".
+		if !strings.Contains(hits[0].Tags, "weather") || !strings.Contains(hits[0].Tags, "city") {
+			t.Errorf("tags not merged: %q", hits[0].Tags)
+		}
+
+		// Topic listing.
+		byTopic, _ := store.ListMemoryItemsByTopic("u1", "riley", "weather")
+		if len(byTopic) != 1 {
+			t.Errorf("topic len = %d", len(byTopic))
+		}
+
+		// Delete.
+		if err := store.DeleteMemoryItem(id1); err != nil {
+			t.Errorf("DeleteMemoryItem: %v", err)
+		}
+	})
+}
+
+func TestDualStore_ChannelsRoundTrip(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		if err := store.CreateChannel("ch_1", "general", "general chat", "iris", []string{"riley", "alex"}, ""); err != nil {
+			t.Fatalf("CreateChannel: %v", err)
+		}
+		ch, err := store.GetChannel("general")
+		if err != nil || ch == nil {
+			t.Fatalf("GetChannel: %v %v", ch, err)
+		}
+		if ch.ID != "ch_1" || len(ch.Team) != 2 {
+			t.Errorf("got = %+v", ch)
+		}
+
+		all, _ := store.ListAllChannels()
+		if len(all) != 1 {
+			t.Errorf("ListAllChannels len = %d", len(all))
+		}
+		mine, _ := store.ListChannelsForAgent("riley")
+		if len(mine) != 1 {
+			t.Errorf("ListChannelsForAgent riley len = %d", len(mine))
+		}
+
+		// Rename.
+		newName := "team"
+		if err := store.UpdateChannelMeta("general", &newName, nil); err != nil {
+			t.Errorf("UpdateChannelMeta rename: %v", err)
+		}
+		ch, _ = store.GetChannel("team")
+		if ch == nil {
+			t.Error("renamed channel not found")
+		}
+
+		// Team update.
+		if err := store.UpdateChannelTeam("team", []string{"riley", "alex", "sofia"}); err != nil {
+			t.Errorf("UpdateChannelTeam: %v", err)
+		}
+
+		// FindChannelForAgents.
+		id, name, _ := store.FindChannelForAgents("riley", "alex")
+		if id != "ch_1" || name != "team" {
+			t.Errorf("FindChannelForAgents = %q,%q", id, name)
+		}
+
+		// Delete.
+		_ = store.DeleteChannel("team")
+		ch, _ = store.GetChannel("team")
+		if ch != nil {
+			t.Errorf("after delete: %+v", ch)
+		}
+	})
+}
+
+func TestDualStore_ChannelMessagesAndReadCursor(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		_ = store.CreateChannel("ch_x", "x", "", "iris", []string{"riley"}, "")
+		id1, err := store.InsertChannelMessage("ch_x", "riley", "assistant", "hi", nil, "{}", "", nil)
+		if err != nil {
+			t.Fatalf("InsertChannelMessage: %v", err)
+		}
+		// Thread reply.
+		_, err = store.InsertChannelMessage("ch_x", "alex", "assistant", "yo", &id1, "{}", "", nil)
+		if err != nil {
+			t.Fatalf("InsertChannelMessage reply: %v", err)
+		}
+
+		// Top-level list shows the parent + reply_count.
+		top, err := store.ListChannelMessages("ch_x", 100)
+		if err != nil {
+			t.Fatalf("ListChannelMessages: %v", err)
+		}
+		if len(top) != 1 || top[0].ReplyCount != 1 {
+			t.Errorf("top = %+v", top)
+		}
+		if len(top[0].ReplySenders) == 0 {
+			t.Errorf("reply_senders empty: %+v", top[0])
+		}
+
+		// Thread list.
+		thread, _ := store.ListThreadMessages("ch_x", id1)
+		if len(thread) != 2 {
+			t.Errorf("thread len = %d", len(thread))
+		}
+
+		// Mark read clears unread.
+		// (Add a chat message first so ChatUnreadCounts has something to count.)
+		_ = store.InsertChatMessage("riley", "user", "hello", nil)
+		_ = store.InsertChatMessage("riley", "assistant", "hi", nil)
+		counts, err := store.ChatUnreadCounts("u1")
+		if err != nil {
+			t.Fatalf("ChatUnreadCounts: %v", err)
+		}
+		if counts["riley"] != 1 {
+			t.Errorf("unread riley = %d, want 1", counts["riley"])
+		}
+		_ = store.MarkChatRead("riley", "u1")
+		counts, _ = store.ChatUnreadCounts("u1")
+		if counts["riley"] != 0 {
+			t.Errorf("after mark read unread = %d, want 0", counts["riley"])
+		}
+
+		// MarkChannelRead doesn't error.
+		if err := store.MarkChannelRead("ch_x", "u1"); err != nil {
+			t.Errorf("MarkChannelRead: %v", err)
+		}
+
+		// Recent + lightweight list.
+		recent, _ := store.RecentChannelMessages("ch_x", 10)
+		if len(recent) == 0 {
+			t.Errorf("RecentChannelMessages empty")
+		}
+	})
+}
+
+func TestDualStore_Inbox(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		id, err := store.InsertInboxItem("riley", "blocked on X", "need login creds", "high")
+		if err != nil {
+			t.Fatalf("InsertInboxItem: %v", err)
+		}
+		items, _ := store.ListInboxItems("pending", 10)
+		if len(items) != 1 || items[0].ID != id {
+			t.Errorf("list = %+v", items)
+		}
+		one, _ := store.GetInboxItem(id)
+		if one == nil || one.Subject != "blocked on X" {
+			t.Errorf("get = %+v", one)
+		}
+		_ = store.ResolveInboxItem(id, "creds shared")
+		one, _ = store.GetInboxItem(id)
+		if one.Status != "resolved" || one.Resolution != "creds shared" {
+			t.Errorf("after resolve = %+v", one)
+		}
+		n, _ := store.DeleteResolvedInboxItems()
+		if n != 1 {
+			t.Errorf("DeleteResolvedInboxItems n = %d, want 1", n)
+		}
+	})
+}
+
+func TestDualStore_PromptHistory(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		id, err := store.InsertPromptHistory("schedule a standup")
+		if err != nil {
+			t.Fatalf("InsertPromptHistory: %v", err)
+		}
+		_, _ = store.InsertPromptHistory("draft the policy")
+
+		all, _ := store.ListPromptHistory(10)
+		if len(all) != 2 {
+			t.Errorf("list len = %d", len(all))
+		}
+		hits, _ := store.SearchPromptHistory("standup", 10)
+		if len(hits) != 1 {
+			t.Errorf("search standup len = %d", len(hits))
+		}
+		if err := store.DeletePromptHistory(id); err != nil {
+			t.Errorf("DeletePromptHistory: %v", err)
+		}
+	})
+}
+
+func TestDualStore_TasksRoundTrip(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		// Insert.
+		if err := store.InsertTask(Task{
+			ID: "t1", Title: "Ship the kanban", Status: TaskStatusTodo, Assignee: "riley",
+		}); err != nil {
+			t.Fatalf("InsertTask: %v", err)
+		}
+		// Get.
+		got, _ := store.GetTask("t1")
+		if got == nil || got.Title != "Ship the kanban" {
+			t.Fatalf("GetTask: %+v", got)
+		}
+		// Update.
+		newDesc := "Move to /tasks"
+		if err := store.UpdateTask("t1", TaskUpdate{Description: &newDesc}); err != nil {
+			t.Errorf("UpdateTask: %v", err)
+		}
+		got, _ = store.GetTask("t1")
+		if got.Description != newDesc {
+			t.Errorf("description = %q", got.Description)
+		}
+		// List with filter.
+		list, _ := store.ListTasks(TaskFilter{Status: []string{TaskStatusTodo}})
+		if len(list) != 1 {
+			t.Errorf("list todos = %d, want 1", len(list))
+		}
+		// Comment.
+		commentID, err := store.AddTaskComment("t1", "iris", "first pass")
+		if err != nil {
+			t.Errorf("AddTaskComment: %v", err)
+		}
+		comments, _ := store.ListTaskComments("t1")
+		if len(comments) != 1 || comments[0].ID != commentID {
+			t.Errorf("comments = %+v", comments)
+		}
+		// Process link (idempotent).
+		_ = store.LinkTaskProcess("t1", "proc-A")
+		_ = store.LinkTaskProcess("t1", "proc-A")
+		procs, _ := store.ListTaskProcesses("t1")
+		if len(procs) != 1 {
+			t.Errorf("LinkTaskProcess not idempotent: %+v", procs)
+		}
+		// Claim.
+		_ = store.ClaimTask("t1", "alex")
+		got, _ = store.GetTask("t1")
+		if got.Status != TaskStatusDoing || got.Assignee != "alex" {
+			t.Errorf("after claim: %+v", got)
+		}
+		// Stats.
+		stats, _ := store.TaskStatsByAssignee()
+		if stats["alex"].AssignedTasks != 1 {
+			t.Errorf("stats alex = %+v", stats["alex"])
+		}
+		// Delete.
+		if err := store.DeleteTask("t1"); err != nil {
+			t.Errorf("DeleteTask: %v", err)
+		}
+		got, _ = store.GetTask("t1")
+		if got != nil {
+			t.Errorf("after delete: %+v", got)
+		}
+	})
+}
+
+func TestDualStore_ResetData(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		_ = store.InsertEvent(StoreEvent{Type: "test", Timestamp: time.Now().UTC()})
+		_ = store.InsertTask(Task{ID: "t1", Title: "x", Status: TaskStatusTodo})
+		_ = store.UpsertSetting(Setting{Key: "preserved", Value: "yes"})
+
+		if err := store.ResetData(); err != nil {
+			t.Fatalf("ResetData: %v", err)
+		}
+		// Events + tasks cleared.
+		events, _ := store.ListEvents(10)
+		if len(events) != 0 {
+			t.Errorf("events after reset = %d", len(events))
+		}
+		tasks, _ := store.ListTasks(TaskFilter{})
+		if len(tasks) != 0 {
+			t.Errorf("tasks after reset = %d", len(tasks))
+		}
+		// Settings preserved.
+		got, _ := store.GetSetting("preserved")
+		if got == nil || got.Value != "yes" {
+			t.Errorf("setting clobbered by reset: %+v", got)
 		}
 	})
 }

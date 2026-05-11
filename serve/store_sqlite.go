@@ -344,6 +344,28 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// parseSQLiteTime parses a datetime string returned by modernc.org/sqlite
+// from a subquery (where column type info is lost). SQLite stores
+// DATETIME columns as ISO 8601-ish text; the driver returns the raw
+// text rather than a time.Time when the destination is sql.NullTime,
+// hence this manual parse. Handles the most common formats with and
+// without microseconds and zone.
+func parseSQLiteTime(s string) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05",
+	}
+	for _, l := range layouts {
+		if t, err := time.Parse(l, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("could not parse SQLite datetime %q", s)
+}
+
 // InsertEvent records an orchestration event.
 func (s *SQLiteStore) InsertEvent(e StoreEvent) error {
 	_, err := s.db.Exec(
@@ -1598,10 +1620,14 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 	for rows.Next() {
 		var m ChannelMessage
 		var threadID sql.NullInt64
-		var latestReplyAt sql.NullTime
+		// The (SELECT MAX(created_at) ...) subquery loses column type info
+		// in modernc.org/sqlite — DATETIME comes back as a string rather
+		// than a time.Time. Scan into NullString and parse so NullTime
+		// doesn't choke on the unsupported conversion.
+		var latestReplyRaw sql.NullString
 		var replySenders sql.NullString
 		var activitiesJSON string
-		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &activitiesJSON, &m.CreatedAt, &m.ReplyCount, &latestReplyAt, &replySenders); err != nil {
+		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &activitiesJSON, &m.CreatedAt, &m.ReplyCount, &latestReplyRaw, &replySenders); err != nil {
 			return nil, err
 		}
 		if activitiesJSON != "" && activitiesJSON != "[]" {
@@ -1610,8 +1636,10 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 		if threadID.Valid {
 			m.ThreadID = &threadID.Int64
 		}
-		if latestReplyAt.Valid {
-			m.LatestReplyAt = &latestReplyAt.Time
+		if latestReplyRaw.Valid && latestReplyRaw.String != "" {
+			if t, err := parseSQLiteTime(latestReplyRaw.String); err == nil {
+				m.LatestReplyAt = &t
+			}
 		}
 		if replySenders.Valid && replySenders.String != "" {
 			// GROUP_CONCAT returns a comma-separated list. Split + dedup
