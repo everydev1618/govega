@@ -94,10 +94,27 @@ func (as *activeStream) finish() {
 	}
 }
 
+// DBKind selects the persistence backend (refs govega#61). Empty / "sqlite"
+// stays the zero-config default and reads/writes a single file from DBPath.
+// "postgres" routes through DBURL and is the right choice for hosted,
+// multi-writer deployments where SQLite's single-writer model bites.
+type DBKind string
+
+const (
+	DBKindSQLite   DBKind = "sqlite"
+	DBKindPostgres DBKind = "postgres"
+)
+
 // Config holds server configuration.
 type Config struct {
 	Addr          string
 	DBPath        string
+	// DBKind picks the persistence backend. Defaults to SQLite when empty.
+	DBKind DBKind
+	// DBURL is the Postgres connection URL when DBKind == "postgres"
+	// (e.g. postgres://user:pass@host:5432/db?sslmode=require). Ignored
+	// for SQLite.
+	DBURL string
 	TelegramToken string       // TELEGRAM_BOT_TOKEN; leave empty to disable
 	TelegramAgent string       // TELEGRAM_AGENT; defaults to first agent if empty
 	Company       *dsl.Company // optional company identity (env var overrides)
@@ -339,12 +356,14 @@ func resolveAddr(addr string) (net.Listener, string, error) {
 func (s *Server) Start(ctx context.Context) error {
 	s.startedAt = time.Now()
 
-	// Initialize SQLite store (unless one was injected via Config.Store).
-	// We own (and Close) the store iff we opened it; an injected store is
-	// the caller's responsibility.
+	// Initialize the persistence backend (unless one was injected via
+	// Config.Store). DBKind picks between SQLite (default — zero config,
+	// single file) and Postgres (refs govega#61 — for multi-writer
+	// hosted deployments). We own (and Close) the store iff we opened
+	// it; an injected store is the caller's responsibility.
 	var weOwnStore bool
 	if s.store == nil {
-		store, err := NewSQLiteStore(s.cfg.DBPath)
+		store, err := openConfiguredStore(s.cfg)
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
