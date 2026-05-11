@@ -2,6 +2,8 @@ package serve
 
 import (
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -42,5 +44,74 @@ func TestExplicitAddr(t *testing.T) {
 	}
 	if port == "0" || port == "" {
 		t.Fatalf("expected a real port, got %q", port)
+	}
+}
+
+// composeMiddleware is what Server.Start uses to stack Config.Middleware
+// in front of the mux. The order matters: mw[0] is the outermost wrapper
+// so it sees the request first.
+func TestComposeMiddleware_EmptyReturnsInner(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("inner"))
+	})
+	h := composeMiddleware(nil, inner)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if got := rec.Body.String(); got != "inner" {
+		t.Errorf("body = %q, want %q", got, "inner")
+	}
+}
+
+func TestComposeMiddleware_OrderIsLeftToRight(t *testing.T) {
+	// mw[0] runs first (outermost), so the request appears to be processed
+	// as A → B → inner, and the response body unwinds inner → B → A.
+	tag := func(label string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("<" + label + ">"))
+				next.ServeHTTP(w, r)
+				_, _ = w.Write([]byte("</" + label + ">"))
+			})
+		}
+	}
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("(inner)"))
+	})
+	h := composeMiddleware([]func(http.Handler) http.Handler{tag("A"), tag("B")}, inner)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	want := "<A><B>(inner)</B></A>"
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body = %q, want %q (mw[0]=A should be outermost)", got, want)
+	}
+}
+
+// Validates the trusted-proxy recipe documented in BUILDING_ON_VEGA.md
+// §7 — middleware calls serve.WithClaims, downstream handlers see the
+// injected identity via ClaimsFrom.
+func TestComposeMiddleware_InjectsClaimsForDownstream(t *testing.T) {
+	injectClaims := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := WithClaims(r.Context(), AuthClaims{UserID: "alice"})
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, ok := ClaimsFrom(r.Context())
+		if !ok {
+			_, _ = w.Write([]byte("no-claims"))
+			return
+		}
+		_, _ = w.Write([]byte(c.UserID))
+	})
+
+	h := composeMiddleware([]func(http.Handler) http.Handler{injectClaims}, inner)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/whatever", nil))
+
+	if got := rec.Body.String(); got != "alice" {
+		t.Errorf("downstream saw %q, want %q", got, "alice")
 	}
 }

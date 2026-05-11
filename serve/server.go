@@ -125,6 +125,16 @@ type Config struct {
 	// or temp-file stores) and for embedding products that want to
 	// supply a different backend.
 	Store Store
+
+	// Middleware is applied between govega's authMiddleware and the mux
+	// (i.e. as the innermost layer before route handlers run). Embedding
+	// products use this to inject identity from non-JWT sources via
+	// WithClaims, enforce shared-secret headers from trusted proxies,
+	// stash request-scoped data in the context, etc.
+	//
+	// The slice is composed left-to-right: Middleware[0] wraps everything
+	// inside it, so the first entry runs outermost relative to the rest.
+	Middleware []func(http.Handler) http.Handler
 }
 
 // Server is the HTTP server for the Vega dashboard and REST API.
@@ -299,6 +309,19 @@ func (s *Server) getExtractLLM() llm.LLM {
 // resolveAddr binds a TCP listener on addr (or ":0" if addr is empty to
 // let the OS pick a free port). It returns the listener and the resolved
 // address with the actual port filled in.
+// composeMiddleware wraps inner with the given middleware slice such that
+// mw[0] runs outermost (first to see the request) and mw[len-1] runs
+// innermost. Matches the conventional left-to-right reading order: the
+// first middleware listed is the first to execute. Returns inner
+// unchanged when the slice is empty.
+func composeMiddleware(mw []func(http.Handler) http.Handler, inner http.Handler) http.Handler {
+	h := inner
+	for i := len(mw) - 1; i >= 0; i-- {
+		h = mw[i](h)
+	}
+	return h
+}
+
 func resolveAddr(addr string) (net.Listener, string, error) {
 	if addr == "" {
 		addr = ":0"
@@ -788,8 +811,11 @@ func (s *Server) Start(ctx context.Context) error {
 	s.authCfg = authCfg
 	s.controlPlaneURL = strings.TrimRight(os.Getenv("APEX_CONTROL_PLANE_URL"), "/")
 
+	// Compose the request pipeline: CORS → auth → product middleware → mux.
+	// Product middleware runs innermost so any claims injected via
+	// WithClaims are immediately visible to handlers' ClaimsFrom calls.
 	srv := &http.Server{
-		Handler: corsMiddleware(LoadCORSConfig())(authMiddleware(authCfg)(mux)),
+		Handler: corsMiddleware(LoadCORSConfig())(authMiddleware(authCfg)(composeMiddleware(s.cfg.Middleware, mux))),
 	}
 
 	// Start server in goroutine.
