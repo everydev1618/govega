@@ -3,6 +3,9 @@ package dsl
 import (
 	"strings"
 	"testing"
+
+	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/tools"
 )
 
 // TestIrisAgentPopulatesTitle covers govega#59: the orchestrator meta-agent
@@ -21,6 +24,63 @@ func TestIrisAgentPopulatesTitle(t *testing.T) {
 	def = IrisAgent(cfg)
 	if def.Title != "Chief of Staff" {
 		t.Errorf("title override = %q, want %q", def.Title, "Chief of Staff")
+	}
+}
+
+// TestInjectIris_ExposesChannelTools covers govega#57: ARIA (the
+// orchestrator) failed onboarding with "coordination tools / create_channel
+// not available" because the channel tools weren't registered on the
+// interpreter at InjectIris time. Filter takes a snapshot of the registry,
+// so Iris's process schema permanently lacked create_channel even after
+// the tools were registered later in the boot sequence.
+//
+// The contract this test pins: callers must register channel tools BEFORE
+// injecting Iris, and when they do, Iris's tool schema (the slice handed
+// to the LLM) must include create_channel, post_to_channel, and
+// list_my_channels.
+func TestInjectIris_ExposesChannelTools(t *testing.T) {
+	doc := &Document{
+		Name:     "test",
+		Agents:   make(map[string]*Agent),
+		Settings: &Settings{DefaultModel: "test-model"},
+	}
+	mockLLM := &stubLLM{response: "ok"}
+	orch := vega.NewOrchestrator(vega.WithLLM(mockLLM))
+	toolSet := tools.NewTools()
+	toolSet.RegisterBuiltins()
+	interp := &Interpreter{
+		doc:               doc,
+		orch:              orch,
+		agents:            make(map[string]*vega.Process),
+		tools:             toolSet,
+		delegationConfigs: make(map[string]*DelegationDef),
+	}
+	defer interp.Shutdown()
+
+	backend := &mockChannelBackend{}
+	// Correct boot order: register channel tools FIRST, then inject Iris.
+	RegisterChannelTools(interp, backend, nil, nil)
+	if err := InjectIris(interp, DefaultIrisConfig(), backend); err != nil {
+		t.Fatalf("InjectIris: %v", err)
+	}
+
+	proc := interp.Agents()["iris"]
+	if proc == nil || proc.Agent == nil || proc.Agent.Tools == nil {
+		t.Fatal("iris process has no tools")
+	}
+	schema := proc.Agent.Tools.Schema()
+	want := []string{"create_channel", "post_to_channel", "list_my_channels"}
+	for _, w := range want {
+		found := false
+		for _, s := range schema {
+			if s.Name == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("iris tool schema missing %q (got %d tools)", w, len(schema))
+		}
 	}
 }
 

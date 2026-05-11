@@ -613,6 +613,140 @@ func TestHandleGetAgent_OrchestratorTitle(t *testing.T) {
 	}
 }
 
+// TestHandleUpdateAgent_OrchestratorRenamePersistsAsSetting covers
+// govega#58: renaming the orchestrator via PUT must survive a restart.
+// The orchestrator is injected programmatically from cfg.Orchestrator
+// (env-derived) on every boot, so persisting the rename to composed_agents
+// produces a duplicate entry on the next boot instead of overriding the
+// programmatic injection. Persist as settings instead, and on Start apply
+// those settings to cfg before injectIris.
+//
+// This test pins the storage contract: a PUT that renames the orchestrator
+// writes the new identity to the settings table under stable keys and does
+// NOT create a composed_agent record.
+func TestHandleUpdateAgent_OrchestratorRenamePersistsAsSetting(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"aria": {Name: "aria", DisplayName: "ARIA", Title: "Orchestrator", Model: "claude-sonnet-4-6", IsMeta: true},
+	})
+	s.cfg.Orchestrator = dsl.IrisConfig{Name: "aria", DisplayName: "ARIA", Title: "Orchestrator"}
+
+	newName := "atlas"
+	newDisplay := "Atlas"
+	body := mustJSON(t, UpdateAgentRequest{Name: &newName, DisplayName: &newDisplay})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agents/aria", bytes.NewReader(body))
+	req.SetPathValue("name", "aria")
+	w := httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Override settings must be written so a restart picks up the new name.
+	wantSettings := map[string]string{
+		orchestratorNameSettingKey:        "atlas",
+		orchestratorDisplayNameSettingKey: "Atlas",
+	}
+	for key, want := range wantSettings {
+		got, err := s.store.GetSetting(key)
+		if err != nil {
+			t.Fatalf("GetSetting %s: %v", key, err)
+		}
+		if got == nil || got.Value != want {
+			t.Errorf("setting %s = %v, want %q", key, got, want)
+		}
+	}
+
+	// In-memory cfg must follow the rename so isOrchestrator + dispatch
+	// routing immediately reflect the new identity.
+	if s.cfg.Orchestrator.Name != "atlas" {
+		t.Errorf("cfg.Orchestrator.Name = %q, want atlas", s.cfg.Orchestrator.Name)
+	}
+	if s.cfg.Orchestrator.DisplayName != "Atlas" {
+		t.Errorf("cfg.Orchestrator.DisplayName = %q, want Atlas", s.cfg.Orchestrator.DisplayName)
+	}
+
+	// Renamed orchestrator must NOT land in composed_agents — that'd
+	// duplicate it on restart since injectIris also runs unconditionally.
+	composed, _ := s.store.ListComposedAgents()
+	for _, a := range composed {
+		if a.Name == "atlas" || a.Name == "aria" {
+			t.Errorf("orchestrator leaked into composed_agents: %q", a.Name)
+		}
+	}
+
+	// The interpreter must now expose the renamed agent and have removed
+	// the old slug.
+	if _, ok := s.interp.Document().Agents["atlas"]; !ok {
+		t.Error("interpreter has no agent named atlas after rename")
+	}
+	if _, ok := s.interp.Document().Agents["aria"]; ok {
+		t.Error("interpreter still has old aria agent after rename")
+	}
+}
+
+// TestApplyOrchestratorOverrides_FromSettings covers the boot-time side of
+// the contract: when settings carry an override, the helper rewrites
+// cfg.Orchestrator so injectIris uses the persisted identity.
+func TestApplyOrchestratorOverrides_FromSettings(t *testing.T) {
+	store := newTestStore(t)
+	if err := store.UpsertSetting(Setting{Key: orchestratorNameSettingKey, Value: "atlas"}); err != nil {
+		t.Fatalf("UpsertSetting name: %v", err)
+	}
+	if err := store.UpsertSetting(Setting{Key: orchestratorDisplayNameSettingKey, Value: "Atlas"}); err != nil {
+		t.Fatalf("UpsertSetting display_name: %v", err)
+	}
+	if err := store.UpsertSetting(Setting{Key: orchestratorTitleSettingKey, Value: "Chief of Staff"}); err != nil {
+		t.Fatalf("UpsertSetting title: %v", err)
+	}
+
+	cfg := dsl.IrisConfig{Name: "aria", DisplayName: "ARIA", Title: "Orchestrator"}
+	got := applyOrchestratorOverrides(cfg, store)
+	if got.Name != "atlas" {
+		t.Errorf("Name = %q, want atlas", got.Name)
+	}
+	if got.DisplayName != "Atlas" {
+		t.Errorf("DisplayName = %q, want Atlas", got.DisplayName)
+	}
+	if got.Title != "Chief of Staff" {
+		t.Errorf("Title = %q, want Chief of Staff", got.Title)
+	}
+}
+
+// TestApplyOrchestratorOverrides_NoSettingsIsPassthrough confirms the
+// helper is a no-op when no overrides are persisted — the env-derived
+// cfg is returned unchanged.
+func TestApplyOrchestratorOverrides_NoSettingsIsPassthrough(t *testing.T) {
+	store := newTestStore(t)
+	cfg := dsl.IrisConfig{Name: "aria", DisplayName: "ARIA", Title: "Orchestrator"}
+	got := applyOrchestratorOverrides(cfg, store)
+	if got != cfg {
+		t.Errorf("expected passthrough, got %+v", got)
+	}
+}
+
+// TestHandleUpdateAgent_OrchestratorRenameRejectsBuilderConflict guards
+// against accidentally clobbering the builder by renaming the orchestrator
+// to its slug.
+func TestHandleUpdateAgent_OrchestratorRenameRejectsBuilderConflict(t *testing.T) {
+	s := agentTestServer(t, map[string]*dsl.Agent{
+		"aria": {Name: "aria", Model: "claude-sonnet-4-6", IsMeta: true},
+		"hera": {Name: "hera", Model: "claude-sonnet-4-6", IsMeta: true},
+	})
+	s.cfg.Orchestrator = dsl.IrisConfig{Name: "aria"}
+	s.cfg.Builder = dsl.HeraConfig{Name: "hera"}
+
+	conflict := "hera"
+	body := mustJSON(t, UpdateAgentRequest{Name: &conflict})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agents/aria", bytes.NewReader(body))
+	req.SetPathValue("name", "aria")
+	w := httptest.NewRecorder()
+	s.handleUpdateAgent(w, req)
+	if w.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409 for rename collision with builder; body = %s", w.Code, w.Body.String())
+	}
+}
+
 // TestHandleListAgents_IncludesNewFields makes sure the list endpoint
 // surfaces the same new fields (timestamps, icon, avatar_gradient).
 func TestHandleListAgents_IncludesNewFields(t *testing.T) {

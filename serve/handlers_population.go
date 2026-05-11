@@ -289,6 +289,16 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Orchestrator is injected programmatically from cfg.Orchestrator on
+	// every boot, so it does NOT live in composed_agents — persisting a
+	// rename there would just duplicate the agent on the next start.
+	// Route the rename through the settings table and re-inject Iris so
+	// the new identity sticks across restarts (refs govega#58).
+	if name == s.cfg.Orchestrator.Name {
+		s.handleUpdateOrchestrator(w, name, req)
+		return
+	}
+
 	// Look up existing composed agent.
 	composed, err := s.store.ListComposedAgents()
 	if err != nil {

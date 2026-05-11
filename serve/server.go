@@ -412,6 +412,23 @@ func (s *Server) Start(ctx context.Context) error {
 	// Register memory tools before injecting meta-agents so they can use them.
 	RegisterMemoryTools(s.interp)
 
+	// Register channel tools BEFORE injecting meta-agents — both Hera and
+	// Iris list channel tools in their `Tools` slice, and spawnAgent's
+	// Filter() takes a snapshot at injection time. If channel tools register
+	// later, they're silently dropped from the meta-agents' schemas and the
+	// LLM never sees them (refs govega#57 — ARIA hitting "create_channel not
+	// available" during onboarding). Same root cause as the MCP ordering
+	// comment above.
+	channelPostCb, channelReactiveCb := s.buildChannelCallbacks()
+	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb, channelReactiveCb)
+
+	// Apply any persisted orchestrator identity override (refs govega#58).
+	// The override lives in the settings table because the orchestrator is
+	// injected programmatically from cfg.Orchestrator and doesn't have a
+	// composed_agent record. Reading settings here lets a renamed
+	// orchestrator survive a restart.
+	s.cfg.Orchestrator = applyOrchestratorOverrides(s.cfg.Orchestrator, s.store)
+
 	// Inject Hera — the built-in meta-agent for creating agents via chat.
 	s.injectHera()
 
@@ -487,65 +504,6 @@ func (s *Server) Start(ctx context.Context) error {
 	s.interp.SetDelegationCtxDecorator(func(ctx context.Context, agentName string) context.Context {
 		return ContextWithMemory(ctx, s.store, "default", agentName)
 	})
-
-	// Channel post callback — publishes SSE events for real-time updates.
-	channelPostCb := func(channelName, agent, content string, msgID int64, threadID *int64) {
-		cs := s.getOrCreateChannelStream(channelName)
-		if threadID != nil {
-			cs.publish(ChannelEvent{
-				Type:      "channel.thread_reply",
-				Channel:   channelName,
-				MessageID: msgID,
-				ThreadID:  threadID,
-				Agent:     agent,
-				Role:      "assistant",
-				Content:   content,
-			})
-		} else {
-			cs.publish(ChannelEvent{
-				Type:      "channel.message",
-				Channel:   channelName,
-				MessageID: msgID,
-				Agent:     agent,
-				Role:      "assistant",
-				Content:   content,
-			})
-		}
-	}
-
-	// Reactive channel callback — notifies other team members when an
-	// agent posts. Gated by channel mode: only fires when the channel
-	// has opted in via mode="reactive" or mode="social". Default mode
-	// ("" / passive) is a silent log and SSE broadcast — no agents are
-	// auto-activated. Stagger by 2s to avoid hammering the LLM API.
-	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int, triggerMsgID int64) {
-		ch, err := s.store.GetChannel(channelName)
-		if err != nil || ch == nil {
-			return
-		}
-		mode := ch.Mode
-		if mode != "reactive" && mode != "social" {
-			return // passive channel — log only, no agent fanout
-		}
-		social := mode == "social"
-		go func() {
-			first := true
-			for _, member := range team {
-				if member == poster {
-					continue
-				}
-				if !first {
-					time.Sleep(2 * time.Second)
-				}
-				first = false
-				m := member
-				go s.notifyChannelTeammate(channelName, m, poster, message, depth, social, triggerMsgID)
-			}
-		}()
-	}
-
-	// Register channel tools — create_channel and post_to_channel.
-	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb, channelReactiveCb)
 
 	// Create channels defined in the YAML document (idempotent — skips existing).
 	if doc := s.interp.Document(); doc != nil && doc.Channels != nil {
@@ -1332,6 +1290,65 @@ func (s *Server) injectIris() {
 	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox", "list_unassigned_tasks", "list_my_tasks", "assign_task", "create_task", "update_task_status", "comment_on_task"); err != nil {
 		slog.Warn("failed to inject Iris agent", "error", err)
 	}
+}
+
+// buildChannelCallbacks returns the SSE-publish and reactive-fanout
+// callbacks used by RegisterChannelTools and SetChannelBackend. Extracted
+// from Start so callers can register channel tools before injecting
+// meta-agents (refs govega#57). channelPostCb publishes SSE events to the
+// per-channel stream. channelReactiveCb is gated by channel mode and
+// notifies other team members when the channel opts in via
+// mode="reactive" or mode="social".
+func (s *Server) buildChannelCallbacks() (dsl.ChannelPostCallback, dsl.ChannelReactiveCallback) {
+	channelPostCb := func(channelName, agent, content string, msgID int64, threadID *int64) {
+		cs := s.getOrCreateChannelStream(channelName)
+		if threadID != nil {
+			cs.publish(ChannelEvent{
+				Type:      "channel.thread_reply",
+				Channel:   channelName,
+				MessageID: msgID,
+				ThreadID:  threadID,
+				Agent:     agent,
+				Role:      "assistant",
+				Content:   content,
+			})
+		} else {
+			cs.publish(ChannelEvent{
+				Type:      "channel.message",
+				Channel:   channelName,
+				MessageID: msgID,
+				Agent:     agent,
+				Role:      "assistant",
+				Content:   content,
+			})
+		}
+	}
+	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int, triggerMsgID int64) {
+		ch, err := s.store.GetChannel(channelName)
+		if err != nil || ch == nil {
+			return
+		}
+		mode := ch.Mode
+		if mode != "reactive" && mode != "social" {
+			return // passive channel — log only, no agent fanout
+		}
+		social := mode == "social"
+		go func() {
+			first := true
+			for _, member := range team {
+				if member == poster {
+					continue
+				}
+				if !first {
+					time.Sleep(2 * time.Second)
+				}
+				first = false
+				m := member
+				go s.notifyChannelTeammate(channelName, m, poster, message, depth, social, triggerMsgID)
+			}
+		}()
+	}
+	return channelPostCb, channelReactiveCb
 }
 
 // refreshToolSettings loads all settings from the store and sets them on the
