@@ -1169,6 +1169,55 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Per-agent tool toggle — govega#44 ───────────────────────────────
+  /api/v1/agents/{name}/tools/{tool}:
+    patch:
+      tags: [Agents]
+      summary: Enable or disable one tool for an agent
+      description: |
+        Single-tool granularity so the FE can flip one toggle without a
+        read-modify-write of the full tools array racing against a
+        sibling toggle. Idempotent — toggling to the current state
+        returns 200 with the unchanged tool list.
+      operationId: toggleAgentTool
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: tool
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated tool list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, tools]
+                properties:
+                  name:
+                    type: string
+                  tools:
+                    type: array
+                    items: { type: string }
+        "403":
+          description: Builder meta-agent — tools cannot be mutated.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── Per-agent Brain (knowledge attachments) — govega#43 ─────────────
   /api/v1/agents/{name}/brain:
     get:
@@ -2790,6 +2839,16 @@ components:
           type: object
           additionalProperties:
             type: string
+        icon:
+          type: string
+          description: |
+            Lucide icon name for the FE integrations grid (refs govega#44).
+        category:
+          type: string
+          description: |
+            Integration grouping. Taxonomy: communication, dev_tools, crm,
+            project_mgmt, cloud, data, productivity, web. Empty for
+            uncategorized.
 
     ConnectMCPRequest:
       type: object

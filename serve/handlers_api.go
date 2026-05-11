@@ -1052,6 +1052,8 @@ func (s *Server) handleMCPRegistry(w http.ResponseWriter, r *http.Request) {
 			BuiltinGo:        entry.BuiltinGo,
 			Connected:        tools.MCPServerConnected(entry.Name) || tools.BuiltinServerConnected(entry.Name),
 			ExistingSettings: existing,
+			Icon:             entry.Icon,
+			Category:         entry.Category,
 		})
 	}
 

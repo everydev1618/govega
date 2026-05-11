@@ -907,6 +907,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/agents/{name}/brain/{file_id}", s.handleGetAgentBrainFile)
 	mux.HandleFunc("DELETE /api/v1/agents/{name}/brain/{file_id}", s.handleDeleteAgentBrainFile)
 
+	// Per-agent tool toggle — refs govega#44.
+	mux.HandleFunc("PATCH /api/v1/agents/{name}/tools/{tool}", s.handleToggleAgentTool)
+
 	// Inbox
 	mux.HandleFunc("GET /api/v1/inbox", s.handleListInbox)
 	mux.HandleFunc("DELETE /api/v1/inbox/resolved", s.handleClearResolvedInbox)

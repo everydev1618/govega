@@ -41,21 +41,38 @@ type RegistryEntry struct {
 
 	// GitHubRepo is the "owner/repo" for auto-downloading release binaries.
 	GitHubRepo string
+
+	// Icon is a Lucide icon name surfaced on the FE's integrations grid
+	// (refs govega#44). Pairs with Category so apex-host-mgmt's tool
+	// picker can render each integration with a recognizable badge.
+	Icon string
+
+	// Category groups integrations for the FE's tools tab. Suggested
+	// taxonomy: communication, dev_tools, crm, project_mgmt, cloud,
+	// data, productivity, web. Empty string is treated as
+	// "uncategorized" by the FE.
+	Category string
 }
 
-// DefaultRegistry contains well-known MCP servers.
+// DefaultRegistry contains well-known MCP servers. Icon names match the
+// FE's Lucide bundle (lucide-react). Category values match the taxonomy
+// agreed for the apex-host-mgmt tools tab (refs govega#44).
 var DefaultRegistry = map[string]RegistryEntry{
 	"filesystem": {
 		Name:        "filesystem",
 		Description: "File system access (read, write, search, list)",
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-filesystem"},
+		Icon:        "FolderOpen",
+		Category:    "data",
 	},
 	"memory": {
 		Name:        "memory",
 		Description: "Persistent knowledge graph memory",
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-memory"},
+		Icon:        "Brain",
+		Category:    "productivity",
 	},
 	"github": {
 		Name:        "github",
@@ -63,6 +80,8 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-github"},
 		RequiredEnv: []string{"GITHUB_PERSONAL_ACCESS_TOKEN"},
+		Icon:        "Github",
+		Category:    "dev_tools",
 	},
 	"brave-search": {
 		Name:        "brave-search",
@@ -70,6 +89,8 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-brave-search"},
 		RequiredEnv: []string{"BRAVE_API_KEY"},
+		Icon:        "Search",
+		Category:    "web",
 	},
 	"fetch": {
 		Name:        "fetch",
@@ -77,6 +98,8 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-fetch"},
 		BuiltinGo:   true,
+		Icon:        "Globe",
+		Category:    "web",
 	},
 	"postgres": {
 		Name:        "postgres",
@@ -84,12 +107,16 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-postgres"},
 		RequiredEnv: []string{"POSTGRES_CONNECTION_STRING"},
+		Icon:        "Database",
+		Category:    "data",
 	},
 	"sqlite": {
 		Name:        "sqlite",
 		Description: "SQLite database access",
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-sqlite"},
+		Icon:        "Database",
+		Category:    "data",
 	},
 	"slack": {
 		Name:        "slack",
@@ -98,12 +125,16 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Args:        []string{"-y", "@modelcontextprotocol/server-slack"},
 		RequiredEnv: []string{"SLACK_BOT_TOKEN"},
 		OptionalEnv: []string{"SLACK_TEAM_ID"},
+		Icon:        "MessageSquare",
+		Category:    "communication",
 	},
 	"puppeteer": {
 		Name:        "puppeteer",
 		Description: "Browser automation via Puppeteer",
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-puppeteer"},
+		Icon:        "MousePointer",
+		Category:    "web",
 	},
 	"mssql": {
 		Name:        "mssql",
@@ -113,12 +144,16 @@ var DefaultRegistry = map[string]RegistryEntry{
 		RequiredEnv: []string{"SERVER_NAME", "DATABASE_NAME", "SQL_USERNAME", "SQL_PASSWORD"},
 		OptionalEnv: []string{"SQL_PORT", "SQL_AUTH_MODE", "TRUST_SERVER_CERTIFICATE"},
 		BuiltinGo:   true,
+		Icon:        "Database",
+		Category:    "data",
 	},
 	"sequential-thinking": {
 		Name:        "sequential-thinking",
 		Description: "Dynamic reasoning and thought revision",
 		Command:     "npx",
 		Args:        []string{"-y", "@modelcontextprotocol/server-sequential-thinking"},
+		Icon:        "Workflow",
+		Category:    "productivity",
 	},
 	"composio": {
 		Name:        "composio",
@@ -126,12 +161,16 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Transport:   TransportHTTP,
 		URL:         "https://mcp.composio.dev/v2/mcp",
 		RequiredEnv: []string{"COMPOSIO_API_KEY"},
+		Icon:        "Plug",
+		Category:    "productivity",
 	},
 	"gmail": {
 		Name:        "gmail",
 		Description: "Gmail API (list, read, label, archive, draft) — built-in Go server using a BYO OAuth refresh token",
 		BuiltinGo:   true,
 		RequiredEnv: []string{"GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"},
+		Icon:        "Mail",
+		Category:    "communication",
 	},
 }
 
@@ -166,7 +205,8 @@ func entriesEqual(a, b RegistryEntry) bool {
 	if a.Name != b.Name || a.Description != b.Description ||
 		a.Transport != b.Transport || a.Command != b.Command ||
 		a.URL != b.URL || a.BuiltinGo != b.BuiltinGo ||
-		a.GitHubRepo != b.GitHubRepo {
+		a.GitHubRepo != b.GitHubRepo ||
+		a.Icon != b.Icon || a.Category != b.Category {
 		return false
 	}
 	if !stringSliceEq(a.Args, b.Args) || !stringSliceEq(a.RequiredEnv, b.RequiredEnv) ||

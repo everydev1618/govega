@@ -511,6 +511,22 @@ type UpdateRoutineRequest struct {
 	Enabled      *bool     `json:"enabled,omitempty"`
 }
 
+// ToggleAgentToolRequest is the PATCH body for the per-agent tool
+// enable/disable surface (refs govega#44). Single-tool granularity so
+// toggling two tools in quick succession can't race against a
+// read-modify-write of the full tools array.
+type ToggleAgentToolRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// AgentToolsResponse is the response from a per-agent tool toggle. It
+// returns the agent's full current tool list so the FE can confirm the
+// new state without a follow-up GET.
+type AgentToolsResponse struct {
+	Name  string   `json:"name"`
+	Tools []string `json:"tools"`
+}
+
 // UpdateAgentRequest is the request to update an existing composed agent.
 // Pointer-typed fields distinguish "not set" (omit, leave unchanged) from
 // "set to empty" (clear). Slice fields use len() == 0 to mean unchanged.
@@ -539,6 +555,13 @@ type MCPRegistryEntryResponse struct {
 	BuiltinGo        bool              `json:"builtin_go,omitempty"`
 	Connected        bool              `json:"connected"`
 	ExistingSettings map[string]string `json:"existing_settings,omitempty"`
+	// Icon is a Lucide icon name for the FE's integrations grid
+	// (refs govega#44). Empty for entries that haven't been tagged.
+	Icon string `json:"icon,omitempty"`
+	// Category groups integrations on the FE. Suggested taxonomy:
+	// communication, dev_tools, crm, project_mgmt, cloud, data,
+	// productivity, web. Empty for uncategorized.
+	Category string `json:"category,omitempty"`
 }
 
 // ConnectMCPRequest is the request to connect an MCP server.
