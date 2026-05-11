@@ -296,7 +296,41 @@ You cannot modify yourself.`
 type HeraCallbacks struct {
 	OnAgentCreated func(agent *Agent) error
 	OnAgentDeleted func(name string)
+	// OnProvisioning fires at multiple phases during create_agent so the
+	// server can stream SSE events to the FE (refs govega#56). The
+	// callback runs synchronously inside the tool body — keep it cheap.
+	OnProvisioning func(event ProvisioningEvent)
 	ChannelBackend ChannelBackend // optional — auto-creates channels for team leads
+}
+
+// ProvisioningPhase tags where in the create_agent flow an event was emitted.
+type ProvisioningPhase string
+
+const (
+	// ProvisioningPhaseStarted fires as soon as create_agent has a valid name.
+	// Earliest signal the FE can use to render a placeholder card.
+	ProvisioningPhaseStarted ProvisioningPhase = "started"
+	// ProvisioningPhaseFieldSet fires after the agent definition is fully
+	// built (display_name, title, avatar, icon, gradient, tools, team)
+	// but before AddAgent runs. The snapshot carries every user-visible
+	// field so the FE can paint a complete card.
+	ProvisioningPhaseFieldSet ProvisioningPhase = "field_set"
+	// ProvisioningPhaseReady fires after AddAgent succeeds — the agent's
+	// process is spawned and ready to accept work. Persistence may not
+	// have happened yet; the OnAgentCreated callback fires for that.
+	ProvisioningPhaseReady ProvisioningPhase = "ready"
+	// ProvisioningPhaseFailed fires when any step in create_agent returns
+	// an error. Lets the FE clear the placeholder rather than leave it
+	// hanging.
+	ProvisioningPhaseFailed ProvisioningPhase = "failed"
+)
+
+// ProvisioningEvent is one tick in the create_agent lifecycle.
+type ProvisioningEvent struct {
+	Phase    ProvisioningPhase
+	Name     string
+	Snapshot *Agent // non-nil from field_set onward
+	Err      error  // set only when Phase == failed
 }
 
 // HeraAgent returns the DSL agent definition for the agent-builder using cfg.
@@ -391,6 +425,13 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 				return "", fmt.Errorf("cannot create an agent named %q", cfg.Name)
 			}
 
+			emit := func(ev ProvisioningEvent) {
+				if cb != nil && cb.OnProvisioning != nil {
+					cb.OnProvisioning(ev)
+				}
+			}
+			emit(ProvisioningEvent{Phase: ProvisioningPhaseStarted, Name: name})
+
 			displayName, _ := params["display_name"].(string)
 			title, _ := params["title"].(string)
 			description, _ := params["description"].(string)
@@ -476,12 +517,21 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 				}
 			}
 
+			// Snapshot the agent for the field_set event before AddAgent runs.
+			// Send a defensive copy — the caller-held event must survive any
+			// later mutations to agentDef (e.g. team-prompt rewrites).
+			snapshot := *agentDef
+			emit(ProvisioningEvent{Phase: ProvisioningPhaseFieldSet, Name: name, Snapshot: &snapshot})
+
 			if err := interp.AddAgent(name, agentDef); err != nil {
+				emit(ProvisioningEvent{Phase: ProvisioningPhaseFailed, Name: name, Err: err})
 				return "", err
 			}
+			emit(ProvisioningEvent{Phase: ProvisioningPhaseReady, Name: name, Snapshot: &snapshot})
 
 			if cb != nil && cb.OnAgentCreated != nil {
 				if err := cb.OnAgentCreated(agentDef); err != nil {
+					emit(ProvisioningEvent{Phase: ProvisioningPhaseFailed, Name: name, Err: err})
 					return "", fmt.Errorf("persist agent %q: %w", name, err)
 				}
 			}

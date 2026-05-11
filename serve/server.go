@@ -1219,10 +1219,61 @@ func (s *Server) persistYAMLMCPServers() {
 	}
 }
 
+// publishProvisioning publishes one agent-provisioning event over the
+// broker so SSE subscribers (apex-host-mgmt sidebar — refs govega#56)
+// can show a placeholder row that fills in as data arrives. snapshot is
+// optional; when present its user-visible fields are copied into the
+// event payload. errMsg is set only when phase == "failed".
+func (s *Server) publishProvisioning(phase, name string, snapshot *dsl.Agent, errMsg string) {
+	data := map[string]any{"phase": phase}
+	if snapshot != nil {
+		if snapshot.DisplayName != "" {
+			data["display_name"] = snapshot.DisplayName
+		}
+		if snapshot.Title != "" {
+			data["title"] = snapshot.Title
+		}
+		if snapshot.Description != "" {
+			data["description"] = snapshot.Description
+		}
+		if snapshot.Avatar != "" {
+			data["avatar"] = snapshot.Avatar
+		}
+		if snapshot.Icon != "" {
+			data["icon"] = snapshot.Icon
+		}
+		if len(snapshot.AvatarGradient) > 0 {
+			data["avatar_gradient"] = snapshot.AvatarGradient
+		}
+		if snapshot.Model != "" {
+			data["model"] = snapshot.Model
+		}
+		if len(snapshot.Team) > 0 {
+			data["team"] = snapshot.Team
+		}
+	}
+	if errMsg != "" {
+		data["error"] = errMsg
+	}
+	s.broker.Publish(BrokerEvent{
+		Type:      "agent.provisioning",
+		Agent:     name,
+		Data:      data,
+		Timestamp: time.Now(),
+	})
+}
+
 // injectHera adds the Hera meta-agent to the interpreter with persistence
 // callbacks that keep composed agents in sync with the SQLite store.
 func (s *Server) injectHera() {
 	cb := &dsl.HeraCallbacks{
+		OnProvisioning: func(ev dsl.ProvisioningEvent) {
+			errMsg := ""
+			if ev.Err != nil {
+				errMsg = ev.Err.Error()
+			}
+			s.publishProvisioning(string(ev.Phase), ev.Name, ev.Snapshot, errMsg)
+		},
 		OnAgentCreated: func(agent *dsl.Agent) error {
 			var skills []string
 			if agent.Skills != nil {

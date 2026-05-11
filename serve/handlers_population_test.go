@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,7 @@ func populationTestServer(t *testing.T) *Server {
 	return &Server{
 		store:   newTestStore(t),
 		interp:  interp,
+		broker:  NewEventBroker(),
 		streams: map[string]*activeStream{},
 		cfg: Config{
 			Builder:      dsl.HeraConfig{Name: "hera"},
@@ -191,6 +193,133 @@ func TestHandleCreateAgent_TeamAgentStillGetsDelegate(t *testing.T) {
 	}
 	if !hasDelegate {
 		t.Errorf("team agent missing delegate tool; tools = %v", def.Tools)
+	}
+}
+
+// TestInjectHera_WiresProvisioningCallback covers the second half of
+// govega#56: when ARIA delegates "spin up a team" to Hera, the FE needs
+// the same SSE provisioning events as when an agent is created via HTTP.
+// Server.injectHera registers an OnProvisioning callback that forwards
+// to the broker; this test exercises that wiring end-to-end by invoking
+// Hera's create_agent tool and confirming agent.provisioning events fire.
+func TestInjectHera_WiresProvisioningCallback(t *testing.T) {
+	s := populationTestServer(t)
+	s.injectHera()
+	sub := s.broker.Subscribe()
+	defer s.broker.Unsubscribe(sub)
+
+	_, err := s.interp.Tools().Execute(req(t), "create_agent", map[string]any{
+		"name":         "marcus",
+		"display_name": "Marcus",
+		"title":        "Engineer",
+		"system":       "You are Marcus.",
+		"model":        "claude-sonnet-4-6",
+		"avatar":       "m1",
+	})
+	if err != nil {
+		t.Fatalf("create_agent: %v", err)
+	}
+
+	got := drainBroker(sub)
+	if !hasProvisioningPhase(got, "marcus", "started") {
+		t.Errorf("missing started event; got = %+v", got)
+	}
+	if !hasProvisioningPhase(got, "marcus", "ready") {
+		t.Errorf("missing ready event; got = %+v", got)
+	}
+}
+
+// req returns a placeholder context for tool calls in tests. Hera's
+// create_agent doesn't read process info, but the signature wants a context.
+func req(t *testing.T) context.Context {
+	t.Helper()
+	return context.Background()
+}
+
+// drainBroker pulls all events from a broker subscription without blocking.
+func drainBroker(ch <-chan BrokerEvent) []BrokerEvent {
+	var out []BrokerEvent
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				return out
+			}
+			out = append(out, ev)
+		default:
+			return out
+		}
+	}
+}
+
+// hasProvisioningPhase reports whether the slice contains an
+// agent.provisioning event for the given agent in the given phase.
+func hasProvisioningPhase(events []BrokerEvent, agent, phase string) bool {
+	for _, ev := range events {
+		if ev.Type != "agent.provisioning" || ev.Agent != agent {
+			continue
+		}
+		if data, ok := ev.Data.(map[string]any); ok {
+			if p, _ := data["phase"].(string); p == phase {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestHandleCreateAgent_EmitsProvisioningEvents covers govega#56: the
+// HTTP create-agent path must publish provisioning events over the SSE
+// broker so the apex-host-mgmt sidebar can render a placeholder row that
+// fills in as data arrives. Today the FE sees nothing until the agent
+// pops into the list. We require at least a "started" and a "ready"
+// event with type prefix "agent.provisioning".
+func TestHandleCreateAgent_EmitsProvisioningEvents(t *testing.T) {
+	s := populationTestServer(t)
+	sub := s.broker.Subscribe()
+	defer s.broker.Unsubscribe(sub)
+
+	body := `{"name":"sofia","display_name":"Sofia","model":"claude-sonnet-4-6"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	s.handleCreateAgent(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Drain the broker channel (non-blocking — events have already been
+	// published synchronously inside the handler).
+	var events []BrokerEvent
+	for {
+		select {
+		case ev, ok := <-sub:
+			if !ok {
+				goto done
+			}
+			events = append(events, ev)
+		default:
+			goto done
+		}
+	}
+done:
+
+	hasPhase := func(phase string) bool {
+		for _, ev := range events {
+			if ev.Type == "agent.provisioning" && ev.Agent == "sofia" {
+				if data, ok := ev.Data.(map[string]any); ok {
+					if p, _ := data["phase"].(string); p == phase {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	if !hasPhase("started") {
+		t.Errorf("missing agent.provisioning started event; events = %+v", events)
+	}
+	if !hasPhase("ready") {
+		t.Errorf("missing agent.provisioning ready event; events = %+v", events)
 	}
 }
 

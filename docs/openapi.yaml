@@ -1541,6 +1541,21 @@ paths:
         Server-Sent Events stream for real-time orchestration updates.
         Events include process lifecycle, agent status, workflow completions, etc.
         Sends a heartbeat comment every 30 seconds.
+
+        Notable event types:
+          * `agent.created` — agent persisted and ready (terminal).
+          * `agent.deleted` — agent removed.
+          * `agent.provisioning` — fired during create_agent so FEs can
+            render placeholder cards (refs govega#56). `data.phase` is
+            one of:
+              - `started` — earliest signal, only `agent` is known.
+              - `field_set` — `data` carries the full agent snapshot
+                (display_name, title, description, avatar, icon,
+                avatar_gradient, model, team).
+              - `ready` — process spawned; persistence may not have
+                landed yet (use `agent.created` for terminal state).
+              - `failed` — provisioning aborted; `data.error` carries
+                the message. FEs should clear the placeholder.
       operationId: sseEvents
       responses:
         "200":

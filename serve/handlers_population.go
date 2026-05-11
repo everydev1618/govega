@@ -151,6 +151,13 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Emit a provisioning "started" event right away so the FE can render
+	// a placeholder row even before defaults / skill registration / team
+	// wiring complete (refs govega#56). The matching "ready" event fires
+	// once AddAgent succeeds, and the existing agent.created event fires
+	// after persistence.
+	s.publishProvisioning("started", req.Name, nil, "")
+
 	// Build system prompt from persona if specified.
 	system := req.System
 	if req.Persona != "" && system == "" {
@@ -231,10 +238,17 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Temperature:    req.Temperature,
 	}
 
+	// Send a field_set snapshot before AddAgent runs so SSE subscribers
+	// can paint the card with the full identity that the FE doesn't get
+	// to see incrementally for HTTP-created agents (refs govega#56).
+	s.publishProvisioning("field_set", req.Name, agentDef, "")
+
 	if err := s.interp.AddAgent(req.Name, agentDef); err != nil {
+		s.publishProvisioning("failed", req.Name, nil, err.Error())
 		writeJSON(w, http.StatusConflict, ErrorResponse{Error: err.Error()})
 		return
 	}
+	s.publishProvisioning("ready", req.Name, agentDef, "")
 
 	// Persist to SQLite.
 	now := time.Now().UTC()

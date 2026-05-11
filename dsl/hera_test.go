@@ -415,6 +415,118 @@ func TestHeraAgentDefaults(t *testing.T) {
 	}
 }
 
+// TestHeraCreateAgent_EmitsProvisioningEvents covers govega#56: the FE
+// shows a placeholder agent card the moment provisioning starts and
+// progressively fills it in as data lands. Hera's create_agent tool must
+// emit at least three events to the caller-provided OnProvisioning hook:
+//
+//  1. phase=started — earliest signal; carries only the agent name.
+//  2. phase=field_set — after the agent metadata is built; carries the
+//     full snapshot so the FE can render the card.
+//  3. phase=ready — after AddAgent has spawned the process and before
+//     persistence completes.
+//
+// Order matters — the FE relies on "started" preceding "field_set".
+func TestHeraCreateAgent_EmitsProvisioningEvents(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	var events []ProvisioningEvent
+	cb := &HeraCallbacks{
+		OnProvisioning: func(ev ProvisioningEvent) {
+			events = append(events, ev)
+		},
+	}
+	RegisterHeraTools(interp, DefaultHeraConfig(), cb)
+	ctx := context.Background()
+
+	_, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
+		"name":         "sofia",
+		"display_name": "Sofia",
+		"title":        "Content Strategist",
+		"system":       "You are Sofia.",
+		"model":        "test-model",
+		"avatar":       "f1",
+	})
+	if err != nil {
+		t.Fatalf("create_agent: %v", err)
+	}
+
+	wantPhases := []ProvisioningPhase{
+		ProvisioningPhaseStarted,
+		ProvisioningPhaseFieldSet,
+		ProvisioningPhaseReady,
+	}
+	if len(events) < len(wantPhases) {
+		t.Fatalf("got %d events, want at least %d: %+v", len(events), len(wantPhases), events)
+	}
+	for i, want := range wantPhases {
+		if events[i].Phase != want {
+			t.Errorf("event[%d].Phase = %q, want %q", i, events[i].Phase, want)
+		}
+		if events[i].Name != "sofia" {
+			t.Errorf("event[%d].Name = %q, want sofia", i, events[i].Name)
+		}
+	}
+
+	// field_set must carry a snapshot the FE can paint with.
+	fieldSet := events[1]
+	if fieldSet.Snapshot == nil {
+		t.Fatal("field_set event has no Snapshot")
+	}
+	if fieldSet.Snapshot.DisplayName != "Sofia" {
+		t.Errorf("snapshot DisplayName = %q, want Sofia", fieldSet.Snapshot.DisplayName)
+	}
+	if fieldSet.Snapshot.Title != "Content Strategist" {
+		t.Errorf("snapshot Title = %q, want Content Strategist", fieldSet.Snapshot.Title)
+	}
+	if fieldSet.Snapshot.Icon == "" {
+		t.Error("snapshot Icon empty — visual identity defaults should have applied")
+	}
+}
+
+// TestHeraCreateAgent_EmitsFailedOnError ensures the FE can clear the
+// placeholder when provisioning fails (e.g. AddAgent returns an error
+// because the name already exists).
+func TestHeraCreateAgent_EmitsFailedOnError(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+	// Pre-register the agent so AddAgent fails with a duplicate.
+	if err := interp.AddAgent("sofia", &Agent{Name: "sofia", Model: "test-model", System: "..."}); err != nil {
+		t.Fatalf("preload: %v", err)
+	}
+
+	var events []ProvisioningEvent
+	cb := &HeraCallbacks{
+		OnProvisioning: func(ev ProvisioningEvent) {
+			events = append(events, ev)
+		},
+	}
+	RegisterHeraTools(interp, DefaultHeraConfig(), cb)
+	ctx := context.Background()
+
+	_, err := interp.Tools().Execute(ctx, "create_agent", map[string]any{
+		"name":   "sofia",
+		"system": "You are Sofia.",
+		"model":  "test-model",
+		"avatar": "f1",
+	})
+	if err == nil {
+		t.Fatal("expected error from duplicate AddAgent")
+	}
+	// Final event must be failed for the agent we tried to create.
+	if len(events) == 0 {
+		t.Fatal("no provisioning events emitted")
+	}
+	last := events[len(events)-1]
+	if last.Phase != ProvisioningPhaseFailed {
+		t.Errorf("last event phase = %q, want failed", last.Phase)
+	}
+	if last.Name != "sofia" {
+		t.Errorf("last event name = %q, want sofia", last.Name)
+	}
+}
+
 // TestHeraCreateAgent_DefaultsIconAndGradient covers govega#60: agents
 // auto-spawned by the orchestrator (via Hera) must come with a populated
 // icon + avatar_gradient so the FE doesn't render blank placeholders.
