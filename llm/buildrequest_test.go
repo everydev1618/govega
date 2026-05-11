@@ -176,3 +176,108 @@ func TestBuildRequestNoBudgetTokens(t *testing.T) {
 		t.Errorf("budget_tokens must not be serialized: %s", body)
 	}
 }
+
+// TestBuildRequestCachesTrailingMessage covers govega#3: caching system +
+// last tool def isn't enough for long-running agents where the real cost
+// is in tool_result content (Galley loads full chapter text). Adding a
+// third cache breakpoint on the trailing message implements the rolling
+// cache pattern — each call writes cache at the end of conversation, the
+// next call reads it.
+//
+// Contract:
+//   * Last message with string content → converted to a single text block
+//     carrying cache_control.
+//   * Last message with structured blocks (tool_use / tool_result) →
+//     cache_control on the LAST block.
+//   * Existing system + last-tool breakpoints stay.
+func TestBuildRequestCachesTrailingMessage(t *testing.T) {
+	t.Run("string content trailing message", func(t *testing.T) {
+		a := newTestClient(WithModel("claude-sonnet-4-6"))
+		req := a.buildRequest([]Message{
+			{Role: RoleSystem, Content: "you are riley."},
+			{Role: RoleUser, Content: "what's the weather?"},
+		}, nil, false)
+
+		if len(req.Messages) != 1 {
+			t.Fatalf("messages len = %d, want 1", len(req.Messages))
+		}
+		// String content must have been promoted to a single text block
+		// with cache_control so the API accepts the marker.
+		blocks, ok := req.Messages[0].Content.([]any)
+		if !ok {
+			t.Fatalf("trailing message Content = %T, want []any with cache_control", req.Messages[0].Content)
+		}
+		if len(blocks) != 1 {
+			t.Fatalf("blocks len = %d, want 1", len(blocks))
+		}
+		first, _ := blocks[0].(map[string]any)
+		if first["type"] != "text" {
+			t.Errorf("block type = %v, want text", first["type"])
+		}
+		if first["text"] != "what's the weather?" {
+			t.Errorf("block text = %v, want literal user message", first["text"])
+		}
+		if _, ok := first["cache_control"].(map[string]any); !ok {
+			t.Errorf("trailing block missing cache_control: %+v", first)
+		}
+	})
+
+	t.Run("structured tool_result trailing block", func(t *testing.T) {
+		a := newTestClient(WithModel("claude-sonnet-4-6"))
+		toolResult := `<tool_result tool_use_id="x">chapter body</tool_result>`
+		req := a.buildRequest([]Message{
+			{Role: RoleSystem, Content: "you are the writing guide."},
+			{Role: RoleUser, Content: "read chapter 1"},
+			{Role: RoleAssistant, Content: `<tool_use id="x" name="read_chapter">{"n":1}</tool_use>`},
+			{Role: RoleUser, Content: toolResult},
+		}, nil, false)
+
+		if len(req.Messages) == 0 {
+			t.Fatal("no messages built")
+		}
+		last := req.Messages[len(req.Messages)-1]
+		blocks, ok := last.Content.([]any)
+		if !ok {
+			t.Fatalf("last message Content = %T, want []any of blocks", last.Content)
+		}
+		lastBlock, _ := blocks[len(blocks)-1].(map[string]any)
+		if lastBlock["type"] != "tool_result" {
+			t.Fatalf("last block type = %v, want tool_result", lastBlock["type"])
+		}
+		if _, ok := lastBlock["cache_control"].(map[string]any); !ok {
+			t.Errorf("tool_result missing cache_control: %+v", lastBlock)
+		}
+	})
+
+	t.Run("existing system + last-tool breakpoints preserved", func(t *testing.T) {
+		a := newTestClient(WithModel("claude-sonnet-4-6"))
+		tools := []ToolSchema{
+			{Name: "read_file", Description: "read", InputSchema: map[string]any{"type": "object"}},
+			{Name: "write_file", Description: "write", InputSchema: map[string]any{"type": "object"}},
+		}
+		req := a.buildRequest([]Message{
+			{Role: RoleSystem, Content: "sys"},
+			{Role: RoleUser, Content: "hi"},
+		}, tools, false)
+
+		blocks, _ := req.System.([]systemBlock)
+		if len(blocks) == 0 || blocks[0].CacheControl == nil {
+			t.Error("system prompt cache_control regressed")
+		}
+		if len(req.Tools) != 2 {
+			t.Fatalf("tools len = %d, want 2", len(req.Tools))
+		}
+		if req.Tools[1].CacheControl == nil {
+			t.Error("last tool cache_control regressed")
+		}
+		if req.Tools[0].CacheControl != nil {
+			t.Error("non-last tool unexpectedly has cache_control")
+		}
+	})
+
+	t.Run("no messages is safe", func(t *testing.T) {
+		a := newTestClient(WithModel("claude-sonnet-4-6"))
+		// system-only message should still produce a valid request.
+		_ = a.buildRequest([]Message{{Role: RoleSystem, Content: "sys"}}, nil, false)
+	})
+}

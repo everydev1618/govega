@@ -416,6 +416,15 @@ func (a *AnthropicLLM) buildRequestCtx(ctx context.Context, messages []Message, 
 			Content: msg.Content,
 		})
 	}
+	// Cache the trailing message so the next call hits cache up through
+	// this turn (refs govega#3). Standard rolling pattern: each call
+	// writes cache at the end of the conversation; the next call reads
+	// it. Works whether the last message is a plain text turn or a
+	// structured tool_result. Caps total breakpoints at 4 (Anthropic
+	// limit) — we hold 3: system, last tool, trailing message.
+	if n := len(anthropicMsgs); n > 0 {
+		markTrailingMessageForCache(&anthropicMsgs[n-1])
+	}
 	req.Messages = anthropicMsgs
 
 	// Convert tools and mark the last one with cache_control to cache the
@@ -435,6 +444,36 @@ func (a *AnthropicLLM) buildRequestCtx(ctx context.Context, messages []Message, 
 	}
 
 	return req
+}
+
+// markTrailingMessageForCache adds an ephemeral cache_control marker to
+// the last content block in msg (refs govega#3). For string content the
+// message is promoted to a single text block carrying the marker — the
+// API rejects cache_control on a bare string. For structured content
+// the marker lands on the trailing block (typically a tool_result or
+// assistant text). This is the third breakpoint alongside system and
+// the last tool definition.
+func markTrailingMessageForCache(msg *anthropicMsg) {
+	switch content := msg.Content.(type) {
+	case string:
+		if content == "" {
+			return
+		}
+		msg.Content = []any{map[string]any{
+			"type":          "text",
+			"text":          content,
+			"cache_control": map[string]any{"type": "ephemeral"},
+		}}
+	case []any:
+		if len(content) == 0 {
+			return
+		}
+		last, ok := content[len(content)-1].(map[string]any)
+		if !ok {
+			return
+		}
+		last["cache_control"] = map[string]any{"type": "ephemeral"}
+	}
 }
 
 // parseToolBlocks converts message text containing XML tool_use/tool_result
