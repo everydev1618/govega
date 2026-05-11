@@ -102,6 +102,12 @@ type Store interface {
 	// MarkScheduledJobRun stamps the supplied time on last_run_at.
 	MarkScheduledJobRun(name string, at time.Time) error
 
+	// AgentSpendInPeriod returns the sum of cost_usd across the latest
+	// snapshot of every process for agentName whose started_at falls
+	// inside [from, to). When from/to are zero, the bound is treated
+	// as unbounded on that side.
+	AgentSpendInPeriod(agentName string, from, to time.Time) (float64, error)
+
 	// InsertAgentBrainFile persists an attachment for the given agent.
 	// content is read in-memory; callers must enforce size limits.
 	InsertAgentBrainFile(f AgentBrainFile) error

@@ -732,6 +732,40 @@ func (s *SQLiteStore) ListScheduledJobs() ([]ScheduledJob, error) {
 	return jobs, rows.Err()
 }
 
+// AgentSpendInPeriod sums cost_usd across the latest snapshot of every
+// process for agentName, optionally bounded by [from, to). Zero from/to
+// is treated as unbounded on that side. Used by the per-agent spend
+// rollup endpoint (refs govega#47) so the FE doesn't have to fan out
+// /processes per agent to render the observed_spend column.
+func (s *SQLiteStore) AgentSpendInPeriod(agentName string, from, to time.Time) (float64, error) {
+	q := `
+SELECT COALESCE(SUM(cost_usd), 0)
+FROM process_snapshots ps
+JOIN (
+    SELECT process_id, MAX(id) AS max_id
+    FROM process_snapshots
+    WHERE agent_name = ?
+    GROUP BY process_id
+) latest ON ps.id = latest.max_id`
+	args := []any{agentName}
+	if !from.IsZero() {
+		q += ` WHERE COALESCE(ps.started_at, ps.snapshot_at) >= ?`
+		args = append(args, from)
+		if !to.IsZero() {
+			q += ` AND COALESCE(ps.started_at, ps.snapshot_at) < ?`
+			args = append(args, to)
+		}
+	} else if !to.IsZero() {
+		q += ` WHERE COALESCE(ps.started_at, ps.snapshot_at) < ?`
+		args = append(args, to)
+	}
+	var total float64
+	if err := s.db.QueryRow(q, args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // InsertAgentBrainFile persists an agent-scoped knowledge attachment
 // (refs govega#43). Content is stored inline; callers must enforce size
 // limits before invoking.

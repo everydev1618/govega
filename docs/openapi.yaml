@@ -1218,6 +1218,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Per-agent spend rollup — govega#47 ──────────────────────────────
+  /api/v1/agents/{name}/spend:
+    get:
+      tags: [Agents]
+      summary: Observed spend rollup for one agent
+      description: |
+        Server-aggregated cost_usd across the latest snapshot of every
+        process for the agent. Lets the FE render the observed_spend
+        column without fanning out /api/v1/processes per agent
+        (O(processes) per pageview).
+
+        `period=current` (default) is the current calendar month UTC.
+        `period=all` returns lifetime spend.
+      operationId: getAgentSpend
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [current, all]
+            default: current
+      responses:
+        "200":
+          description: Spend rollup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSpend"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── Per-agent Brain (knowledge attachments) — govega#43 ─────────────
   /api/v1/agents/{name}/brain:
     get:
@@ -3323,6 +3359,29 @@ components:
         created_at:
           type: string
           format: date-time
+
+    # Per-agent spend rollup — govega#47
+    AgentSpend:
+      type: object
+      required: [agent, observed_spend, period, period_start, period_end]
+      properties:
+        agent:
+          type: string
+        observed_spend:
+          type: number
+          format: double
+          description: Sum of cost_usd across the latest snapshot of every process for the agent in the period.
+        period:
+          type: string
+          enum: [current, all]
+        period_start:
+          type: string
+          format: date-time
+          description: Zero value when period=all.
+        period_end:
+          type: string
+          format: date-time
+          description: Zero value when period=all.
 
     # Per-agent Brain attachments — govega#43
     BrainFile:

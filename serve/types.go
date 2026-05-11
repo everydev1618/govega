@@ -511,6 +511,17 @@ type UpdateRoutineRequest struct {
 	Enabled      *bool     `json:"enabled,omitempty"`
 }
 
+// AgentSpendResponse is the wire shape for the per-agent spend rollup
+// endpoint (refs govega#47). Aggregates cost_usd across the latest
+// snapshot of every process for the agent within the queried period.
+type AgentSpendResponse struct {
+	Agent         string    `json:"agent"`
+	ObservedSpend float64   `json:"observed_spend"`
+	Period        string    `json:"period"`
+	PeriodStart   time.Time `json:"period_start"`
+	PeriodEnd     time.Time `json:"period_end"`
+}
+
 // ToggleAgentToolRequest is the PATCH body for the per-agent tool
 // enable/disable surface (refs govega#44). Single-tool granularity so
 // toggling two tools in quick succession can't race against a
