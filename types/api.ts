@@ -1252,13 +1252,17 @@ export interface components {
              *       last task")
              *     - `running` — process is actively working on a task right now
              *     - `error` — last terminal state was a failure or timeout
-             *
-             *     Intentionally a subset of the apex-host-mgmt mental model;
-             *     govega's process model has no provisioning/paused/stopping
-             *     concepts. New states will be added additively.
+             *     - `provisioning` — RESERVED. Agent record exists but the
+             *       underlying environment isn't ready to accept work yet
+             *       (workspace setup, dependency install, MCP boot, first-run
+             *       hooks). govega currently creates agents synchronously and
+             *       **does not emit this value today** — the `POST /agents`
+             *       response duration covers the provisioning window. Frontends
+             *       should handle it now as a future-stable contract for when
+             *       async creation lands.
              * @enum {string}
              */
-            status?: "idle" | "running" | "error";
+            status?: "idle" | "running" | "error" | "provisioning";
             /**
              * @description Orthogonal "is anything wrong?" signal, independent of
              *     lifecycle status. Always present.

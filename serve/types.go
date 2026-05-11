@@ -60,6 +60,14 @@ const (
 	AgentStatusRunning AgentStatus = "running"
 	// AgentStatusError: last terminal state was a failure or timeout.
 	AgentStatusError AgentStatus = "error"
+	// AgentStatusProvisioning: agent record exists but the underlying
+	// environment isn't ready to accept work yet (workspace setup,
+	// dependency install, MCP boot, first-run hooks). RESERVED — govega
+	// currently creates agents synchronously and never emits this value.
+	// Frontends can handle it today as future-stable for when async
+	// creation lands; until then the POST /agents response duration
+	// covers the provisioning window. (refs #53)
+	AgentStatusProvisioning AgentStatus = "provisioning"
 )
 
 // AgentHealth is an orthogonal "is anything wrong?" axis. Lifecycle status
