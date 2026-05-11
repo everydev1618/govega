@@ -2294,6 +2294,29 @@ components:
         message:
           type: string
 
+    ToolActivity:
+      type: object
+      required: [tool_name]
+      description: |
+        A completed tool call captured during a streaming assistant turn.
+        Stored alongside the final message so loading chat history
+        reproduces the live tool-call timeline.
+      properties:
+        tool_call_id:
+          type: string
+        tool_name:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        result:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        error:
+          type: string
+
     ChatMessage:
       type: object
       required: [id, role, content, created_at]
@@ -2315,6 +2338,16 @@ components:
           type: string
           format: date-time
           description: When the message was persisted (RFC 3339).
+        tool_activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolActivity"
+          description: |
+            Completed tool calls from the assistant turn that produced
+            this message. Empty for user messages and for assistant
+            messages that didn't invoke tools. Captured from the
+            streaming events at persist time, so loading history shows
+            the same tool timeline that was rendered live.
 
     ChatStatusResponse:
       type: object
@@ -2803,6 +2836,13 @@ components:
           items:
             type: string
           description: Distinct sender names across all replies in this thread. Useful for "X and Y replied" indicators.
+        tool_activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolActivity"
+          description: |
+            Completed tool calls from the assistant turn that produced
+            this message. Same shape as ChatMessage.tool_activities.
 
     CreateChannelRequest:
       type: object

@@ -1704,7 +1704,7 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 					if ch.Name == "general" || ch.Name == "random" {
 						continue
 					}
-					msgID, postErr := i.channelBackend.InsertChannelMessage(ch.ID, agentName, "assistant", summary, nil, "", agentName)
+					msgID, postErr := i.channelBackend.InsertChannelMessage(ch.ID, agentName, "assistant", summary, nil, "", agentName, nil)
 					if postErr == nil && i.channelPostCb != nil {
 						i.channelPostCb(ch.Name, agentName, summary, msgID, nil)
 					}

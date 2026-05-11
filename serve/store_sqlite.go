@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 	_ "modernc.org/sqlite"
 )
@@ -93,11 +94,12 @@ func (s *SQLiteStore) Init() error {
 	);
 
 	CREATE TABLE IF NOT EXISTS chat_messages (
-		id         INTEGER PRIMARY KEY AUTOINCREMENT,
-		agent      TEXT NOT NULL,
-		role       TEXT NOT NULL,
-		content    TEXT NOT NULL,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		agent           TEXT NOT NULL,
+		role            TEXT NOT NULL,
+		content         TEXT NOT NULL,
+		tool_activities TEXT NOT NULL DEFAULT '[]',
+		created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS user_memory (
@@ -176,14 +178,15 @@ func (s *SQLiteStore) Init() error {
 	);
 
 	CREATE TABLE IF NOT EXISTS channel_messages (
-		id          INTEGER PRIMARY KEY AUTOINCREMENT,
-		channel_id  TEXT NOT NULL,
-		thread_id   INTEGER,
-		agent       TEXT DEFAULT '',
-		role        TEXT NOT NULL,
-		content     TEXT NOT NULL,
-		metadata    TEXT DEFAULT '{}',
-		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		channel_id      TEXT NOT NULL,
+		thread_id       INTEGER,
+		agent           TEXT DEFAULT '',
+		role            TEXT NOT NULL,
+		content         TEXT NOT NULL,
+		metadata        TEXT DEFAULT '{}',
+		tool_activities TEXT NOT NULL DEFAULT '[]',
+		created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
 	);
 
@@ -270,6 +273,12 @@ func (s *SQLiteStore) Init() error {
 
 	// Migrate: add description column for the user-facing body text.
 	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN description TEXT NOT NULL DEFAULT ''`)
+
+	// Migrate: add tool_activities column to chat_messages + channel_messages.
+	// Stores a JSON array of completed tool calls captured during the
+	// streaming turn, so loaded history reproduces the live timeline.
+	s.db.Exec(`ALTER TABLE chat_messages ADD COLUMN tool_activities TEXT NOT NULL DEFAULT '[]'`)
+	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN tool_activities TEXT NOT NULL DEFAULT '[]'`)
 
 	// Migrate: add mode column to channels if missing.
 	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
@@ -512,11 +521,20 @@ func (s *SQLiteStore) DeleteComposedAgent(name string) error {
 	return nil
 }
 
-// InsertChatMessage persists a chat message for an agent.
-func (s *SQLiteStore) InsertChatMessage(agent, role, content string) error {
+// InsertChatMessage persists a chat message for an agent. Pass nil
+// activities for user messages or for assistant messages with no tool
+// calls. The streaming path passes the result of CollectToolActivities
+// so reloaded history reproduces the live tool-call timeline.
+func (s *SQLiteStore) InsertChatMessage(agent, role, content string, activities []vega.ToolActivity) error {
+	activitiesJSON := []byte("[]")
+	if len(activities) > 0 {
+		if b, err := json.Marshal(activities); err == nil {
+			activitiesJSON = b
+		}
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO chat_messages (agent, role, content) VALUES (?, ?, ?)`,
-		agent, role, content,
+		`INSERT INTO chat_messages (agent, role, content, tool_activities) VALUES (?, ?, ?, ?)`,
+		agent, role, content, string(activitiesJSON),
 	)
 	return err
 }
@@ -524,7 +542,7 @@ func (s *SQLiteStore) InsertChatMessage(agent, role, content string) error {
 // ListChatMessages returns all chat messages for an agent, oldest first.
 func (s *SQLiteStore) ListChatMessages(agent string) ([]ChatMessage, error) {
 	rows, err := s.db.Query(
-		`SELECT id, role, content, created_at FROM chat_messages WHERE agent = ? ORDER BY id ASC`, agent,
+		`SELECT id, role, content, tool_activities, created_at FROM chat_messages WHERE agent = ? ORDER BY id ASC`, agent,
 	)
 	if err != nil {
 		return nil, err
@@ -534,8 +552,12 @@ func (s *SQLiteStore) ListChatMessages(agent string) ([]ChatMessage, error) {
 	var msgs []ChatMessage
 	for rows.Next() {
 		var m ChatMessage
-		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+		var activitiesJSON string
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &activitiesJSON, &m.CreatedAt); err != nil {
 			return nil, err
+		}
+		if activitiesJSON != "" && activitiesJSON != "[]" {
+			_ = json.Unmarshal([]byte(activitiesJSON), &m.ToolActivities)
 		}
 		msgs = append(msgs, m)
 	}
@@ -1254,13 +1276,20 @@ func (s *SQLiteStore) FindChannelForAgents(agent1, agent2 string) (string, strin
 }
 
 // InsertChannelMessage inserts a message into a channel and returns its ID.
-func (s *SQLiteStore) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string) (int64, error) {
+// Pass nil for `activities` when there are no tool calls to record.
+func (s *SQLiteStore) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string, activities []vega.ToolActivity) (int64, error) {
 	if metadata == "" {
 		metadata = "{}"
 	}
+	activitiesJSON := []byte("[]")
+	if len(activities) > 0 {
+		if b, err := json.Marshal(activities); err == nil {
+			activitiesJSON = b
+		}
+	}
 	result, err := s.db.Exec(
-		`INSERT INTO channel_messages (channel_id, thread_id, agent, role, content, metadata, sender) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		channelID, threadID, agent, role, content, metadata, sender,
+		`INSERT INTO channel_messages (channel_id, thread_id, agent, role, content, metadata, sender, tool_activities) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		channelID, threadID, agent, role, content, metadata, sender, string(activitiesJSON),
 	)
 	if err != nil {
 		return 0, err
@@ -1276,7 +1305,7 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 		limit = 100
 	}
 	rows, err := s.db.Query(
-		`SELECT m.id, m.channel_id, m.thread_id, m.agent, m.sender, m.role, m.content, m.metadata, m.created_at,
+		`SELECT m.id, m.channel_id, m.thread_id, m.agent, m.sender, m.role, m.content, m.metadata, m.tool_activities, m.created_at,
 		        COALESCE((SELECT COUNT(*) FROM channel_messages r WHERE r.thread_id = m.id), 0) as reply_count,
 		        (SELECT MAX(created_at) FROM channel_messages r WHERE r.thread_id = m.id) as latest_reply_at,
 		        (SELECT GROUP_CONCAT(DISTINCT COALESCE(NULLIF(sender, ''), agent))
@@ -1297,8 +1326,12 @@ func (s *SQLiteStore) ListChannelMessages(channelID string, limit int) ([]Channe
 		var threadID sql.NullInt64
 		var latestReplyAt sql.NullTime
 		var replySenders sql.NullString
-		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt, &m.ReplyCount, &latestReplyAt, &replySenders); err != nil {
+		var activitiesJSON string
+		if err := rows.Scan(&m.ID, &m.ChannelID, &threadID, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &activitiesJSON, &m.CreatedAt, &m.ReplyCount, &latestReplyAt, &replySenders); err != nil {
 			return nil, err
+		}
+		if activitiesJSON != "" && activitiesJSON != "[]" {
+			_ = json.Unmarshal([]byte(activitiesJSON), &m.ToolActivities)
 		}
 		if threadID.Valid {
 			m.ThreadID = &threadID.Int64
@@ -1355,7 +1388,7 @@ func (s *SQLiteStore) RecentChannelMessages(channelID string, limit int) ([]dsl.
 // ListThreadMessages returns the original message and all replies in a thread.
 func (s *SQLiteStore) ListThreadMessages(channelID string, threadID int64) ([]ChannelMessage, error) {
 	rows, err := s.db.Query(
-		`SELECT id, channel_id, thread_id, agent, sender, role, content, metadata, created_at
+		`SELECT id, channel_id, thread_id, agent, sender, role, content, metadata, tool_activities, created_at
 		 FROM channel_messages
 		 WHERE channel_id = ? AND (id = ? OR thread_id = ?)
 		 ORDER BY created_at ASC`,
@@ -1370,11 +1403,15 @@ func (s *SQLiteStore) ListThreadMessages(channelID string, threadID int64) ([]Ch
 	for rows.Next() {
 		var m ChannelMessage
 		var tid sql.NullInt64
-		if err := rows.Scan(&m.ID, &m.ChannelID, &tid, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &m.CreatedAt); err != nil {
+		var activitiesJSON string
+		if err := rows.Scan(&m.ID, &m.ChannelID, &tid, &m.Agent, &m.Sender, &m.Role, &m.Content, &m.Metadata, &activitiesJSON, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		if tid.Valid {
 			m.ThreadID = &tid.Int64
+		}
+		if activitiesJSON != "" && activitiesJSON != "[]" {
+			_ = json.Unmarshal([]byte(activitiesJSON), &m.ToolActivities)
 		}
 		messages = append(messages, m)
 	}

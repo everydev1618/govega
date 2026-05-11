@@ -1382,6 +1382,22 @@ export interface components {
         ChatRequest: {
             message: string;
         };
+        /**
+         * @description A completed tool call captured during a streaming assistant turn.
+         *     Stored alongside the final message so loading chat history
+         *     reproduces the live tool-call timeline.
+         */
+        ToolActivity: {
+            tool_call_id?: string;
+            tool_name: string;
+            arguments?: {
+                [key: string]: unknown;
+            };
+            result?: string;
+            /** Format: int64 */
+            duration_ms?: number;
+            error?: string;
+        };
         ChatMessage: {
             /**
              * Format: int64
@@ -1399,6 +1415,14 @@ export interface components {
              * @description When the message was persisted (RFC 3339).
              */
             created_at: string;
+            /**
+             * @description Completed tool calls from the assistant turn that produced
+             *     this message. Empty for user messages and for assistant
+             *     messages that didn't invoke tools. Captured from the
+             *     streaming events at persist time, so loading history shows
+             *     the same tool timeline that was rendered live.
+             */
+            tool_activities?: components["schemas"]["ToolActivity"][];
         };
         ChatStatusResponse: {
             streaming?: boolean;
@@ -1672,6 +1696,11 @@ export interface components {
             latest_reply_at?: string;
             /** @description Distinct sender names across all replies in this thread. Useful for "X and Y replied" indicators. */
             reply_senders?: string[];
+            /**
+             * @description Completed tool calls from the assistant turn that produced
+             *     this message. Same shape as ChatMessage.tool_activities.
+             */
+            tool_activities?: components["schemas"]["ToolActivity"][];
         };
         CreateChannelRequest: {
             name: string;

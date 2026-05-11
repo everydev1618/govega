@@ -1,6 +1,10 @@
 package serve
 
-import "time"
+import (
+	"time"
+
+	vega "github.com/everydev1618/govega"
+)
 
 // --- API Response Types ---
 
@@ -304,6 +308,9 @@ type ChannelMessage struct {
 	// in the thread. Lets the channel list show "Riley and Alex replied"
 	// without a follow-up fetch per thread.
 	ReplySenders []string `json:"reply_senders,omitempty"`
+	// ToolActivities captures completed tool calls from the assistant
+	// turn that produced this message. Empty for user messages.
+	ToolActivities []vega.ToolActivity `json:"tool_activities,omitempty"`
 }
 
 // CreateChannelRequest is the request to create a channel.

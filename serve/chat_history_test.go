@@ -15,10 +15,10 @@ import (
 func TestListChatMessages_IncludesIDAndTimestamp(t *testing.T) {
 	store := newTestStore(t)
 
-	if err := store.InsertChatMessage("riley", "user", "first"); err != nil {
+	if err := store.InsertChatMessage("riley", "user", "first", nil); err != nil {
 		t.Fatalf("insert 1: %v", err)
 	}
-	if err := store.InsertChatMessage("riley", "assistant", "second"); err != nil {
+	if err := store.InsertChatMessage("riley", "assistant", "second", nil); err != nil {
 		t.Fatalf("insert 2: %v", err)
 	}
 

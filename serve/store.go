@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 )
 
@@ -45,8 +46,11 @@ type Store interface {
 	// DeleteComposedAgent removes a composed agent by name.
 	DeleteComposedAgent(name string) error
 
-	// InsertChatMessage persists a chat message.
-	InsertChatMessage(agent, role, content string) error
+	// InsertChatMessage persists a chat message. `activities` is the
+	// list of completed tool calls captured during the streaming turn
+	// that produced this message; pass nil for user messages or any
+	// message without tool calls.
+	InsertChatMessage(agent, role, content string, activities []vega.ToolActivity) error
 
 	// ListChatMessages returns chat history for an agent.
 	ListChatMessages(agent string) ([]ChatMessage, error)
@@ -160,7 +164,7 @@ type Store interface {
 	DeleteResolvedInboxItems() (int64, error)
 
 	// InsertChannelMessage inserts a message into a channel.
-	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string) (int64, error)
+	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string, activities []vega.ToolActivity) (int64, error)
 
 	// ListChannelMessages returns top-level messages for a channel with reply counts.
 	ListChannelMessages(channelID string, limit int) ([]ChannelMessage, error)
@@ -260,6 +264,10 @@ type ChatMessage struct {
 	Role      string    `json:"role"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
+	// ToolActivities captures completed tool calls from the assistant
+	// turn that produced this message. Empty for user messages; populated
+	// for assistant messages that invoked tools during streaming.
+	ToolActivities []vega.ToolActivity `json:"tool_activities,omitempty"`
 }
 
 // StoreEvent is a persisted orchestration event.

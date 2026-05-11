@@ -450,7 +450,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist user message.
-	if err := s.store.InsertChatMessage(name, "user", req.Message); err != nil {
+	if err := s.store.InsertChatMessage(name, "user", req.Message, nil); err != nil {
 		slog.Error("failed to persist user chat message", "agent", name, "error", err)
 	}
 
@@ -473,7 +473,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist assistant response.
-	if err := s.store.InsertChatMessage(name, "assistant", response); err != nil {
+	if err := s.store.InsertChatMessage(name, "assistant", response, nil); err != nil {
 		slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
 	}
 
@@ -535,7 +535,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		proc.SetExtraSystem(extra)
 	}
 
-	if err := s.store.InsertChatMessage(name, "user", req.Message); err != nil {
+	if err := s.store.InsertChatMessage(name, "user", req.Message, nil); err != nil {
 		slog.Error("failed to persist user chat message", "agent", name, "error", err)
 	}
 
@@ -619,7 +619,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		} else if response == "" {
 			slog.Warn("stream completed with empty response, nothing to save", "agent", name)
 		} else {
-			if err := s.store.InsertChatMessage(name, "assistant", response); err != nil {
+			// Capture completed tool calls from the stream so reloaded
+			// history reproduces the live timeline (refs #48).
+			as.mu.Lock()
+			history := append([]vega.ChatEvent(nil), as.history...)
+			as.mu.Unlock()
+			activities := vega.CollectToolActivities(history)
+			if err := s.store.InsertChatMessage(name, "assistant", response, activities); err != nil {
 				slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
 			}
 			go s.extractMemory(userID, baseAgent, req.Message, response)

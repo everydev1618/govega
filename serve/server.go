@@ -629,13 +629,13 @@ func (s *Server) Start(ctx context.Context) error {
 				fromTag = "system"
 			}
 			tagged := "_(from " + fromTag + ")_ " + dispatchMsg
-			if err := s.store.InsertChatMessage(completedAgent, "user", tagged); err != nil {
+			if err := s.store.InsertChatMessage(completedAgent, "user", tagged, nil); err != nil {
 				slog.Warn("failed to persist dispatched user message", "agent", completedAgent, "error", err)
 			}
 			if dispatchErr != nil {
-				_ = s.store.InsertChatMessage(completedAgent, "assistant", "_(dispatch failed: "+dispatchErr.Error()+")_")
+				_ = s.store.InsertChatMessage(completedAgent, "assistant", "_(dispatch failed: "+dispatchErr.Error()+")_", nil)
 			} else if dispatchResp != "" {
-				_ = s.store.InsertChatMessage(completedAgent, "assistant", dispatchResp)
+				_ = s.store.InsertChatMessage(completedAgent, "assistant", dispatchResp, nil)
 			}
 			// Notify the frontend so any open /chat/<agent> view refreshes.
 			s.broker.Publish(BrokerEvent{
@@ -678,7 +678,7 @@ func (s *Server) Start(ctx context.Context) error {
 			basePoke := strings.SplitN(pokeAgent, ":", 2)[0]
 			for name := range s.interp.Agents() {
 				if name == basePoke || strings.HasPrefix(name, basePoke+":") {
-					_ = s.store.InsertChatMessage(name, "assistant", resp)
+					_ = s.store.InsertChatMessage(name, "assistant", resp, nil)
 				}
 			}
 
@@ -707,7 +707,7 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 
 		// Insert delegation message as a top-level message from the delegator.
-		msgID, err := s.store.InsertChannelMessage(chID, from, "assistant", message, nil, `{"type":"delegation"}`, from)
+		msgID, err := s.store.InsertChannelMessage(chID, from, "assistant", message, nil, `{"type":"delegation"}`, from, nil)
 		if err != nil {
 			slog.Error("delegation observer: insert message", "error", err)
 			return
@@ -716,7 +716,7 @@ func (s *Server) Start(ctx context.Context) error {
 		// Insert response as a thread reply from the delegatee.
 		var replyID int64
 		if response != "" && msgID > 0 {
-			replyID, _ = s.store.InsertChannelMessage(chID, to, "assistant", response, &msgID, `{"type":"delegation_response"}`, to)
+			replyID, _ = s.store.InsertChannelMessage(chID, to, "assistant", response, &msgID, `{"type":"delegation_response"}`, to, nil)
 		}
 
 		// Publish SSE events so connected clients see it in real time.

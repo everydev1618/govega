@@ -405,7 +405,7 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Persist user message.
-	if err := t.store.InsertChatMessage(name, "user", text); err != nil {
+	if err := t.store.InsertChatMessage(name, "user", text, nil); err != nil {
 		slog.Warn("telegram: failed to insert user message", "error", err)
 	}
 
@@ -421,7 +421,7 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Persist assistant response and reply.
-	if err := t.store.InsertChatMessage(name, "assistant", resp); err != nil {
+	if err := t.store.InsertChatMessage(name, "assistant", resp, nil); err != nil {
 		slog.Warn("telegram: failed to insert assistant message", "error", err)
 	}
 	if _, err := t.bot.Send(tgbotapi.NewMessage(chatID, resp)); err != nil {

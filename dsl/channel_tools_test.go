@@ -48,7 +48,7 @@ func (m *mockChannelBackend) FindChannelForAgents(agent1, agent2 string) (string
 	return "", "", nil
 }
 
-func (m *mockChannelBackend) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string) (int64, error) {
+func (m *mockChannelBackend) InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string, activities []vega.ToolActivity) (int64, error) {
 	return 0, nil
 }
 

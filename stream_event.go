@@ -90,6 +90,41 @@ type ChatEvent struct {
 	Metrics     *ChatEventMetrics `json:"metrics,omitempty"`
 }
 
+// ToolActivity is a completed tool call captured from a streaming
+// chat turn. Stored alongside the assistant message so that loading
+// chat history reproduces the same tool-call timeline the user saw
+// during the live stream (refs govega#48 and #55).
+type ToolActivity struct {
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+	ToolName   string         `json:"tool_name"`
+	Arguments  map[string]any `json:"arguments,omitempty"`
+	Result     string         `json:"result,omitempty"`
+	DurationMs int64          `json:"duration_ms,omitempty"`
+	Error      string         `json:"error,omitempty"`
+}
+
+// CollectToolActivities walks a stream's history of ChatEvents and
+// returns the completed tool calls (one per tool_end event). Used by
+// the chat / channel handlers to persist tool activity onto the final
+// assistant message before storing it.
+func CollectToolActivities(events []ChatEvent) []ToolActivity {
+	out := make([]ToolActivity, 0)
+	for _, e := range events {
+		if e.Type != ChatEventToolEnd {
+			continue
+		}
+		out = append(out, ToolActivity{
+			ToolCallID: e.ToolCallID,
+			ToolName:   e.ToolName,
+			Arguments:  e.Arguments,
+			Result:     e.Result,
+			DurationMs: e.DurationMs,
+			Error:      e.Error,
+		})
+	}
+	return out
+}
+
 // ChatStream represents a streaming chat response with structured events.
 type ChatStream struct {
 	events   chan ChatEvent

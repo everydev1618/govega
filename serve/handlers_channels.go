@@ -17,6 +17,28 @@ import (
 
 var mentionRe = regexp.MustCompile(`@(\w+)`)
 
+// collectChannelToolActivities walks a channel stream's history and
+// extracts completed tool calls (one per channel.tool_end event). Used
+// at assistant-response persist time so reloaded channel history shows
+// the same tool timeline that streamed live.
+func collectChannelToolActivities(events []ChannelEvent) []vega.ToolActivity {
+	out := make([]vega.ToolActivity, 0)
+	for _, e := range events {
+		if e.Type != "channel.tool_end" {
+			continue
+		}
+		out = append(out, vega.ToolActivity{
+			ToolCallID: e.ToolCallID,
+			ToolName:   e.ToolName,
+			Arguments:  e.Arguments,
+			Result:     e.Result,
+			DurationMs: e.DurationMs,
+			Error:      e.Error,
+		})
+	}
+	return out
+}
+
 // enrichChannelMessages populates the `icon` and `avatar_gradient`
 // fields on each message by looking up the sending agent. Decouples
 // channel UIs from a separate /api/v1/agents fetch (refs #55). One
@@ -255,7 +277,7 @@ func (s *Server) handleChannelPost(w http.ResponseWriter, r *http.Request) {
 	sender := r.Header.Get("X-Auth-User")
 
 	// Insert user message (top-level or into thread).
-	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}", sender)
+	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}", sender, nil)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -334,7 +356,7 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 	sender := r.Header.Get("X-Auth-User")
 
 	// Insert user message.
-	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}", sender)
+	msgID, err := s.store.InsertChannelMessage(ch.ID, "", "user", req.Message, req.ThreadID, "{}", sender, nil)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -445,7 +467,7 @@ func (s *Server) runChannelAgent(ch *Channel, agentName, message string, threadI
 	response := stream.Response()
 	if response != "" {
 		tid := threadID
-		s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}", agentName)
+		s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}", agentName, nil)
 	}
 }
 
@@ -559,10 +581,15 @@ func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentNa
 		"duration_ms":   time.Since(streamStart).Milliseconds(),
 	}
 
-	// Persist the agent response.
+	// Persist the agent response with completed tool activities so the
+	// loaded channel history reproduces the live timeline (refs #55).
 	var replyMsgID int64
 	if response != "" {
-		replyMsgID, _ = s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}", agentName)
+		cs.mu.Lock()
+		history := append([]ChannelEvent(nil), cs.history...)
+		cs.mu.Unlock()
+		activities := collectChannelToolActivities(history)
+		replyMsgID, _ = s.store.InsertChannelMessage(ch.ID, agentName, "assistant", response, &tid, "{}", agentName, activities)
 	}
 
 	// Publish the complete thread reply event.
