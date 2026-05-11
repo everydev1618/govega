@@ -93,10 +93,13 @@ pg_dump --schema-only --no-owner vega > schema.sql
 - **Row-level security** is not yet enabled — `workspace_id` columns
   arrive with Phase 2 / WorkOS (#32). Until then a Postgres-backed
   deploy is single-tenant, same as SQLite.
-- **Blob storage** — agent brain files are still stored inline as
-  `BYTEA` for now. The follow-up phase (#61 phase 5) moves them to an
-  object store (filesystem / S3-compatible) so the relational DB
-  doesn't carry document content. No API shape change planned.
+- **Blob storage** — agent brain files default to inline `BYTEA` in the
+  relational DB. Set `Config.BlobDir` (or `VEGA_BLOB_DIR=/path`) to
+  route content through `FilesystemBlobStore` instead; the DB row
+  carries metadata only and the bytes live on disk. Recommended for
+  hosted deploys so document libraries don't bloat Postgres backups.
+  No API shape change either way — `Server` reads/writes whichever
+  layer is configured.
 
 ## Migrating an existing SQLite install
 

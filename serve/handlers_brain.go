@@ -107,7 +107,25 @@ func (s *Server) handleUploadAgentBrain(w http.ResponseWriter, r *http.Request) 
 		SizeBytes: int64(len(body)),
 		Content:   body,
 	}
+	// When a blob store is configured, content lives there and the DB
+	// row carries only metadata (refs govega#61 phase 5). When not,
+	// content stays inline in the row (preserves the zero-config
+	// default).
+	if s.blobs != nil {
+		if err := s.blobs.Put(stored.ID, body); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "blob write: " + err.Error()})
+			return
+		}
+		// Send an empty-but-non-nil byte slice so the BLOB NOT NULL
+		// constraint on agent_brain_files.content holds while the
+		// real bytes live in the blob store.
+		stored.Content = []byte{}
+	}
 	if err := s.store.InsertAgentBrainFile(stored); err != nil {
+		// Roll back the blob write so the FE can retry without orphaning data.
+		if s.blobs != nil {
+			_ = s.blobs.Delete(stored.ID)
+		}
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -141,13 +159,24 @@ func (s *Server) handleGetAgentBrainFile(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "brain file not found"})
 		return
 	}
+	// When the row was written through the blob store, the DB carries
+	// only metadata — pull bytes from the configured BlobStore.
+	body := f.Content
+	if s.blobs != nil && len(body) == 0 {
+		got, err := s.blobs.Get(f.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "blob read: " + err.Error()})
+			return
+		}
+		body = got
+	}
 	mime := f.MimeType
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+url.PathEscape(f.Name)+`"`)
-	_, _ = w.Write(f.Content)
+	_, _ = w.Write(body)
 }
 
 // handleDeleteAgentBrainFile removes a brain file.
@@ -166,6 +195,12 @@ func (s *Server) handleDeleteAgentBrainFile(w http.ResponseWriter, r *http.Reque
 		}
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
+	}
+	// Best-effort blob cleanup. A failure here leaves an orphan file
+	// on disk; the DB row is gone so the file isn't addressable, which
+	// is acceptable for a follow-up cleanup pass.
+	if s.blobs != nil {
+		_ = s.blobs.Delete(id)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

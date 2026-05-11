@@ -211,6 +211,68 @@ func TestAgentBrain_FilenameSanitization(t *testing.T) {
 	}
 }
 
+// TestAgentBrain_UsesBlobStoreWhenConfigured covers govega#61 phase 5:
+// when the server is wired with a BlobStore, brain content lives there
+// instead of inline in the DB row. Upload writes to the blob store,
+// the DB row carries empty content, download reads from the blob store.
+func TestAgentBrain_UsesBlobStoreWhenConfigured(t *testing.T) {
+	s := brainTestServer(t, "riley")
+	bs, err := NewFilesystemBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFilesystemBlobStore: %v", err)
+	}
+	s.blobs = bs
+
+	content := []byte("# guide\n\nbody.\n")
+	upW := brainUpload(t, s, "riley", "guide.md", content)
+	if upW.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", upW.Code, upW.Body.String())
+	}
+	var created AgentBrainFile
+	_ = json.NewDecoder(upW.Body).Decode(&created)
+
+	// Direct DB read: row exists but Content is empty (blob lives in store).
+	fromDB, err := s.store.GetAgentBrainFile("riley", created.ID)
+	if err != nil || fromDB == nil {
+		t.Fatalf("GetAgentBrainFile: %v %v", fromDB, err)
+	}
+	if len(fromDB.Content) != 0 {
+		t.Errorf("DB row carries content (%d bytes); expected blob store path", len(fromDB.Content))
+	}
+
+	// Direct blob store read: bytes match the upload.
+	got, err := bs.Get(created.ID)
+	if err != nil || !bytes.Equal(got, content) {
+		t.Fatalf("blob mismatch: got=%q err=%v", got, err)
+	}
+
+	// GET endpoint serves the blob bytes.
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/agents/riley/brain/"+created.ID, nil)
+	getReq.SetPathValue("name", "riley")
+	getReq.SetPathValue("file_id", created.ID)
+	getW := httptest.NewRecorder()
+	s.handleGetAgentBrainFile(getW, getReq)
+	if getW.Code != http.StatusOK {
+		t.Fatalf("get: %d", getW.Code)
+	}
+	if !bytes.Equal(getW.Body.Bytes(), content) {
+		t.Errorf("download mismatch")
+	}
+
+	// DELETE removes from both layers.
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/riley/brain/"+created.ID, nil)
+	delReq.SetPathValue("name", "riley")
+	delReq.SetPathValue("file_id", created.ID)
+	delW := httptest.NewRecorder()
+	s.handleDeleteAgentBrainFile(delW, delReq)
+	if delW.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d", delW.Code)
+	}
+	if _, err := bs.Get(created.ID); err == nil {
+		t.Error("blob not deleted")
+	}
+}
+
 // TestAgentBrain_PerAgentSizeCap ensures the per-agent total storage cap
 // fires before content is written. Verifies the boundary check, not the
 // exact 100MB number.

@@ -115,6 +115,13 @@ type Config struct {
 	// (e.g. postgres://user:pass@host:5432/db?sslmode=require). Ignored
 	// for SQLite.
 	DBURL string
+	// BlobDir, when non-empty, enables the FilesystemBlobStore at the
+	// supplied path (refs govega#61 phase 5). When empty, blob-bearing
+	// resources (agent brain files) keep their content inline in the
+	// relational DB — preserving the zero-config default. Set this on
+	// hosted Postgres deployments so brain content stays out of the
+	// DB and on the filesystem (or, future, an S3-compatible store).
+	BlobDir string
 	TelegramToken string       // TELEGRAM_BOT_TOKEN; leave empty to disable
 	TelegramAgent string       // TELEGRAM_AGENT; defaults to first agent if empty
 	Company       *dsl.Company // optional company identity (env var overrides)
@@ -160,6 +167,11 @@ type Server struct {
 	interp    *dsl.Interpreter
 	broker    *EventBroker
 	store     Store
+	// blobs is the optional object-storage backend for binary content
+	// that shouldn't live in the relational DB (refs govega#61 phase 5).
+	// Today only agent brain files use it; when blobs is nil, the brain
+	// handler keeps inline content in the agent_brain_files row instead.
+	blobs     BlobStore
 	popClient *population.Client
 
 	// Telegram bots. Multi-bot — keyed by bot ID (the numeric prefix of
@@ -372,6 +384,17 @@ func (s *Server) Start(ctx context.Context) error {
 			return fmt.Errorf("init database: %w", err)
 		}
 		weOwnStore = true
+	}
+
+	// Optional blob store for binary content (brain files today; chat
+	// attachments next when #48 lands). When unconfigured, brain
+	// content stays inline in the DB — zero-config default preserved.
+	if s.blobs == nil && s.cfg.BlobDir != "" {
+		fs, err := NewFilesystemBlobStore(s.cfg.BlobDir)
+		if err != nil {
+			return fmt.Errorf("init blob store: %w", err)
+		}
+		s.blobs = fs
 	}
 
 	// Hydrate provider env vars from settings so a fresh container with a
