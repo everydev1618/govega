@@ -1169,6 +1169,107 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Per-agent Brain (knowledge attachments) — govega#43 ─────────────
+  /api/v1/agents/{name}/brain:
+    get:
+      tags: [Agents]
+      summary: List brain files attached to an agent
+      operationId: listAgentBrain
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Array of BrainFile metadata (no content)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BrainFile"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Agents]
+      summary: Upload a brain file to an agent
+      description: |
+        Multipart upload (field name `file`). 10 MB per-file limit, 100 MB
+        per-agent total. Mime type is taken from the multipart header
+        when present, otherwise sniffed from the bytes.
+      operationId: uploadAgentBrain
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrainFile"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: File or per-agent total exceeds the storage cap
+
+  /api/v1/agents/{name}/brain/{file_id}:
+    get:
+      tags: [Agents]
+      summary: Download a brain file
+      operationId: getAgentBrainFile
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: file_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: File contents
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Agents]
+      summary: Delete a brain file
+      operationId: deleteAgentBrainFile
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: file_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── Per-agent Routines (a.k.a. Schedules) — govega#52 ────────────────
   /api/v1/agents/{agent}/schedules:
     get:
@@ -3160,6 +3261,30 @@ components:
           type: string
         enabled:
           type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    # Per-agent Brain attachments — govega#43
+    BrainFile:
+      type: object
+      required: [id, agent_id, name, size_bytes, created_at]
+      properties:
+        id:
+          type: string
+          description: Server-generated stable id (`brain_<hex>`).
+        agent_id:
+          type: string
+          description: Agent slug this file is attached to.
+        name:
+          type: string
+          description: Original filename (path components stripped).
+        mime_type:
+          type: string
+          description: From the upload header, or sniffed from content.
+        size_bytes:
+          type: integer
+          format: int64
         created_at:
           type: string
           format: date-time

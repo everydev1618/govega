@@ -292,6 +292,21 @@ func (s *SQLiteStore) Init() error {
 	// Migrate: add sender column to channel_messages for multi-user identity.
 	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN sender TEXT DEFAULT ''`)
 
+	// Agent brain — per-agent knowledge attachments (refs govega#43).
+	// Stored as SQLite blobs because the MVP is a pure attachment list
+	// (no RAG indexing yet); volumes are small enough that the simplicity
+	// of one table beats an object-store dependency.
+	s.db.Exec(`CREATE TABLE IF NOT EXISTS agent_brain_files (
+		id          TEXT PRIMARY KEY,
+		agent_name  TEXT NOT NULL,
+		name        TEXT NOT NULL,
+		mime_type   TEXT NOT NULL DEFAULT '',
+		size_bytes  INTEGER NOT NULL DEFAULT 0,
+		content     BLOB NOT NULL,
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_agent_brain_files_agent ON agent_brain_files(agent_name)`)
+
 	// Migrate: extend scheduled_jobs to carry routine identity (refs
 	// govega#52). `id` becomes the stable key returned to the FE; `name`
 	// stays as the routing/lookup key DSL tools use. For legacy rows
@@ -715,6 +730,76 @@ func (s *SQLiteStore) ListScheduledJobs() ([]ScheduledJob, error) {
 		jobs = append(jobs, j)
 	}
 	return jobs, rows.Err()
+}
+
+// InsertAgentBrainFile persists an agent-scoped knowledge attachment
+// (refs govega#43). Content is stored inline; callers must enforce size
+// limits before invoking.
+func (s *SQLiteStore) InsertAgentBrainFile(f AgentBrainFile) error {
+	_, err := s.db.Exec(
+		`INSERT INTO agent_brain_files (id, agent_name, name, mime_type, size_bytes, content, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		f.ID, f.AgentName, f.Name, f.MimeType, f.SizeBytes, f.Content,
+	)
+	return err
+}
+
+// ListAgentBrainFiles returns metadata only (no content) for every
+// brain file on agentName, oldest first.
+func (s *SQLiteStore) ListAgentBrainFiles(agentName string) ([]AgentBrainFile, error) {
+	rows, err := s.db.Query(
+		`SELECT id, agent_name, name, mime_type, size_bytes, created_at
+		 FROM agent_brain_files WHERE agent_name = ? ORDER BY created_at ASC`,
+		agentName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AgentBrainFile
+	for rows.Next() {
+		var f AgentBrainFile
+		if err := rows.Scan(&f.ID, &f.AgentName, &f.Name, &f.MimeType, &f.SizeBytes, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// GetAgentBrainFile returns one file (content included) when it belongs
+// to agentName; returns nil, nil otherwise.
+func (s *SQLiteStore) GetAgentBrainFile(agentName, id string) (*AgentBrainFile, error) {
+	row := s.db.QueryRow(
+		`SELECT id, agent_name, name, mime_type, size_bytes, content, created_at
+		 FROM agent_brain_files WHERE id = ? AND agent_name = ?`,
+		id, agentName,
+	)
+	var f AgentBrainFile
+	if err := row.Scan(&f.ID, &f.AgentName, &f.Name, &f.MimeType, &f.SizeBytes, &f.Content, &f.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &f, nil
+}
+
+// DeleteAgentBrainFile removes a brain file from agentName. Returns
+// sql.ErrNoRows when the file doesn't exist on the agent.
+func (s *SQLiteStore) DeleteAgentBrainFile(agentName, id string) error {
+	res, err := s.db.Exec(
+		`DELETE FROM agent_brain_files WHERE id = ? AND agent_name = ?`,
+		id, agentName,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // MarkScheduledJobRun stamps last_run_at = now for the given job name.

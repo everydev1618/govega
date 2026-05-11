@@ -901,6 +901,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/v1/agents/{agent}/schedules/{id}", s.handleUpdateAgentRoutine)
 	mux.HandleFunc("DELETE /api/v1/agents/{agent}/schedules/{id}", s.handleDeleteAgentRoutine)
 
+	// Per-agent Brain (knowledge attachments) — refs govega#43.
+	mux.HandleFunc("GET /api/v1/agents/{name}/brain", s.handleListAgentBrain)
+	mux.HandleFunc("POST /api/v1/agents/{name}/brain", s.handleUploadAgentBrain)
+	mux.HandleFunc("GET /api/v1/agents/{name}/brain/{file_id}", s.handleGetAgentBrainFile)
+	mux.HandleFunc("DELETE /api/v1/agents/{name}/brain/{file_id}", s.handleDeleteAgentBrainFile)
+
 	// Inbox
 	mux.HandleFunc("GET /api/v1/inbox", s.handleListInbox)
 	mux.HandleFunc("DELETE /api/v1/inbox/resolved", s.handleClearResolvedInbox)

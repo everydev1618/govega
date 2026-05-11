@@ -102,6 +102,23 @@ type Store interface {
 	// MarkScheduledJobRun stamps the supplied time on last_run_at.
 	MarkScheduledJobRun(name string, at time.Time) error
 
+	// InsertAgentBrainFile persists an attachment for the given agent.
+	// content is read in-memory; callers must enforce size limits.
+	InsertAgentBrainFile(f AgentBrainFile) error
+
+	// ListAgentBrainFiles returns the metadata for every brain file
+	// attached to agentName. Content is not loaded.
+	ListAgentBrainFiles(agentName string) ([]AgentBrainFile, error)
+
+	// GetAgentBrainFile returns one brain file, content included.
+	// Returns nil, nil when the file doesn't exist or doesn't belong to
+	// the agent.
+	GetAgentBrainFile(agentName, id string) (*AgentBrainFile, error)
+
+	// DeleteAgentBrainFile removes a brain file. Returns an error if the
+	// file doesn't exist on the given agent.
+	DeleteAgentBrainFile(agentName, id string) error
+
 	// InsertWorkspaceFile records a file write by an agent.
 	InsertWorkspaceFile(f WorkspaceFile) error
 
@@ -397,6 +414,21 @@ type ScheduledJob struct {
 	LastRunAt    *time.Time `json:"last_run_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// AgentBrainFile is a per-agent knowledge attachment uploaded via
+// `POST /api/v1/agents/{name}/brain` (refs govega#43). Content is stored
+// inline as a SQLite blob — fine for the FE's MVP (an attachment list,
+// no RAG). Move to an object store if/when retrieval-at-chat-time lands.
+type AgentBrainFile struct {
+	ID        string    `json:"id"`
+	AgentName string    `json:"agent_id"` // FE calls this agent_id
+	Name      string    `json:"name"`
+	MimeType  string    `json:"mime_type,omitempty"`
+	SizeBytes int64     `json:"size_bytes"`
+	CreatedAt time.Time `json:"created_at"`
+	// Content is never JSON-serialized — only used internally for upload/download.
+	Content []byte `json:"-"`
 }
 
 // WorkspaceFile tracks a file written by an agent.
