@@ -427,6 +427,19 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Budget enforcement — refuse subsequent turns with a canned
+	// message when the agent has tripped the hard cutoff (refs
+	// govega#47). Persist the user/assistant pair so the FE still
+	// renders the conversation, and skip the LLM call entirely.
+	// In-flight turns aren't interrupted; the check fires before
+	// the next dispatch.
+	if s.agentOverBudget(baseAgent) {
+		_ = s.store.InsertChatMessage(name, "user", req.Message, nil)
+		_ = s.store.InsertChatMessage(name, "assistant", budgetCapMessage, nil)
+		writeJSON(w, http.StatusOK, map[string]string{"response": budgetCapMessage})
+		return
+	}
+
 	// Ensure the agent process is spawned so we can inject memory.
 	proc, err := s.interp.EnsureAgent(name)
 	if err != nil {
@@ -505,6 +518,18 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	if err := s.ensureChatAgent(name); err != nil {
 		status, msg := classifyHTTPError(err)
 		writeJSON(w, status, ErrorResponse{Error: msg})
+		return
+	}
+
+	// Budget enforcement — see handleChat. Streaming path takes the
+	// same short-circuit: persist the canned response, write a
+	// minimal SSE stream (one message_delta + done), skip the LLM.
+	// In-flight turns aren't interrupted; this only blocks new turns
+	// after a cap trip (refs govega#47).
+	if s.agentOverBudget(baseAgent) {
+		_ = s.store.InsertChatMessage(name, "user", req.Message, nil)
+		_ = s.store.InsertChatMessage(name, "assistant", budgetCapMessage, nil)
+		s.writeBudgetCapStream(w)
 		return
 	}
 

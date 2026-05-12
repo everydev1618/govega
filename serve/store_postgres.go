@@ -525,6 +525,47 @@ func (s *PostgresStore) MarkScheduledJobRun(name string, at time.Time) error {
 	return err
 }
 
+// --- Agent budgets ---
+
+func (s *PostgresStore) GetAgentBudget(agentName string) (*AgentBudget, error) {
+	row := s.db.QueryRow(
+		`SELECT agent_name, budget_cap, soft_alert_threshold, enabled, created_at, updated_at
+		 FROM agent_budgets WHERE agent_name = $1`, agentName,
+	)
+	var b AgentBudget
+	var cap sql.NullFloat64
+	if err := row.Scan(&b.AgentName, &cap, &b.SoftAlertThreshold, &b.Enabled, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if cap.Valid {
+		v := cap.Float64
+		b.BudgetCap = &v
+	}
+	return &b, nil
+}
+
+func (s *PostgresStore) UpsertAgentBudget(b AgentBudget) error {
+	var cap any
+	if b.BudgetCap != nil {
+		cap = *b.BudgetCap
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO agent_budgets
+		 (agent_name, budget_cap, soft_alert_threshold, enabled, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		 ON CONFLICT (agent_name) DO UPDATE SET
+		   budget_cap           = EXCLUDED.budget_cap,
+		   soft_alert_threshold = EXCLUDED.soft_alert_threshold,
+		   enabled              = EXCLUDED.enabled,
+		   updated_at           = CURRENT_TIMESTAMP`,
+		b.AgentName, cap, b.SoftAlertThreshold, b.Enabled,
+	)
+	return err
+}
+
 // --- Spend rollup ---
 
 func (s *PostgresStore) AgentSpendInPeriod(agentName string, from, to time.Time) (float64, error) {

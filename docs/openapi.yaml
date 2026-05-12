@@ -1284,6 +1284,70 @@ paths:
                 type: string
                 format: binary
 
+  # ── Per-agent budget cap + enforcement — govega#47 ─────────────────
+  /api/v1/agents/{name}/budget:
+    get:
+      tags: [Agents]
+      summary: Read the agent's budget cap + current-period spend
+      description: |
+        Composes the persisted cap, threshold, and enabled state with a
+        fresh observed_spend rollup over the current calendar-month UTC
+        period. Returns a default-shaped record (no cap, threshold 0.8,
+        disabled) for agents without a row.
+      operationId: getAgentBudget
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Budget state + observed spend
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentBudgetResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Agents]
+      summary: Set / clear the agent's budget cap
+      description: |
+        Partial — omitted fields stay. Send `budget_cap: 0` to clear
+        the cap (FE convention; null pointer can't be distinguished
+        from omission in JSON). `enabled` is the master switch — when
+        false, the hard cutoff doesn't fire even if the cap is set.
+        `soft_alert_threshold` must be between 0 and 1 (fraction of
+        cap).
+
+        When `observed_spend >= budget_cap AND enabled AND cap != null`,
+        the chat handlers refuse subsequent turns with a canned
+        "spending limit reached" assistant message. In-flight turns
+        aren't interrupted.
+      operationId: updateAgentBudget
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentBudgetRequest"
+      responses:
+        "200":
+          description: Updated budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentBudgetResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── Per-agent spend rollup — govega#47 ──────────────────────────────
   /api/v1/agents/{name}/spend:
     get:
@@ -3513,6 +3577,57 @@ components:
           type: string
         error:
           type: string
+
+    # Per-agent budget — govega#47
+    AgentBudgetResponse:
+      type: object
+      required:
+        - agent
+        - soft_alert_threshold
+        - enabled
+        - observed_spend
+        - period_start
+        - period_end
+      properties:
+        agent:
+          type: string
+        budget_cap:
+          type: number
+          format: double
+          nullable: true
+          description: USD cap for the current period. null means no cap configured.
+        soft_alert_threshold:
+          type: number
+          format: double
+          description: Fraction of cap (0..1) that fires the soft-alert band on the FE.
+        enabled:
+          type: boolean
+          description: Master switch — when false, the hard cutoff doesn't fire even if a cap is set.
+        observed_spend:
+          type: number
+          format: double
+          description: Sum of cost_usd across the latest snapshot of every process for the agent in the current period.
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+
+    UpdateAgentBudgetRequest:
+      type: object
+      description: |
+        Partial — omitted fields stay. Send `budget_cap: 0` to clear
+        the cap. `soft_alert_threshold` must be in [0, 1].
+      properties:
+        budget_cap:
+          type: number
+          format: double
+        soft_alert_threshold:
+          type: number
+          format: double
+        enabled:
+          type: boolean
 
     # Per-agent spend rollup — govega#47
     AgentSpend:

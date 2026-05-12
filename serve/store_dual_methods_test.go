@@ -628,6 +628,52 @@ func TestDualStore_ResetData(t *testing.T) {
 	})
 }
 
+func TestDualStore_AgentBudgetRoundTrip(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		// Missing rows return nil, nil — no error, no row.
+		got, err := store.GetAgentBudget("riley")
+		if err != nil {
+			t.Fatalf("GetAgentBudget missing: %v", err)
+		}
+		if got != nil {
+			t.Errorf("expected nil for missing budget, got %+v", got)
+		}
+
+		// Upsert sets the cap.
+		cap := 25.0
+		err = store.UpsertAgentBudget(AgentBudget{
+			AgentName: "riley", BudgetCap: &cap,
+			SoftAlertThreshold: 0.75, Enabled: true,
+		})
+		if err != nil {
+			t.Fatalf("UpsertAgentBudget: %v", err)
+		}
+		got, _ = store.GetAgentBudget("riley")
+		if got == nil || got.BudgetCap == nil || *got.BudgetCap != 25.0 {
+			t.Errorf("after set: %+v", got)
+		}
+		if got.SoftAlertThreshold != 0.75 || !got.Enabled {
+			t.Errorf("threshold/enabled wrong: %+v", got)
+		}
+
+		// Upsert replaces — clear the cap.
+		err = store.UpsertAgentBudget(AgentBudget{
+			AgentName: "riley", BudgetCap: nil,
+			SoftAlertThreshold: 0.8, Enabled: false,
+		})
+		if err != nil {
+			t.Fatalf("UpsertAgentBudget clear: %v", err)
+		}
+		got, _ = store.GetAgentBudget("riley")
+		if got == nil || got.BudgetCap != nil {
+			t.Errorf("after clear: %+v", got)
+		}
+		if got.Enabled {
+			t.Errorf("enabled should be false")
+		}
+	})
+}
+
 func TestDualStore_WorkspaceFiles(t *testing.T) {
 	forEachStore(t, func(t *testing.T, store Store) {
 		err := store.InsertWorkspaceFile(WorkspaceFile{

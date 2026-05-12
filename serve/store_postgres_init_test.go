@@ -47,6 +47,7 @@ func TestPostgresInit_CreatesSchema(t *testing.T) {
 		"channels", "channel_messages", "channel_read_cursors", "chat_read_cursors",
 		"agent_inbox", "inbox_replies", "prompt_history",
 		"tasks", "task_comments", "task_processes",
+		"agent_budgets",
 	}
 	for _, table := range wantTables {
 		var exists bool

@@ -292,6 +292,20 @@ func (s *SQLiteStore) Init() error {
 	// Migrate: add sender column to channel_messages for multi-user identity.
 	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN sender TEXT DEFAULT ''`)
 
+	// Agent budgets — per-agent monthly cap + enforcement state
+	// (refs govega#47). period_start/period_end aren't stored — period
+	// is always the current calendar month UTC per Cody's spec, so
+	// they're derived at read time. observed_spend is the sum over
+	// process_snapshots; not stored either.
+	s.db.Exec(`CREATE TABLE IF NOT EXISTS agent_budgets (
+		agent_name           TEXT PRIMARY KEY,
+		budget_cap           REAL,
+		soft_alert_threshold REAL NOT NULL DEFAULT 0.8,
+		enabled              BOOLEAN NOT NULL DEFAULT 0,
+		created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+
 	// Agent brain — per-agent knowledge attachments (refs govega#43).
 	// Stored as SQLite blobs because the MVP is a pure attachment list
 	// (no RAG indexing yet); volumes are small enough that the simplicity
@@ -831,6 +845,52 @@ LIMIT ? OFFSET ?`, pageArgs...)
 		out = append(out, e)
 	}
 	return out, total, rows.Err()
+}
+
+// GetAgentBudget returns the persisted budget row for agentName, or
+// (nil, nil) when the agent has no row. Refs govega#47.
+func (s *SQLiteStore) GetAgentBudget(agentName string) (*AgentBudget, error) {
+	row := s.db.QueryRow(
+		`SELECT agent_name, budget_cap, soft_alert_threshold, enabled, created_at, updated_at
+		 FROM agent_budgets WHERE agent_name = ?`, agentName,
+	)
+	var b AgentBudget
+	var cap sql.NullFloat64
+	if err := row.Scan(&b.AgentName, &cap, &b.SoftAlertThreshold, &b.Enabled, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if cap.Valid {
+		v := cap.Float64
+		b.BudgetCap = &v
+	}
+	return &b, nil
+}
+
+// UpsertAgentBudget creates or replaces a budget row. created_at is
+// preserved on update via COALESCE so the field stays meaningful.
+func (s *SQLiteStore) UpsertAgentBudget(b AgentBudget) error {
+	var cap any
+	if b.BudgetCap != nil {
+		cap = *b.BudgetCap
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO agent_budgets
+		 (agent_name, budget_cap, soft_alert_threshold, enabled, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, COALESCE(
+		   (SELECT created_at FROM agent_budgets WHERE agent_name = ?),
+		   CURRENT_TIMESTAMP
+		 ), CURRENT_TIMESTAMP)
+		 ON CONFLICT(agent_name) DO UPDATE SET
+		   budget_cap           = excluded.budget_cap,
+		   soft_alert_threshold = excluded.soft_alert_threshold,
+		   enabled              = excluded.enabled,
+		   updated_at           = CURRENT_TIMESTAMP`,
+		b.AgentName, cap, b.SoftAlertThreshold, b.Enabled, b.AgentName,
+	)
+	return err
 }
 
 // AgentSpendInPeriod sums cost_usd across the latest snapshot of every

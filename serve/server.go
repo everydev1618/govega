@@ -955,6 +955,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Per-agent spend rollup — refs govega#47.
 	mux.HandleFunc("GET /api/v1/agents/{name}/spend", s.handleGetAgentSpend)
 
+	// Per-agent budget cap + enforcement — refs govega#47.
+	mux.HandleFunc("GET /api/v1/agents/{name}/budget", s.handleGetAgentBudget)
+	mux.HandleFunc("PUT /api/v1/agents/{name}/budget", s.handleUpdateAgentBudget)
+
 	// Searchable activity log — refs govega#33. Queryable view over the
 	// events table (the SSE /events stream is live-only).
 	mux.HandleFunc("GET /api/v1/activity", s.handleSearchActivity)

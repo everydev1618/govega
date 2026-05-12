@@ -522,6 +522,34 @@ type ActivityLogResponse struct {
 	Offset int          `json:"offset"`
 }
 
+// AgentBudgetResponse is the wire shape for the per-agent budget
+// endpoints (refs govega#47). Composes the persisted cap + threshold
+// + enabled state with the current-period observed_spend rollup so
+// the FE renders the budget tab in one round-trip.
+//
+// budget_cap is nullable: null means "no cap configured." A null cap
+// or enabled=false both disable the hard cutoff; soft_alert_threshold
+// still drives the warning band when a cap is set.
+type AgentBudgetResponse struct {
+	Agent              string    `json:"agent"`
+	BudgetCap          *float64  `json:"budget_cap"`
+	SoftAlertThreshold float64   `json:"soft_alert_threshold"`
+	Enabled            bool      `json:"enabled"`
+	ObservedSpend      float64   `json:"observed_spend"`
+	PeriodStart        time.Time `json:"period_start"`
+	PeriodEnd          time.Time `json:"period_end"`
+}
+
+// UpdateAgentBudgetRequest is the partial-PUT body. Pointer fields
+// distinguish "omitted" (leave unchanged) from "set to empty". Pass a
+// non-nil pointer to a nil BudgetCap to clear the cap; pass nil to
+// leave it. Threshold defaults to 0.8 on first write.
+type UpdateAgentBudgetRequest struct {
+	BudgetCap          *float64 `json:"budget_cap,omitempty"`
+	SoftAlertThreshold *float64 `json:"soft_alert_threshold,omitempty"`
+	Enabled            *bool    `json:"enabled,omitempty"`
+}
+
 // AgentSpendResponse is the wire shape for the per-agent spend rollup
 // endpoint (refs govega#47). Aggregates cost_usd across the latest
 // snapshot of every process for the agent within the queried period.

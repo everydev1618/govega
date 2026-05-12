@@ -108,6 +108,15 @@ type Store interface {
 	// MarkScheduledJobRun stamps the supplied time on last_run_at.
 	MarkScheduledJobRun(name string, at time.Time) error
 
+	// GetAgentBudget returns the persisted budget record for agentName,
+	// or nil when the agent has no row yet (i.e. budget is implicitly
+	// "no cap, soft-alert threshold default, disabled"). Refs govega#47.
+	GetAgentBudget(agentName string) (*AgentBudget, error)
+
+	// UpsertAgentBudget creates or replaces a per-agent budget row.
+	// CreatedAt is preserved on update; UpdatedAt advances. Refs govega#47.
+	UpsertAgentBudget(b AgentBudget) error
+
 	// AgentSpendInPeriod returns the sum of cost_usd across the latest
 	// snapshot of every process for agentName whose started_at falls
 	// inside [from, to). When from/to are zero, the bound is treated
@@ -447,6 +456,20 @@ type ScheduledJob struct {
 	LastRunAt    *time.Time `json:"last_run_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// AgentBudget is the persisted per-agent budget record (refs govega#47).
+// period_start / period_end / observed_spend aren't fields — period is
+// always the current calendar month UTC, and observed_spend is the
+// existing AgentSpendInPeriod rollup. The response surface composes
+// those at read time.
+type AgentBudget struct {
+	AgentName          string    `json:"agent"`
+	BudgetCap          *float64  `json:"budget_cap"`
+	SoftAlertThreshold float64   `json:"soft_alert_threshold"`
+	Enabled            bool      `json:"enabled"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // AgentBrainFile is a per-agent knowledge attachment uploaded via
