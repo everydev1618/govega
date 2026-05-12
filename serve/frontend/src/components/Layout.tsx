@@ -428,7 +428,7 @@ function AgentNavItem({
           </div>
         ) : (
           <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-card ${
-            agent.process_status === 'running' ? 'bg-green-400' : 'bg-muted-foreground/30'
+            agent.status === 'running' ? 'bg-green-400' : 'bg-muted-foreground/30'
           }`} />
         )}
       </div>

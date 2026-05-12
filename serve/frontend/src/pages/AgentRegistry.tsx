@@ -327,13 +327,13 @@ export function AgentRegistry() {
               {agent.source === 'composed' && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400">composed</span>
               )}
-              {agent.process_status && (
+              {agent.status && (
                 <span className={`text-xs px-2 py-0.5 rounded ${
-                  agent.process_status === 'running' ? 'bg-blue-900/50 text-blue-400' :
-                  agent.process_status === 'completed' ? 'bg-green-900/50 text-green-400' :
+                  agent.status === 'running' ? 'bg-blue-900/50 text-blue-400' :
+                  agent.status === 'error' ? 'bg-red-900/50 text-red-400' :
                   'bg-muted text-muted-foreground'
                 }`}>
-                  {agent.process_status}
+                  {agent.status}
                 </span>
               )}
               {agent.model && (
