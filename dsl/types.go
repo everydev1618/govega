@@ -54,8 +54,22 @@ type Document struct {
 	Channels    map[string]*ChannelDef `yaml:"channels"`
 	Workflows   map[string]*Workflow  `yaml:"workflows"`
 	Tools       map[string]*ToolDef   `yaml:"tools"`
+	// Norms are named guidance blocks that can be appended to an agent's
+	// system prompt at runtime. Use the interpreter's Norm() accessor to
+	// look one up by name; the host application decides which norm (if
+	// any) applies to a given session via the ExtraSystemProvider hook.
+	Norms       map[string]*Norm      `yaml:"norms,omitempty"`
 	Settings    *Settings             `yaml:"settings"`
 	Company     *Company              `yaml:"company,omitempty"`
+}
+
+// Norm is a named writing/style guidance block defined in YAML. The
+// `system` field is the text appended to an agent's system prompt when
+// the norm is active for a session. `description` is human-facing copy
+// for selection UIs.
+type Norm struct {
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	System      string `yaml:"system" json:"system"`
 }
 
 // Agent represents an agent definition in the DSL.
@@ -92,6 +106,12 @@ type Agent struct {
 	Skills         *SkillsDef         `yaml:"skills"`
 	Delegation     *DelegationDef     `yaml:"delegation"`
 	Memory         *MemoryDef         `yaml:"memory"`
+
+	// Norm is the name of a top-level `norms:` entry whose guidance is
+	// composed into this agent's system prompt at spawn time. Empty
+	// means no norm is applied. The parser validates that the name
+	// resolves to a defined norm.
+	Norm string `yaml:"norm,omitempty" json:"norm,omitempty"`
 
 	// IsMeta marks an agent as a built-in meta-agent (e.g. orchestrator,
 	// builder). Meta-agents are filtered out of "team" / "channel member"

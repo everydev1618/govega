@@ -297,6 +297,53 @@ agents:
 	}
 }
 
+func TestInterpreterComposesNormIntoSystemPrompt(t *testing.T) {
+	yaml := `
+name: Test
+agents:
+  guide:
+    model: test-model
+    system: You are a writing guide.
+    norm: llm_friendly
+  plain:
+    model: test-model
+    system: You are a plain agent.
+
+norms:
+  llm_friendly:
+    description: Karpathy norm
+    system: |
+      Atomic sections with stable anchor ids.
+      One claim per paragraph.
+`
+	doc := mustParse(t, yaml)
+
+	interp := newTestInterpreter(t, doc)
+	defer interp.Shutdown()
+
+	interp.mu.RLock()
+	guideProc := interp.agents["guide"]
+	plainProc := interp.agents["plain"]
+	interp.mu.RUnlock()
+
+	if guideProc == nil || plainProc == nil {
+		t.Fatal("both processes should exist")
+	}
+
+	guideStr := guideProc.Agent.System.Prompt()
+	if !strings.Contains(guideStr, "Atomic sections with stable anchor ids") {
+		t.Errorf("guide system prompt should contain norm body, got:\n%s", guideStr)
+	}
+	if !strings.Contains(guideStr, "You are a writing guide.") {
+		t.Errorf("guide system prompt should still contain base prompt, got:\n%s", guideStr)
+	}
+
+	plainStr := plainProc.Agent.System.Prompt()
+	if strings.Contains(plainStr, "Atomic sections") {
+		t.Errorf("plain agent (no norm) should NOT contain norm body, got:\n%s", plainStr)
+	}
+}
+
 func TestInterpreterTeamPromptWithoutBlackboard(t *testing.T) {
 	yaml := `
 name: Test

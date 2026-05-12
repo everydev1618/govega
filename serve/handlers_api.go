@@ -449,7 +449,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtx := buildCompanyContext(s.company)
-	if extra := buildExtraSystem(memText, projectCtx, companyCtx); extra != "" {
+	if extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memText, projectCtx, companyCtx); extra != "" {
 		proc.SetExtraSystem(extra)
 	}
 
@@ -540,7 +540,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	projectCtxStream := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtxStream := buildCompanyContext(s.company)
-	extra := buildExtraSystem(memTextStream, projectCtxStream, companyCtxStream)
+	extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memTextStream, projectCtxStream, companyCtxStream)
 	if req.Context != "" {
 		if extra != "" {
 			extra += "\n\n"

@@ -491,12 +491,17 @@ func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentNa
 		memText = formatMemoryForInjection(memories)
 	}
 	companyCtx := buildCompanyContext(s.company)
-	if extra := buildExtraSystem(memText, "", companyCtx); extra != "" {
-		proc.SetExtraSystem(extra)
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+
+	baseAgent := agentName
+	if i := strings.Index(agentName, ":"); i >= 0 {
+		baseAgent = agentName[:i]
+	}
+	if extra := s.composeExtraSystem(ctx, agentName, baseAgent, userID, memText, "", companyCtx); extra != "" {
+		proc.SetExtraSystem(extra)
+	}
 
 	baseMetrics := proc.Metrics()
 	streamStart := time.Now()

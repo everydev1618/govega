@@ -160,7 +160,27 @@ type Config struct {
 	// The slice is composed left-to-right: Middleware[0] wraps everything
 	// inside it, so the first entry runs outermost relative to the rest.
 	Middleware []func(http.Handler) http.Handler
+
+	// ExtraSystemProvider, when non-nil, supplies additional system-prompt
+	// content on every chat turn — appended after the standard
+	// memory/project/company blocks. Use this to inject per-session
+	// context that the agent's static configuration can't express,
+	// e.g. looking up a per-book writing norm from an external service
+	// based on the cloned agent name. Return "" for a no-op.
+	//
+	// The callback runs on the chat hot path: keep it fast and cache
+	// where appropriate.
+	ExtraSystemProvider ExtraSystemProvider
 }
+
+// ExtraSystemProvider returns additional system-prompt content for a
+// given chat session. See Config.ExtraSystemProvider for details.
+//
+//   - agentName is the full (possibly cloned) name, e.g.
+//     "guide:user_abc:my-book".
+//   - baseAgent is the un-namespaced agent name, e.g. "guide".
+//   - userID is the authenticated user (empty in self-hosted mode).
+type ExtraSystemProvider func(ctx context.Context, agentName, baseAgent, userID string) string
 
 // Server is the HTTP server for the Vega dashboard and REST API.
 type Server struct {

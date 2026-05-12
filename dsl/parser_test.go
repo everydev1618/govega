@@ -663,3 +663,137 @@ agents:
 		t.Errorf("Agent.Budget = %q, want %q", agent.Budget, "$5.00")
 	}
 }
+
+func TestParseNormsBlock(t *testing.T) {
+	yaml := `
+name: Norms Test
+
+agents:
+  worker:
+    model: claude-sonnet-4-20250514
+    system: You are a worker.
+
+norms:
+  llm_friendly:
+    description: Karpathy-style LLM-friendly writing norms
+    system: |
+      Write so an LLM can ingest a single section out of context:
+      - Atomic, addressable sections with stable anchor ids
+      - One claim per paragraph
+      - Glossary up front; define before use
+  terse:
+    description: Minimum-token responses
+    system: One sentence per answer. No filler.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	if len(doc.Norms) != 2 {
+		t.Fatalf("len(Norms) = %d, want 2", len(doc.Norms))
+	}
+
+	llm, ok := doc.Norms["llm_friendly"]
+	if !ok {
+		t.Fatal(`Norms["llm_friendly"] missing`)
+	}
+	if llm.Description != "Karpathy-style LLM-friendly writing norms" {
+		t.Errorf("llm_friendly.Description = %q", llm.Description)
+	}
+	if !strings.Contains(llm.System, "Atomic, addressable sections") {
+		t.Errorf("llm_friendly.System missing expected content: %q", llm.System)
+	}
+
+	terse, ok := doc.Norms["terse"]
+	if !ok {
+		t.Fatal(`Norms["terse"] missing`)
+	}
+	if !strings.Contains(terse.System, "One sentence per answer") {
+		t.Errorf("terse.System missing expected content: %q", terse.System)
+	}
+}
+
+func TestParseAgentWithNorm(t *testing.T) {
+	yaml := `
+name: Norm Ref Test
+
+agents:
+  guide:
+    model: claude-sonnet-4-20250514
+    system: You are a writing guide.
+    norm: llm_friendly
+
+  plain:
+    model: claude-sonnet-4-20250514
+    system: You are a plain agent.
+
+norms:
+  llm_friendly:
+    description: Karpathy norm
+    system: Write atomically.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	guide, ok := doc.Agents["guide"]
+	if !ok {
+		t.Fatal("Agent 'guide' not found")
+	}
+	if guide.Norm != "llm_friendly" {
+		t.Errorf("Agent.Norm = %q, want %q", guide.Norm, "llm_friendly")
+	}
+	plain, ok := doc.Agents["plain"]
+	if !ok {
+		t.Fatal("Agent 'plain' not found")
+	}
+	if plain.Norm != "" {
+		t.Errorf("Agent.Norm = %q on agent without norm field, want empty", plain.Norm)
+	}
+}
+
+func TestParseAgentUnknownNorm(t *testing.T) {
+	yaml := `
+name: Unknown Norm
+
+agents:
+  guide:
+    model: claude-sonnet-4-20250514
+    system: You are a guide.
+    norm: phantom
+
+norms:
+  llm_friendly:
+    system: real.
+`
+	p := NewParser()
+	_, err := p.Parse([]byte(yaml))
+	if err == nil {
+		t.Fatal("Parse should fail when agent references an unknown norm")
+	}
+	if !strings.Contains(err.Error(), "phantom") {
+		t.Errorf("error should mention the unknown norm name, got: %v", err)
+	}
+}
+
+func TestParseNormsBlockEmpty(t *testing.T) {
+	yaml := `
+name: No Norms
+
+agents:
+  worker:
+    model: claude-sonnet-4-20250514
+    system: You are a worker.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	if len(doc.Norms) != 0 {
+		t.Errorf("len(Norms) = %d, want 0 when block omitted", len(doc.Norms))
+	}
+}

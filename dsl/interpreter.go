@@ -80,6 +80,16 @@ func (i *Interpreter) SetDelegationObserver(fn DelegationObserver) {
 	i.delegationObserver = fn
 }
 
+// Norm returns the named norm definition from the loaded document. The
+// boolean is false when no norm is registered under that name.
+func (i *Interpreter) Norm(name string) (*Norm, bool) {
+	if i.doc == nil {
+		return nil, false
+	}
+	n, ok := i.doc.Norms[name]
+	return n, ok
+}
+
 // NewInterpreter creates a new interpreter for a document.
 func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, error) {
 	// Create orchestrator with settings
@@ -258,6 +268,16 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	// Build the base system string, enriching with team section if needed.
 	systemStr := def.System
+
+	// Compose referenced norm (writing/style guidance) into the base
+	// prompt. Appended after the agent's own system block so the agent's
+	// role definition leads and the norm refines how it writes. The
+	// parser already validates that `norm` resolves to a defined norm.
+	if def.Norm != "" {
+		if n, ok := i.doc.Norms[def.Norm]; ok && strings.TrimSpace(n.System) != "" {
+			systemStr += "\n\n## Writing norm: " + def.Norm + "\n\n" + strings.TrimSpace(n.System)
+		}
+	}
 
 	if len(def.Team) > 0 {
 		// Store delegation config for this agent.

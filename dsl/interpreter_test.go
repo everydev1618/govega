@@ -323,3 +323,41 @@ func TestWorkflowOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestInterpreterNormAccessor(t *testing.T) {
+	yaml := `
+name: norms accessor
+
+agents:
+  worker:
+    model: claude-sonnet-4-20250514
+    system: You are a worker.
+
+norms:
+  llm_friendly:
+    description: structured for LLM readers
+    system: Atomic sections. One claim per paragraph.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	interp, err := NewInterpreter(doc, WithLazySpawn())
+	if err != nil {
+		t.Fatalf("NewInterpreter: %v", err)
+	}
+	defer interp.Shutdown()
+
+	got, ok := interp.Norm("llm_friendly")
+	if !ok {
+		t.Fatal(`Norm("llm_friendly") not found`)
+	}
+	if got.System != "Atomic sections. One claim per paragraph." {
+		t.Errorf("Norm system = %q", got.System)
+	}
+
+	if _, ok := interp.Norm("nope"); ok {
+		t.Error(`Norm("nope") should be missing`)
+	}
+}

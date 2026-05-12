@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -160,4 +161,26 @@ func buildExtraSystem(memText, projectContext, companyContext string) string {
 		return ""
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// composeExtraSystem builds the per-turn extra system prompt by combining
+// the standard memory/project/company blocks with any content returned by
+// the configured ExtraSystemProvider. The provider is a per-server hook —
+// see Config.ExtraSystemProvider — used by embedding products to inject
+// session-specific guidance (e.g. a per-book writing norm) that the
+// agent's static configuration can't express. Returns "" when there is
+// nothing to set.
+func (s *Server) composeExtraSystem(ctx context.Context, agentName, baseAgent, userID, memText, projectContext, companyContext string) string {
+	base := buildExtraSystem(memText, projectContext, companyContext)
+	if s == nil || s.cfg.ExtraSystemProvider == nil {
+		return base
+	}
+	extra := s.cfg.ExtraSystemProvider(ctx, agentName, baseAgent, userID)
+	if extra == "" {
+		return base
+	}
+	if base == "" {
+		return extra
+	}
+	return base + "\n\n" + extra
 }

@@ -110,6 +110,25 @@ func (p *Parser) Parse(data []byte) (*Document, error) {
 		}
 	}
 
+	// Parse norms
+	if normsRaw, ok := raw["norms"].(map[string]any); ok {
+		doc.Norms = make(map[string]*Norm, len(normsRaw))
+		for name, nRaw := range normsRaw {
+			m, ok := nRaw.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("parse norm %s: expected map", name)
+			}
+			n := &Norm{}
+			if v, ok := m["description"].(string); ok {
+				n.Description = v
+			}
+			if v, ok := m["system"].(string); ok {
+				n.System = v
+			}
+			doc.Norms[name] = n
+		}
+	}
+
 	// Parse company
 	if company, ok := raw["company"].(map[string]any); ok {
 		doc.Company = p.parseCompany(company)
@@ -156,6 +175,9 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 
 	if v, ok := m["extends"].(string); ok {
 		agent.Extends = v
+	}
+	if v, ok := m["norm"].(string); ok {
+		agent.Norm = v
 	}
 	if v, ok := m["model"].(string); ok {
 		agent.Model = v
@@ -779,6 +801,17 @@ func (p *Parser) validate(doc *Document) error {
 					Field:   fmt.Sprintf("agents.%s.extends", name),
 					Message: fmt.Sprintf("agent '%s' not found", agent.Extends),
 					Hint:    fmt.Sprintf("Did you mean one of: %s?", strings.Join(agentNames(doc), ", ")),
+				}
+			}
+		}
+
+		// Check norm reference
+		if agent.Norm != "" {
+			if _, ok := doc.Norms[agent.Norm]; !ok {
+				return &ValidationError{
+					Field:   fmt.Sprintf("agents.%s.norm", name),
+					Message: fmt.Sprintf("norm '%s' not found", agent.Norm),
+					Hint:    "Define it under a top-level `norms:` block",
 				}
 			}
 		}
