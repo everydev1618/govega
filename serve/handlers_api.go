@@ -14,9 +14,30 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/google/uuid"
 )
+
+// carryRequestValues copies the request-scoped values that downstream
+// long-running LLM calls need (claims, bearer token, BYOK API key) from
+// the request context onto a detached background context. Detached
+// contexts are used so the LLM stream survives client disconnect, but
+// context.Background() naked would drop authentication and per-tenant
+// credentials, leaving callers like the AnthropicLLM with a static
+// (often empty) fallback key.
+func carryRequestValues(reqCtx, detached context.Context) context.Context {
+	if c, ok := ClaimsFrom(reqCtx); ok {
+		detached = WithClaims(detached, c)
+	}
+	if tok := BearerTokenFrom(reqCtx); tok != "" {
+		detached = WithBearerToken(detached, tok)
+	}
+	if k := llm.APIKeyFromContext(reqCtx); k != "" {
+		detached = llm.WithAPIKeyContext(detached, k)
+	}
+	return detached
+}
 
 // --- Company Handler ---
 
@@ -567,13 +588,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	// context.Background() drops the request context's values; carry the
 	// auth-related ones forward so tool callbacks can authenticate as
-	// the user even after the browser disconnects.
-	if c, ok := ClaimsFrom(r.Context()); ok {
-		ctx = WithClaims(ctx, c)
-	}
-	if tok := BearerTokenFrom(r.Context()); tok != "" {
-		ctx = WithBearerToken(ctx, tok)
-	}
+	// the user even after the browser disconnects, and so the BYOK
+	// per-request API key set by apexvega's chat gate middleware reaches
+	// the LLM client instead of falling back to the (empty) static key.
+	ctx = carryRequestValues(r.Context(), ctx)
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
 
 	// Snapshot baseline metrics before the stream so we can compute per-response delta.
@@ -944,10 +962,14 @@ func (s *Server) handleRunWorkflow(w http.ResponseWriter, r *http.Request) {
 		StartedAt: time.Now(),
 	})
 
-	// Execute async.
+	// Execute async. Detached context so the workflow survives client
+	// disconnect; carry forward auth + BYOK so LLM calls inside the
+	// workflow run as the requesting user.
+	reqCtx := r.Context()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
+		ctx = carryRequestValues(reqCtx, ctx)
 
 		result, err := s.interp.Execute(ctx, name, req.Inputs)
 
