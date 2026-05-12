@@ -57,12 +57,36 @@ export VEGA_DB_URL='postgres://user:pass@host:5432/vega?sslmode=require'
 Defaults to SQLite when `DBKind` is empty so existing deployments are
 untouched.
 
-## First boot
+## Migrations
 
-`store.Init()` runs the bundled schema with `CREATE TABLE IF NOT
-EXISTS` for every table. Idempotent — running against an already-
-populated database is a no-op. You can point a fresh apexvega at an
-empty Postgres database with no manual migration step.
+`store.Init()` applies `goose` migrations from the embedded
+`serve/migrations/postgres/` tree (refs #62). The schema baseline
+lives in `00001_initial_schema.sql`. Adding a column or table is one
+file diff:
+
+```sql
+-- serve/migrations/postgres/00002_add_workspace_id.sql
+
+-- +goose Up
+ALTER TABLE composed_agents ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default';
+CREATE INDEX idx_composed_agents_workspace ON composed_agents(workspace_id);
+
+-- +goose Down
+DROP INDEX IF EXISTS idx_composed_agents_workspace;
+ALTER TABLE composed_agents DROP COLUMN workspace_id;
+```
+
+Goose tracks applied versions in the `goose_db_version` table. Check
+where a deploy is via `make pg-shell` then `SELECT * FROM
+goose_db_version;`. Init is idempotent — re-running on a current DB
+advances nothing.
+
+SQLite still uses the original `CREATE IF NOT EXISTS + ALTER TABLE`
+chain. We adopt goose backend-by-backend; the prod-critical one
+(Postgres) is done. SQLite-side migrations land if/when we need
+destructive changes there.
+
+## First boot
 
 ```bash
 # Local dev — create a database and point apexvega at it.

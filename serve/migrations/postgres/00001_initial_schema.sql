@@ -1,10 +1,9 @@
-package serve
+-- +goose Up
+-- Initial schema baseline (refs govega#62). Every table from the
+-- pre-goose Postgres init lives here verbatim. Existing fresh
+-- Postgres installs sit at this version after first boot; future
+-- changes ship as new numbered migrations.
 
-// postgresSchema mirrors the SQLite schema with Postgres-native types
-// (refs govega#61 phase 2). Indexes match the SQLite ones so query
-// plans are equivalent. Idempotent CREATE-IF-NOT-EXISTS pattern matches
-// SQLite's migration shape — re-init on an upgraded DB is a no-op.
-const postgresSchema = `
 CREATE TABLE IF NOT EXISTS events (
     id          BIGSERIAL PRIMARY KEY,
     type        TEXT NOT NULL,
@@ -254,4 +253,31 @@ CREATE TABLE IF NOT EXISTS task_processes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (task_id, process_id)
 );
-`
+
+-- +goose Down
+-- Down for the initial baseline drops every table — destructive enough
+-- that we keep it as a clean reset path rather than something to run
+-- in production. Goose will refuse to run this against a populated
+-- system unless explicitly asked.
+DROP TABLE IF EXISTS task_processes;
+DROP TABLE IF EXISTS task_comments;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS prompt_history;
+DROP TABLE IF EXISTS inbox_replies;
+DROP TABLE IF EXISTS agent_inbox;
+DROP TABLE IF EXISTS chat_read_cursors;
+DROP TABLE IF EXISTS channel_read_cursors;
+DROP TABLE IF EXISTS channel_messages;
+DROP TABLE IF EXISTS channels;
+DROP TABLE IF EXISTS mcp_servers;
+DROP TABLE IF EXISTS settings;
+DROP TABLE IF EXISTS workspace_files;
+DROP TABLE IF EXISTS memory_items;
+DROP TABLE IF EXISTS agent_brain_files;
+DROP TABLE IF EXISTS scheduled_jobs;
+DROP TABLE IF EXISTS user_memory;
+DROP TABLE IF EXISTS chat_messages;
+DROP TABLE IF EXISTS composed_agents;
+DROP TABLE IF EXISTS workflow_runs;
+DROP TABLE IF EXISTS process_snapshots;
+DROP TABLE IF EXISTS events;

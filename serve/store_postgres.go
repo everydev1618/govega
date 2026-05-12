@@ -52,13 +52,12 @@ func (s *PostgresStore) Close() error {
 	return s.db.Close()
 }
 
-// Init creates the schema. Idempotent — every CREATE uses IF NOT EXISTS
-// so re-running against an upgraded database is safe.
+// Init applies pending goose migrations from the embedded
+// serve/migrations/postgres/ tree (refs govega#62). Replaces the
+// pre-goose monolithic-schema approach. Idempotent — re-running on a
+// current database advances goose_db_version by nothing.
 func (s *PostgresStore) Init() error {
-	if _, err := s.db.Exec(postgresSchema); err != nil {
-		return fmt.Errorf("postgres init: %w", err)
-	}
-	return nil
+	return s.runMigrations()
 }
 
 // --- Events ---
