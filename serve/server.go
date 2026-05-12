@@ -1000,6 +1000,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/config", s.handleGetConfig)
 	mux.HandleFunc("POST /api/v1/config/upload", s.handleConfigUpload)
 	mux.HandleFunc("GET /api/v1/identity", s.handleGetIdentity)
+
+	// Unified tenant config — orchestrator identity + branding (refs
+	// govega#32 item B). Replaces env-var-only branding so customers
+	// can rebrand at runtime without ops involvement.
+	mux.HandleFunc("GET /api/v1/tenant/config", s.handleGetTenantConfig)
+	mux.HandleFunc("PUT /api/v1/tenant/config", s.handleUpdateTenantConfig)
 	mux.HandleFunc("GET /api/v1/integrations/telegram", s.handleTelegramStatus)
 	mux.HandleFunc("POST /api/v1/integrations/telegram", s.handleTelegramConfigure)
 	mux.HandleFunc("DELETE /api/v1/integrations/telegram/{id}", s.handleTelegramRemove)
