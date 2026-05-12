@@ -65,8 +65,10 @@ func (c *HeraConfig) applyDefaults() {
 	}
 }
 
-// renderHeraPrompt substitutes identity tokens in cfg's SystemPrompt (or
-// the bundled template when empty). Default identity returns the prompt
+// renderHeraPrompt substitutes identity tokens in cfg's SystemPrompt
+// (or the bundled template when empty). See renderIrisPrompt for the
+// two grammars (refs govega#32 item E) — same semantics, mirrored
+// self/companion mapping. Default identity returns the template
 // unchanged (fast path).
 func renderHeraPrompt(cfg HeraConfig) string {
 	template := cfg.SystemPrompt
@@ -77,6 +79,15 @@ func renderHeraPrompt(cfg HeraConfig) string {
 		cfg.OrchestratorName == IrisAgentName && cfg.OrchestratorDisplayName == "Iris" &&
 		cfg.ProductName == "Vega" {
 		return template
+	}
+	if usesPlaceholders(template) {
+		return renderPromptPlaceholders(template, map[string]string{
+			"orchestrator_display": cfg.OrchestratorDisplayName,
+			"orchestrator_slug":    cfg.OrchestratorName,
+			"builder_display":      cfg.DisplayName,
+			"builder_slug":         cfg.Name,
+			"product_name":         cfg.ProductName,
+		})
 	}
 	return strings.NewReplacer(
 		"Iris", cfg.OrchestratorDisplayName,

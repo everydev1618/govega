@@ -67,8 +67,25 @@ func (c *IrisConfig) applyDefaults() {
 }
 
 // renderIrisPrompt returns the system prompt with identity tokens
-// substituted from cfg. When cfg uses the default identity tokens, the
-// prompt is returned unchanged (fast path).
+// substituted from cfg.
+//
+// Two grammars are supported (refs govega#32 item E):
+//
+//   - Placeholder style (preferred). Templates that contain
+//     {{orchestrator_display}} / {{orchestrator_slug}} /
+//     {{builder_display}} / {{builder_slug}} / {{product_name}} get
+//     collision-free key substitution. Customers whose cfg values
+//     collide on a literal string (e.g. builder display "Apex"
+//     == product name "Apex") need this path.
+//
+//   - Legacy substring style. Templates that use literal "Iris" /
+//     "iris" / "Hera" / "hera" / "Vega" fall through to
+//     strings.NewReplacer the way they always have. Backwards-
+//     compatible with every existing custom prompt — including the
+//     bundled default.
+//
+// Default identity + default-shaped template returns unchanged (fast
+// path) so the common case skips both replacers.
 func renderIrisPrompt(cfg IrisConfig) string {
 	template := cfg.SystemPrompt
 	if template == "" {
@@ -78,6 +95,15 @@ func renderIrisPrompt(cfg IrisConfig) string {
 		cfg.BuilderName == HeraAgentName && cfg.BuilderDisplayName == "Hera" &&
 		cfg.ProductName == "Vega" {
 		return template
+	}
+	if usesPlaceholders(template) {
+		return renderPromptPlaceholders(template, map[string]string{
+			"orchestrator_display": cfg.DisplayName,
+			"orchestrator_slug":    cfg.Name,
+			"builder_display":      cfg.BuilderDisplayName,
+			"builder_slug":         cfg.BuilderName,
+			"product_name":         cfg.ProductName,
+		})
 	}
 	return strings.NewReplacer(
 		"Iris", cfg.DisplayName,
