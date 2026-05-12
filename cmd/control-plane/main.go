@@ -35,6 +35,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -79,9 +80,22 @@ func main() {
 		}
 		cfg.ReturnURLPattern = re
 	}
+	if raw := os.Getenv("DEV_MEMBERSHIPS_JSON"); raw != "" {
+		var m map[string][]string
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			slog.Error("DEV_MEMBERSHIPS_JSON parse", "err", err)
+			os.Exit(1)
+		}
+		cfg.Memberships = m
+	}
 
 	if cfg.DevSecret == "" {
-		slog.Warn("VEGA_DEV_SECRET unset — /dev/mint endpoint will return 503")
+		slog.Warn("VEGA_DEV_SECRET unset — /dev/mint and /dev/login endpoints will return 503")
+	}
+	if len(cfg.Memberships) == 0 {
+		slog.Warn("DEV_MEMBERSHIPS_JSON unset — /dev/mint accepts any (tenant, user) and /dev/login returns empty memberships for everyone")
+	} else {
+		slog.Info("loaded dev memberships", "users", len(cfg.Memberships))
 	}
 	if cfg.GoogleClientID == "" {
 		slog.Warn("VEGA_GOOGLE_CLIENT_ID unset — /oauth/gmail/* endpoints will return 503")
