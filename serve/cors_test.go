@@ -90,8 +90,17 @@ func TestCORS_OPTIONSPreflight_FromAllowedOrigin_204WithHeaders(t *testing.T) {
 	if res.Header.Get("Access-Control-Allow-Origin") != "https://app.apex.io" {
 		t.Errorf("ACAO not set on preflight")
 	}
-	if res.Header.Get("Access-Control-Allow-Methods") == "" {
+	methods := res.Header.Get("Access-Control-Allow-Methods")
+	if methods == "" {
 		t.Errorf("Allow-Methods not set on preflight")
+	}
+	// Every HTTP verb the API actually uses must be advertised; missing
+	// methods cause browsers to fail the preflight before the handler ever
+	// runs (refs govega#64 — PATCH endpoints were unreachable from apex-host-mgmt).
+	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"} {
+		if !contains(methods, m) {
+			t.Errorf("Allow-Methods missing %q; got %q", m, methods)
+		}
 	}
 	headers := res.Header.Get("Access-Control-Allow-Headers")
 	if headers == "" {
