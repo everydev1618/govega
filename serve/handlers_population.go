@@ -281,6 +281,12 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		procID = proc.ID
 	}
 
+	// Prime the agent's first chat turn so the FE doesn't land users on a
+	// blank chat screen (refs govega#63). Runs async so the create response
+	// isn't gated on LLM latency — the FE picks up the assistant message
+	// via the next chat-history poll / SSE update.
+	s.primeAgentIntroAsync(req.Name)
+
 	writeJSON(w, http.StatusCreated, CreateAgentResponse{
 		Name:      req.Name,
 		Model:     req.Model,

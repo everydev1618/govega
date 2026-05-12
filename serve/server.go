@@ -477,6 +477,13 @@ func (s *Server) Start(ctx context.Context) error {
 	// Inject Iris — the messenger goddess that routes goals across all agents.
 	s.injectIris()
 
+	// Prime intro greetings for the meta-agents on first boot of a tenant
+	// (refs govega#63). primeAgentIntro is idempotent on chat history, so
+	// this is a no-op after the first run — re-injection on every restart
+	// won't re-introduce them.
+	s.primeAgentIntroAsync(s.cfg.Builder.Name)
+	s.primeAgentIntroAsync(s.cfg.Orchestrator.Name)
+
 	// Set up scheduler and restore persisted jobs.
 	s.scheduler = NewScheduler(
 		s.interp,
@@ -1406,6 +1413,11 @@ func (s *Server) injectHera() {
 				Agent:     agent.Name,
 				Timestamp: time.Now(),
 			})
+			// Prime the agent's first chat turn (refs govega#63). Async so
+			// Hera's create_agent tool returns immediately; the worker
+			// agent's intro lands in its own chat history, independent of
+			// Hera's conversation.
+			s.primeAgentIntroAsync(agent.Name)
 			return nil
 		},
 		OnAgentDeleted: func(name string) {

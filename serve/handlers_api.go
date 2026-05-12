@@ -14,7 +14,6 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
-	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/google/uuid"
 )
@@ -391,15 +390,7 @@ func (s *Server) hydrateAgent(proc *vega.Process, agentName string) {
 		return
 	}
 
-	msgs := make([]llm.Message, 0, len(history))
-	for _, m := range history {
-		role := llm.RoleUser
-		if m.Role == "assistant" {
-			role = llm.RoleAssistant
-		}
-		msgs = append(msgs, llm.Message{Role: role, Content: m.Content})
-	}
-
+	msgs := buildHydrationMessages(history)
 	proc.HydrateMessages(msgs)
 	slog.Debug("hydrated agent from chat history", "agent", agentName, "messages", len(msgs))
 }
