@@ -1,0 +1,20 @@
+app = "apex-control-plane"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.control-plane"
+
+[env]
+  CONTROL_PLANE_PORT = "9001"
+  CONTROL_PLANE_ISSUER = "https://auth.apexhost.ai"
+
+[http_service]
+  internal_port = 9001
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

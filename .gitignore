@@ -56,3 +56,6 @@ node_modules/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+
+# Claude Code session config
+.claude/
