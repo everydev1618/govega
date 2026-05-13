@@ -143,8 +143,8 @@ func TestComposioRegistryEntry(t *testing.T) {
 	if cfg.URL == "" {
 		t.Error("config URL should not be empty")
 	}
-	if cfg.Headers["x-api-key"] != "test-key" {
-		t.Errorf("config Headers[x-api-key]=%q, want %q", cfg.Headers["x-api-key"], "test-key")
+	if cfg.Headers["x-consumer-api-key"] != "test-key" {
+		t.Errorf("config Headers[x-consumer-api-key]=%q, want %q", cfg.Headers["x-consumer-api-key"], "test-key")
 	}
 }
 

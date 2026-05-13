@@ -287,7 +287,7 @@ func (e RegistryEntry) ToServerConfig(overrideEnv map[string]string) ServerConfi
 			cfg.Headers = make(map[string]string)
 		}
 		if apiKey := cfg.Env["COMPOSIO_API_KEY"]; apiKey != "" && e.Name == "composio" {
-			cfg.Headers["x-api-key"] = apiKey
+			cfg.Headers["x-consumer-api-key"] = apiKey
 		}
 	}
 
