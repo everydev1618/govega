@@ -475,6 +475,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Without this ordering, spawnAgent's Filter() silently drops MCP tool
 	// names that don't yet exist, leaving agents without their MCP tools.
 	s.autoConnectBuiltinServers(ctx)
+	s.autoConnectHTTPServers(ctx)
 	s.autoConnectPersistedServers(ctx)
 	s.persistYAMLMCPServers()
 
@@ -1188,6 +1189,40 @@ func (s *Server) autoConnectBuiltinServers(ctx context.Context) {
 			continue
 		}
 		slog.Info("auto-connected builtin MCP server", "server", entry.Name, "tools", n)
+	}
+}
+
+// autoConnectHTTPServers connects HTTP/SSE-transport MCP servers from the
+// registry whose required env vars are already set (e.g. v39a injects
+// COMPOSIO_API_KEY at launch). Without this, hosted-MCP integrations like
+// Composio stay disconnected on boot — only built-in Go servers were
+// auto-connected previously, and agents had no MCP tools available.
+func (s *Server) autoConnectHTTPServers(ctx context.Context) {
+	t := s.interp.Tools()
+	for _, entry := range mcp.DefaultRegistry {
+		if entry.BuiltinGo {
+			continue
+		}
+		if entry.Transport != mcp.TransportHTTP && entry.Transport != mcp.TransportSSE {
+			continue
+		}
+		allSet := true
+		for _, key := range entry.RequiredEnv {
+			if os.Getenv(key) == "" {
+				allSet = false
+				break
+			}
+		}
+		if !allSet {
+			continue
+		}
+		cfg := entry.ToServerConfig(nil)
+		n, err := t.ConnectMCPServer(ctx, cfg)
+		if err != nil {
+			slog.Warn("auto-connect HTTP MCP server failed", "server", entry.Name, "error", err)
+			continue
+		}
+		slog.Info("auto-connected HTTP MCP server", "server", entry.Name, "tools", n)
 	}
 }
 
