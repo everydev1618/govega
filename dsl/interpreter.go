@@ -169,6 +169,9 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 
 	t := tools.NewTools(toolOpts...)
 	t.RegisterBuiltins()
+	// Sandbox tools (spawn/run/write/destroy fly machines for user-built apps)
+	// are no-ops unless FLY_SANDBOX_TOKEN is in the environment.
+	tools.RegisterSandboxTools(t)
 
 	// Register custom tools defined in the YAML tools: section.
 	for name, td := range doc.Tools {
