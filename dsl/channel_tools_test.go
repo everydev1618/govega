@@ -67,7 +67,7 @@ func callListMyChannels(t *testing.T, backend *mockChannelBackend, agentName str
 		tools:  tools.NewTools(),
 		delegationConfigs: map[string]*DelegationDef{},
 	}
-	RegisterChannelTools(interp, backend, nil, nil)
+	RegisterChannelTools(interp, backend, nil, nil, nil)
 
 	proc := &vega.Process{
 		ID:    "test-proc",

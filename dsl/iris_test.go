@@ -59,7 +59,7 @@ func TestInjectIris_ExposesChannelTools(t *testing.T) {
 
 	backend := &mockChannelBackend{}
 	// Correct boot order: register channel tools FIRST, then inject Iris.
-	RegisterChannelTools(interp, backend, nil, nil)
+	RegisterChannelTools(interp, backend, nil, nil, nil)
 	if err := InjectIris(interp, DefaultIrisConfig(), backend); err != nil {
 		t.Fatalf("InjectIris: %v", err)
 	}

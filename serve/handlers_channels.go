@@ -129,6 +129,18 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ch, _ := s.store.GetChannel(req.Name)
+	s.broker.Publish(BrokerEvent{
+		Type: "channel.created",
+		Data: map[string]any{
+			"id":          id,
+			"name":        req.Name,
+			"description": req.Description,
+			"created_by":  userID,
+			"team":        req.Team,
+			"mode":        req.Mode,
+		},
+		Timestamp: time.Now(),
+	})
 	if ch == nil {
 		writeJSON(w, http.StatusCreated, map[string]string{"status": "created", "id": id})
 		return
@@ -156,6 +168,13 @@ func (s *Server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "channel not found"})
 		return
 	}
+	s.broker.Publish(BrokerEvent{
+		Type: "channel.deleted",
+		Data: map[string]any{
+			"name": name,
+		},
+		Timestamp: time.Now(),
+	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -172,6 +191,14 @@ func (s *Server) handleUpdateChannelTeam(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "channel not found"})
 		return
 	}
+	s.broker.Publish(BrokerEvent{
+		Type: "channel.team_updated",
+		Data: map[string]any{
+			"name": name,
+			"team": req.Team,
+		},
+		Timestamp: time.Now(),
+	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -195,6 +222,20 @@ func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		lookupName = *req.Name
 	}
 	ch, _ := s.store.GetChannel(lookupName)
+	data := map[string]any{
+		"name": lookupName,
+	}
+	if currentName != lookupName {
+		data["previous_name"] = currentName
+	}
+	if ch != nil {
+		data["description"] = ch.Description
+	}
+	s.broker.Publish(BrokerEvent{
+		Type:      "channel.updated",
+		Data:      data,
+		Timestamp: time.Now(),
+	})
 	if ch == nil {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 		return

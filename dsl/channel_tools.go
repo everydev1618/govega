@@ -67,8 +67,15 @@ type ChannelBackend interface {
 // so the server can publish SSE events to connected clients.
 type ChannelPostCallback func(channelName, agent, content string, msgID int64, threadID *int64)
 
+// ChannelLifecycleCallback is called after an agent successfully creates
+// a channel via the create_channel tool, so the server can publish a
+// broker event (channel.created) for connected SSE clients. The HTTP
+// channel handlers publish their own broker events directly — this hook
+// covers the agent-driven tool path that bypasses HTTP.
+type ChannelLifecycleCallback func(id, name, description, createdBy string, team []string, mode string)
+
 // RegisterChannelTools registers channel tools on the interpreter.
-func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost ChannelPostCallback, onReactive ChannelReactiveCallback) {
+func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost ChannelPostCallback, onReactive ChannelReactiveCallback, onLifecycle ChannelLifecycleCallback) {
 	t := interp.Tools()
 
 	t.Register("post_to_channel", tools.ToolDef{
@@ -239,6 +246,9 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 			id := fmt.Sprintf("ch_%d", time.Now().UnixNano())
 			if err := backend.CreateChannel(id, name, description, creator, team, mode); err != nil {
 				return "", fmt.Errorf("create channel: %w", err)
+			}
+			if onLifecycle != nil {
+				onLifecycle(id, name, description, creator, team, mode)
 			}
 			modeMsg := ""
 			switch mode {

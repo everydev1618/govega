@@ -493,8 +493,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// LLM never sees them (refs govega#57 — ARIA hitting "create_channel not
 	// available" during onboarding). Same root cause as the MCP ordering
 	// comment above.
-	channelPostCb, channelReactiveCb := s.buildChannelCallbacks()
-	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb, channelReactiveCb)
+	channelPostCb, channelReactiveCb, channelLifecycleCb := s.buildChannelCallbacks()
+	dsl.RegisterChannelTools(s.interp, s.store, channelPostCb, channelReactiveCb, channelLifecycleCb)
 
 	// Apply any persisted orchestrator identity override (refs govega#58).
 	// The override lives in the settings table because the orchestrator is
@@ -1490,7 +1490,7 @@ func (s *Server) injectIris() {
 // per-channel stream. channelReactiveCb is gated by channel mode and
 // notifies other team members when the channel opts in via
 // mode="reactive" or mode="social".
-func (s *Server) buildChannelCallbacks() (dsl.ChannelPostCallback, dsl.ChannelReactiveCallback) {
+func (s *Server) buildChannelCallbacks() (dsl.ChannelPostCallback, dsl.ChannelReactiveCallback, dsl.ChannelLifecycleCallback) {
 	channelPostCb := func(channelName, agent, content string, msgID int64, threadID *int64) {
 		cs := s.getOrCreateChannelStream(channelName)
 		if threadID != nil {
@@ -1539,7 +1539,21 @@ func (s *Server) buildChannelCallbacks() (dsl.ChannelPostCallback, dsl.ChannelRe
 			}
 		}()
 	}
-	return channelPostCb, channelReactiveCb
+	channelLifecycleCb := func(id, name, description, createdBy string, team []string, mode string) {
+		s.broker.Publish(BrokerEvent{
+			Type: "channel.created",
+			Data: map[string]any{
+				"id":          id,
+				"name":        name,
+				"description": description,
+				"created_by":  createdBy,
+				"team":        team,
+				"mode":        mode,
+			},
+			Timestamp: time.Now(),
+		})
+	}
+	return channelPostCb, channelReactiveCb, channelLifecycleCb
 }
 
 // refreshToolSettings loads all settings from the store and sets them on the
