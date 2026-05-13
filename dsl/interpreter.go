@@ -1695,16 +1695,31 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		}
 
 		// Post completion notification to inbox as pending so Iris triages it.
-		// Failed tasks are marked urgent.
+		// Three outcomes:
+		//   - err != nil → explicit failure, marked urgent
+		//   - resp is blank → agent ran but produced no text (no tools, LLM
+		//     bailed without output, etc.); previously masqueraded as
+		//     success because err was nil. Mark urgent so the
+		//     orchestrator surfaces the gap to the user instead of
+		//     confidently claiming a task is done.
+		//   - resp has content → success, normal priority.
 		if i.inboxBackend != nil {
-			if err != nil {
+			switch {
+			case err != nil:
 				i.inboxBackend.InsertInboxItem(
 					agentName,
 					fmt.Sprintf("Task failed for %s", agentName),
 					fmt.Sprintf("Error: %s\n\nOriginal request: %s", err.Error(), truncateStr(message, 500)),
 					"urgent",
 				)
-			} else {
+			case strings.TrimSpace(resp) == "":
+				i.inboxBackend.InsertInboxItem(
+					agentName,
+					fmt.Sprintf("Task incomplete from %s", agentName),
+					fmt.Sprintf("Agent produced no output — they may not have the tools required, or they ran without invoking the LLM. Do not assume the task is done; tell the user.\n\nOriginal request: %s", truncateStr(message, 500)),
+					"urgent",
+				)
+			default:
 				i.inboxBackend.InsertInboxItem(
 					agentName,
 					fmt.Sprintf("Task completed by %s", agentName),
