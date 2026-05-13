@@ -646,7 +646,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Routes the orchestrator's response back to whichever conversation
 	// originated the dispatch (Telegram chat, web user) via the
 	// ReplyTarget registered for that agent — see server.replyTargets.
-	s.interp.SetDispatchCompleteCallback(func(completedAgent, callerAgent, dispatchMsg, dispatchResp string, dispatchErr error) {
+	s.interp.SetDispatchCompleteCallback(func(dispatchCtx context.Context, completedAgent, callerAgent, dispatchMsg, dispatchResp string, dispatchErr error) {
 		// Clear the synthetic active stream so the busy spinner stops.
 		s.streamsMu.Lock()
 		if as, ok := s.streams[completedAgent]; ok {
@@ -706,7 +706,12 @@ func (s *Server) Start(ctx context.Context) error {
 		slog.Info("dispatch complete, poking originating conversation", "completed", completedAgent, "caller", pokeAgent)
 		go func() {
 			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", completedAgent)
-			ctx := context.Background()
+			// Detach from the dispatch goroutine's cancel/deadline but
+			// preserve its values — most importantly the BYOK API key
+			// from the original user request, so the orchestrator's
+			// poke-LLM call can authenticate. Without this, the poke
+			// 401s and the user never sees the "task triaged" update.
+			ctx := carryRequestValues(dispatchCtx, context.Background())
 			resp, err := s.interp.SendToAgent(ctx, pokeAgent, msg)
 			if err != nil {
 				slog.Error("failed to poke orchestrator after dispatch", "completed", completedAgent, "caller", pokeAgent, "error", err)

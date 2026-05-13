@@ -49,7 +49,7 @@ type Interpreter struct {
 	delegationCtxDecorator func(ctx context.Context, agentName string) context.Context // rewrites ctx before delegation
 	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
 	onDispatchStart    func(agentName string) // fires when a dispatched agent begins working
-	onDispatchComplete func(agentName, callerName, message, response string, err error) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty)
+	onDispatchComplete func(ctx context.Context, agentName, callerName, message, response string, err error) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty); ctx carries the dispatched goroutine's values including the BYOK API key so downstream pokes can authenticate as the original caller
 	onDispatchEvent    func(agentName string, ev vega.ChatEvent)                        // fires for each ChatEvent from a dispatched run, so the serve layer can stream tool calls / text deltas back to the user via SSE
 	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
@@ -1755,7 +1755,10 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		// (e.g. the specific Telegram chat) rather than always routing
 		// to the base orchestrator's web chat.
 		if i.onDispatchComplete != nil {
-			i.onDispatchComplete(agentName, callerName, message, resp, err)
+			// Pass the goroutine's ctx (detached via WithoutCancel from
+			// the original caller's request) so the serve layer can
+			// carry BYOK + claims forward when it pokes the orchestrator.
+			i.onDispatchComplete(detached, agentName, callerName, message, resp, err)
 		}
 	}()
 
@@ -1782,7 +1785,7 @@ func (i *Interpreter) SetDispatchStartCallback(fn func(agentName string)) {
 // back to the originating conversation and (b) persist the dispatched
 // exchange to the agent's private chat history so the user can watch
 // their work in /chat/<agent>.
-func (i *Interpreter) SetDispatchCompleteCallback(fn func(agentName, callerName, message, response string, err error)) {
+func (i *Interpreter) SetDispatchCompleteCallback(fn func(ctx context.Context, agentName, callerName, message, response string, err error)) {
 	i.onDispatchComplete = fn
 }
 
