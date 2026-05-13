@@ -33,6 +33,12 @@ type streamSubscriber struct {
 type activeStream struct {
 	agentName string
 	done      chan struct{} // closed when stream completes
+	// startedAt is the wall-clock instant this stream was created.
+	// handleChatStatus uses it to detect entries orphaned by a killed
+	// goroutine (machine restart, OOM, panic) — anything older than
+	// activeStreamMaxAge with `done` still open is treated as dead so
+	// the SPA's chat input doesn't lock the user out forever.
+	startedAt time.Time
 
 	mu          sync.Mutex
 	history     []vega.ChatEvent    // all events received, for replay
@@ -41,6 +47,12 @@ type activeStream struct {
 	err         error               // set after done
 	metrics     *vega.ChatEventMetrics // set after done
 }
+
+// activeStreamMaxAge is the upper bound for treating an entry in
+// s.streams as a live in-flight run. Bounded by handleChatStream's
+// detached-context timeout (60min) — beyond that, the goroutine is
+// gone whether it told us or not.
+const activeStreamMaxAge = 65 * time.Minute
 
 // publish sends an event to all active subscribers and appends it to history.
 func (as *activeStream) publish(event vega.ChatEvent) {
@@ -613,6 +625,7 @@ func (s *Server) Start(ctx context.Context) error {
 		as := &activeStream{
 			agentName: agentName,
 			done:      make(chan struct{}),
+			startedAt: time.Now(),
 		}
 		s.streamsMu.Lock()
 		s.streams[agentName] = as

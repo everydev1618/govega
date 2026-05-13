@@ -610,6 +610,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	as := &activeStream{
 		agentName: name,
 		done:      make(chan struct{}),
+		startedAt: time.Now(),
 	}
 
 	s.streamsMu.Lock()
@@ -679,15 +680,36 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleChatStatus returns whether an agent has an active (in-progress) stream.
+//
+// Stale-entry sweep: if an `as` exists with `done` still open BUT its
+// age exceeds activeStreamMaxAge, the originating goroutine is dead
+// (machine restart, OOM, panic — anything that prevented it from
+// closing `done` and deleting itself from s.streams). Treat it as
+// finished and drop the entry so the SPA's chat input doesn't stay
+// disabled for the rest of the process's life.
 func (s *Server) handleChatStatus(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
 	s.streamsMu.Lock()
 	as := s.streams[name]
+	stale := false
+	if as != nil {
+		select {
+		case <-as.done:
+			// Stream already finished but hasn't been cleaned up yet.
+		default:
+			if !as.startedAt.IsZero() && time.Since(as.startedAt) > activeStreamMaxAge {
+				stale = true
+			}
+		}
+	}
+	if stale {
+		delete(s.streams, name)
+	}
 	s.streamsMu.Unlock()
 
 	streaming := false
-	if as != nil {
+	if as != nil && !stale {
 		select {
 		case <-as.done:
 			// Stream already finished but hasn't been cleaned up yet.
