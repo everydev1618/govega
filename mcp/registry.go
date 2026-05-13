@@ -159,7 +159,7 @@ var DefaultRegistry = map[string]RegistryEntry{
 		Name:        "composio",
 		Description: "Composio integration platform (850+ app integrations with managed auth)",
 		Transport:   TransportHTTP,
-		URL:         "https://mcp.composio.dev/v2/mcp",
+		URL:         "https://connect.composio.dev/mcp",
 		RequiredEnv: []string{"COMPOSIO_API_KEY"},
 		Icon:        "Plug",
 		Category:    "productivity",
