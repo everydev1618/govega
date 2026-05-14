@@ -502,7 +502,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
 	}
 
-	// Wiki memory curator (govega#71). Fires Memora at the exchange in
+	// Wiki memory curator (govega#71). Fires Mira at the exchange in
 	// the background so the user gets their response without waiting on
 	// curation. Detached context inherits the per-tenant BYOK key etc.
 	go s.curateMemory(carryRequestValues(r.Context(), context.Background()), userID, baseAgent, req.Message, response)

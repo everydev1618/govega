@@ -10,7 +10,7 @@ import (
 	"github.com/everydev1618/govega/dsl"
 )
 
-// Memora is the memory curator (govega#71). After each chat exchange
+// Mira is the memory curator (govega#71). After each chat exchange
 // the server fires a one-shot delegation to her with a description of
 // what just happened; she reads the relevant wiki pages and decides
 // what (if anything) to write back. She has only the memory_* tools,
@@ -21,9 +21,9 @@ import (
 // her prompt + model are configurable, and she dogfoods the same
 // primitives every user-facing agent has.
 
-// MemoraConfig holds the configurable bits of the curator agent.
+// MiraConfig holds the configurable bits of the curator agent.
 // Mirror of HeraConfig / IrisConfig.
-type MemoraConfig struct {
+type MiraConfig struct {
 	Name          string
 	DisplayName   string
 	Title         string
@@ -31,17 +31,17 @@ type MemoraConfig struct {
 	FallbackModel string
 }
 
-// DefaultMemoraConfig returns the standard Memora persona.
-func DefaultMemoraConfig() MemoraConfig {
-	return MemoraConfig{}
+// DefaultMiraConfig returns the standard Mira persona.
+func DefaultMiraConfig() MiraConfig {
+	return MiraConfig{}
 }
 
-func (c *MemoraConfig) applyDefaults() {
+func (c *MiraConfig) applyDefaults() {
 	if c.Name == "" {
-		c.Name = "memora"
+		c.Name = "mira"
 	}
 	if c.DisplayName == "" {
-		c.DisplayName = "Memora"
+		c.DisplayName = "Mira"
 	}
 	if c.Title == "" {
 		c.Title = "Memory Curator"
@@ -60,7 +60,7 @@ func (c *MemoraConfig) applyDefaults() {
 	}
 }
 
-const memoraSystemPrompt = `You are Memora, the memory curator for this user's agent team.
+const miraSystemPrompt = `You are Mira, the memory curator for this user's agent team.
 
 Each time one of the user's agents finishes a conversation turn, the server fires a one-shot message to you describing what just happened. Your job: decide whether anything durable came up and, if so, update the shared user wiki so the user's agents remember it next time.
 
@@ -90,8 +90,8 @@ The shared user wiki has these conventional pages — create them on demand:
 
 Reply with a 1-2 sentence summary of what you did (or "no update"). Your output is appended to your chat history so the user can later inspect your decisions.`
 
-// MemoraAgent returns the dsl.Agent definition for the curator.
-func MemoraAgent(cfg MemoraConfig) *dsl.Agent {
+// MiraAgent returns the dsl.Agent definition for the curator.
+func MiraAgent(cfg MiraConfig) *dsl.Agent {
 	cfg.applyDefaults()
 	icon, gradient := dsl.DefaultVisualIdentity(cfg.Name)
 	return &dsl.Agent{
@@ -102,7 +102,7 @@ func MemoraAgent(cfg MemoraConfig) *dsl.Agent {
 		AvatarGradient: gradient,
 		Model:          cfg.Model,
 		FallbackModel:  cfg.FallbackModel,
-		System:         memoraSystemPrompt,
+		System:         miraSystemPrompt,
 		Retry:          &dsl.RetryDef{MaxAttempts: 2, Backoff: "exponential"},
 		IsMeta:         true,
 		Tools: []string{
@@ -113,15 +113,15 @@ func MemoraAgent(cfg MemoraConfig) *dsl.Agent {
 	}
 }
 
-// InjectMemora registers the curator on the interpreter. The wiki
+// InjectMira registers the curator on the interpreter. The wiki
 // memory tools must already be registered via RegisterWikiMemoryTools
-// — Memora's tool list refers to them by name.
-func InjectMemora(interp *dsl.Interpreter, cfg MemoraConfig) error {
+// — Mira's tool list refers to them by name.
+func InjectMira(interp *dsl.Interpreter, cfg MiraConfig) error {
 	cfg.applyDefaults()
-	return interp.AddAgent(cfg.Name, MemoraAgent(cfg))
+	return interp.AddAgent(cfg.Name, MiraAgent(cfg))
 }
 
-// curateMemory fires Memora at the just-completed exchange between
+// curateMemory fires Mira at the just-completed exchange between
 // `agent` and `userID`. Async — call from `go s.curateMemory(...)` so
 // the user's chat response isn't blocked on curation.
 //
@@ -131,18 +131,18 @@ func (s *Server) curateMemory(ctx context.Context, userID, agent, userMsg, respo
 	if userID == "" || userMsg == "" || response == "" {
 		return
 	}
-	// Curator runs as "memora" — its memory writes target the shared
+	// Curator runs as "mira" — its memory writes target the shared
 	// user wiki under the user we're scoped to.
-	ctx = ContextWithMemory(ctx, s.store, userID, "memora")
+	ctx = ContextWithMemory(ctx, s.store, userID, "mira")
 	prompt := buildCuratorPrompt(userID, agent, userMsg, response)
-	if _, err := s.interp.SendToAgent(ctx, "memora", prompt); err != nil {
+	if _, err := s.interp.SendToAgent(ctx, "mira", prompt); err != nil {
 		// Curation failures don't surface to the user — the agent's
 		// reply already shipped. Log and move on.
 		slog.Warn("memory curator turn failed", "user", userID, "agent", agent, "error", err)
 	}
 }
 
-// buildCuratorPrompt frames the just-finished exchange for Memora.
+// buildCuratorPrompt frames the just-finished exchange for Mira.
 // Kept short so the prompt budget goes to her decision, not framing.
 func buildCuratorPrompt(userID, agent, userMsg, response string) string {
 	var b strings.Builder

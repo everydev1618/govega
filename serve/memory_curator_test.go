@@ -8,14 +8,14 @@ import (
 	"github.com/everydev1618/govega/dsl"
 )
 
-func TestMemoraConfig_AppliesDefaults(t *testing.T) {
-	cfg := MemoraConfig{}
+func TestMiraConfig_AppliesDefaults(t *testing.T) {
+	cfg := MiraConfig{}
 	cfg.applyDefaults()
-	if cfg.Name != "memora" {
-		t.Errorf("Name = %q, want memora", cfg.Name)
+	if cfg.Name != "mira" {
+		t.Errorf("Name = %q, want mira", cfg.Name)
 	}
-	if cfg.DisplayName != "Memora" {
-		t.Errorf("DisplayName = %q, want Memora", cfg.DisplayName)
+	if cfg.DisplayName != "Mira" {
+		t.Errorf("DisplayName = %q, want Mira", cfg.DisplayName)
 	}
 	if cfg.Title == "" {
 		t.Error("Title should be defaulted")
@@ -28,8 +28,8 @@ func TestMemoraConfig_AppliesDefaults(t *testing.T) {
 	}
 }
 
-func TestMemoraConfig_PreservesExplicitFields(t *testing.T) {
-	cfg := MemoraConfig{Name: "custom", Model: "claude-opus-4-7"}
+func TestMiraConfig_PreservesExplicitFields(t *testing.T) {
+	cfg := MiraConfig{Name: "custom", Model: "claude-opus-4-7"}
 	cfg.applyDefaults()
 	if cfg.Name != "custom" {
 		t.Errorf("Name = %q, want custom", cfg.Name)
@@ -39,8 +39,8 @@ func TestMemoraConfig_PreservesExplicitFields(t *testing.T) {
 	}
 }
 
-func TestMemoraAgent_HasOnlyMemoryTools(t *testing.T) {
-	agent := MemoraAgent(DefaultMemoraConfig())
+func TestMiraAgent_HasOnlyMemoryTools(t *testing.T) {
+	agent := MiraAgent(DefaultMiraConfig())
 	expected := map[string]bool{
 		"memory_read": false, "memory_list": false, "memory_search": false,
 		"memory_write": false, "memory_append": false, "memory_edit": false,
@@ -48,42 +48,42 @@ func TestMemoraAgent_HasOnlyMemoryTools(t *testing.T) {
 	}
 	for _, tool := range agent.Tools {
 		if _, ok := expected[tool]; !ok {
-			t.Errorf("unexpected tool on Memora: %q (only memory_* allowed)", tool)
+			t.Errorf("unexpected tool on Mira: %q (only memory_* allowed)", tool)
 		}
 		expected[tool] = true
 	}
 	for tool, found := range expected {
 		if !found {
-			t.Errorf("Memora missing required tool: %q", tool)
+			t.Errorf("Mira missing required tool: %q", tool)
 		}
 	}
 }
 
-func TestMemoraAgent_IsMetaAgent(t *testing.T) {
-	agent := MemoraAgent(DefaultMemoraConfig())
+func TestMiraAgent_IsMetaAgent(t *testing.T) {
+	agent := MiraAgent(DefaultMiraConfig())
 	if !agent.IsMeta {
-		t.Error("Memora must be marked IsMeta so it doesn't appear in user-facing agent lists")
+		t.Error("Mira must be marked IsMeta so it doesn't appear in user-facing agent lists")
 	}
 	if agent.System == "" {
-		t.Error("Memora must have a system prompt")
+		t.Error("Mira must have a system prompt")
 	}
 }
 
-func TestInjectMemora_RegistersAgentOnInterpreter(t *testing.T) {
+func TestInjectMira_RegistersAgentOnInterpreter(t *testing.T) {
 	doc := &dsl.Document{Agents: map[string]*dsl.Agent{}, Settings: &dsl.Settings{DefaultModel: "claude-sonnet-4-6"}}
 	interp, err := dsl.NewInterpreter(doc)
 	if err != nil {
 		t.Fatalf("NewInterpreter: %v", err)
 	}
-	if err := InjectMemora(interp, DefaultMemoraConfig()); err != nil {
-		t.Fatalf("InjectMemora: %v", err)
+	if err := InjectMira(interp, DefaultMiraConfig()); err != nil {
+		t.Fatalf("InjectMira: %v", err)
 	}
-	got := interp.Document().Agents["memora"]
+	got := interp.Document().Agents["mira"]
 	if got == nil {
-		t.Fatal("memora not registered on interpreter")
+		t.Fatal("mira not registered on interpreter")
 	}
 	if !got.IsMeta {
-		t.Error("registered memora must keep IsMeta=true")
+		t.Error("registered mira must keep IsMeta=true")
 	}
 }
 

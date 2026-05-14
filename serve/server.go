@@ -545,10 +545,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Inject Iris — the messenger goddess that routes goals across all agents.
 	s.injectIris()
 
-	// Inject Memora — the memory curator (govega#71). Fires after each
+	// Inject Mira — the memory curator (govega#71). Fires after each
 	// chat exchange to update the shared user wiki.
-	if err := InjectMemora(s.interp, DefaultMemoraConfig()); err != nil {
-		slog.Warn("failed to inject Memora", "error", err)
+	if err := InjectMira(s.interp, DefaultMiraConfig()); err != nil {
+		slog.Warn("failed to inject Mira", "error", err)
 	}
 
 	// Prime intro greetings for the meta-agents on first boot of a tenant
