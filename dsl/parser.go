@@ -185,6 +185,14 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 	if v, ok := m["fallback_model"].(string); ok {
 		agent.FallbackModel = v
 	}
+	if v, ok := m["models"].(map[string]any); ok {
+		agent.Models = make(map[string]string, len(v))
+		for role, raw := range v {
+			if s, ok := raw.(string); ok && s != "" {
+				agent.Models[role] = s
+			}
+		}
+	}
 	if v, ok := m["system"].(string); ok {
 		agent.System = v
 	}
@@ -628,6 +636,14 @@ func (p *Parser) parseSettings(m map[string]any) *Settings {
 	if v, ok := m["default_model"].(string); ok {
 		s.DefaultModel = v
 	}
+	if v, ok := m["default_models"].(map[string]any); ok {
+		s.DefaultModels = make(map[string]string, len(v))
+		for role, raw := range v {
+			if str, ok := raw.(string); ok && str != "" {
+				s.DefaultModels[role] = str
+			}
+		}
+	}
 	if v, ok := m["default_temperature"].(float64); ok {
 		s.DefaultTemperature = &v
 	}
@@ -779,6 +795,18 @@ func (p *Parser) validate(doc *Document) error {
 	for name, agent := range doc.Agents {
 		if agent.Model == "" && doc.Settings != nil && doc.Settings.DefaultModel != "" {
 			agent.Model = doc.Settings.DefaultModel
+		}
+		// Fill any per-step models the agent didn't set from document-wide
+		// defaults. Agent-level keys always win.
+		if doc.Settings != nil && len(doc.Settings.DefaultModels) > 0 {
+			if agent.Models == nil {
+				agent.Models = make(map[string]string, len(doc.Settings.DefaultModels))
+			}
+			for role, model := range doc.Settings.DefaultModels {
+				if _, set := agent.Models[role]; !set {
+					agent.Models[role] = model
+				}
+			}
 		}
 		if agent.Model == "" {
 			return &ValidationError{

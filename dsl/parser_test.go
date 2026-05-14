@@ -779,6 +779,109 @@ norms:
 	}
 }
 
+func TestParseAgentModelsMap(t *testing.T) {
+	yaml := `
+name: Per-Role Models
+agents:
+  iris:
+    model: claude-sonnet-4-6
+    system: Orchestrator.
+    models:
+      classify: claude-haiku-4-5-20251001
+      code: claude-opus-4-7
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	agent := doc.Agents["iris"]
+	if agent == nil {
+		t.Fatal("Agents[iris] is nil")
+	}
+	if got := agent.Models["classify"]; got != "claude-haiku-4-5-20251001" {
+		t.Errorf("Models[classify] = %q, want claude-haiku-4-5-20251001", got)
+	}
+	if got := agent.Models["code"]; got != "claude-opus-4-7" {
+		t.Errorf("Models[code] = %q, want claude-opus-4-7", got)
+	}
+}
+
+func TestParseSettingsDefaultModels(t *testing.T) {
+	yaml := `
+name: Defaults
+agents:
+  worker:
+    model: claude-sonnet-4-6
+    system: Worker.
+settings:
+  default_models:
+    classify: claude-haiku-4-5-20251001
+    code: claude-opus-4-7
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	if doc.Settings == nil {
+		t.Fatal("Settings is nil")
+	}
+	if got := doc.Settings.DefaultModels["classify"]; got != "claude-haiku-4-5-20251001" {
+		t.Errorf("DefaultModels[classify] = %q, want claude-haiku-4-5-20251001", got)
+	}
+	if got := doc.Settings.DefaultModels["code"]; got != "claude-opus-4-7" {
+		t.Errorf("DefaultModels[code] = %q, want claude-opus-4-7", got)
+	}
+}
+
+func TestValidateMergesSettingsDefaultModelsIntoAgent(t *testing.T) {
+	yaml := `
+name: Merged
+agents:
+  worker:
+    model: claude-sonnet-4-6
+    system: Worker.
+    models:
+      classify: claude-haiku-4-5-20251001
+settings:
+  default_models:
+    classify: claude-opus-4-7
+    code: claude-opus-4-7
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	agent := doc.Agents["worker"]
+	if got := agent.Models["classify"]; got != "claude-haiku-4-5-20251001" {
+		t.Errorf("agent-level Models[classify] should win, got %q", got)
+	}
+	if got := agent.Models["code"]; got != "claude-opus-4-7" {
+		t.Errorf("settings default should fill Models[code], got %q", got)
+	}
+}
+
+func TestValidateAllowsAgentWithoutPerRoleModels(t *testing.T) {
+	yaml := `
+name: NoRoles
+agents:
+  worker:
+    model: claude-sonnet-4-6
+    system: Worker.
+`
+	p := NewParser()
+	doc, err := p.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	agent := doc.Agents["worker"]
+	if len(agent.Models) != 0 {
+		t.Errorf("Models should be empty when neither agent nor settings declares any, got %v", agent.Models)
+	}
+}
+
 func TestParseNormsBlockEmpty(t *testing.T) {
 	yaml := `
 name: No Norms

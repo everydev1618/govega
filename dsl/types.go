@@ -91,6 +91,10 @@ type Agent struct {
 	Extends       string            `yaml:"extends"`
 	Model         string            `yaml:"model"`
 	FallbackModel string            `yaml:"fallback_model"`
+	// Models maps step-type tags (e.g. "classify", "code", "summarize") to
+	// model IDs. Lookups that miss this map fall back to Model. Unset keys
+	// are filled at validate time from Settings.DefaultModels.
+	Models        map[string]string `yaml:"models,omitempty"`
 	System        string            `yaml:"system"`
 	Temperature *float64          `yaml:"temperature"`
 	MaxTokens   int               `yaml:"max_tokens"`
@@ -265,6 +269,9 @@ type ToolImpl struct {
 // Settings are global configuration.
 type Settings struct {
 	DefaultModel       string            `yaml:"default_model"`
+	// DefaultModels is a document-wide step-type → model fallback table.
+	// Each agent inherits any keys it hasn't set in its own Models map.
+	DefaultModels      map[string]string `yaml:"default_models,omitempty"`
 	DefaultTemperature *float64          `yaml:"default_temperature"`
 	Sandbox            string            `yaml:"sandbox"`
 	Budget             string            `yaml:"budget"`

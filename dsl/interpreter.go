@@ -452,6 +452,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		Name:          name,
 		Model:         def.Model,
 		FallbackModel: def.FallbackModel,
+		Models:        def.Models,
 		System:        systemPrompt,
 		Tools:         agentTools,
 	}

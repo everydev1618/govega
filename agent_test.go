@@ -123,6 +123,32 @@ func TestAgentDefaults(t *testing.T) {
 	}
 }
 
+func TestAgent_ModelFor_ReturnsRoleModel(t *testing.T) {
+	agent := Agent{
+		Model: "claude-sonnet-4-6",
+		Models: map[string]string{
+			"classify": "claude-haiku-4-5-20251001",
+			"code":     "claude-opus-4-7",
+		},
+	}
+	if got := agent.ModelFor("classify"); got != "claude-haiku-4-5-20251001" {
+		t.Errorf("ModelFor(classify) = %q, want claude-haiku-4-5-20251001", got)
+	}
+	if got := agent.ModelFor("code"); got != "claude-opus-4-7" {
+		t.Errorf("ModelFor(code) = %q, want claude-opus-4-7", got)
+	}
+}
+
+func TestAgent_ModelFor_FallsBackToPrimaryModel(t *testing.T) {
+	agent := Agent{Model: "claude-sonnet-4-6"}
+	if got := agent.ModelFor("classify"); got != "claude-sonnet-4-6" {
+		t.Errorf("ModelFor for unknown role should fall back to Model, got %q", got)
+	}
+	if got := agent.ModelFor(""); got != "claude-sonnet-4-6" {
+		t.Errorf("ModelFor(\"\") should fall back to Model, got %q", got)
+	}
+}
+
 func TestBudgetConfiguration(t *testing.T) {
 	budget := Budget{
 		Limit:    5.0,
