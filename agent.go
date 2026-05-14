@@ -20,6 +20,12 @@ type Agent struct {
 	// FallbackModel is used when all retries with the primary model are exhausted (optional)
 	FallbackModel string
 
+	// Models is an optional per-step-type routing table. Keys are
+	// step-type tags chosen by the runtime (e.g. "classify", "code",
+	// "summarize"); values are model IDs. ModelFor reads it; a miss
+	// returns Model.
+	Models map[string]string
+
 	// System is the system prompt (static or dynamic)
 	System SystemPrompt
 
@@ -89,6 +95,18 @@ const (
 	// DefaultSupervisorPollInterval is the default interval for supervisor health checks
 	DefaultSupervisorPollInterval = 100 * time.Millisecond
 )
+
+// ModelFor returns the model to use for a given step-type tag. If the
+// agent has a Models map entry for the role, that wins; otherwise it
+// returns the agent's primary Model. An empty role always falls back.
+func (a Agent) ModelFor(role string) string {
+	if role != "" {
+		if m, ok := a.Models[role]; ok && m != "" {
+			return m
+		}
+	}
+	return a.Model
+}
 
 // SystemPrompt provides the system prompt for an agent.
 // It can be static (StaticPrompt) or dynamic (DynamicPrompt).
