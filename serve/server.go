@@ -517,6 +517,12 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.cfg.Orchestrator = applyOrchestratorOverrides(s.cfg.Orchestrator, s.store)
 
+	// Model override — env-driven only (no UI surface yet). Lets v39a pick
+	// Opus / Sonnet / Haiku per-tenant.
+	if envModel := os.Getenv("ORCHESTRATOR_MODEL"); envModel != "" {
+		s.cfg.Orchestrator.Model = envModel
+	}
+
 	// Inject Hera — the built-in meta-agent for creating agents via chat.
 	s.injectHera()
 
