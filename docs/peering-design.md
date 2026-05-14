@@ -268,7 +268,7 @@ In order:
 - [x] **1.7** `serve/peering/node.go` + `dialer.go` + `auth_op.go` — full lifecycle (Start/Stop), accept loop, HMAC challenge-response auth, outbound dial pool, end-to-end integration test against real QUIC.
 - [x] **1.8** Wire into `serve/server.go:Start()`. Env flag is `VEGA_PEERING_ADDR` (set = enable; presence is the master switch). Server-level integration test deferred — covered by the peering package's own two-Node QUIC test.
 - [x] **1.9** Iris tools: `send_to_remote_agent`, `list_peers`, `add_peer`, `remove_peer`, `grant_peer_access`, `revoke_peer_access`, `local_node_id`. Registered conditionally on peering being enabled.
-- [ ] **1.10** Frontend: `PeeringModal.tsx`, header pill, per-message badge. Manual browser test of the round trip.
+- [x] **1.10** Frontend: `PeeringPill.tsx` (sidebar pill, polls /peering/status), `PeeringModal.tsx` (4 tabs: Peers / Grants / Live ops / Audit). Per-message origin badge **deferred** — needs chat_messages plumbing to carry peer_origin; documented as follow-on. Browser-driven manual test pending operator session.
 - [x] **1.11** Documentation: peering section added to `docs/ARCHITECTURE.md`; `website/src/pages/index.astro` features grid gets an "Orchestrator federation" card.
 - [ ] **1.12** File the spec-side issues from §9 against `aire-protocol/aire-spec`.
 

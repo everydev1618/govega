@@ -396,4 +396,51 @@ export const api = {
       throw err
     })
   },
+
+  // Peering (federation over AIRE). Endpoints respond 404 with
+  // {"error": "peering not enabled"} when VEGA_PEERING_ADDR is unset; the
+  // React modal treats that as "feature off" and stays hidden.
+  getPeeringStatus: () =>
+    fetchAPI<import('./types').PeeringStatus>('/peering/status'),
+  listPeers: () =>
+    fetchAPI<import('./types').PeerDTO[]>('/peering/peers'),
+  addPeer: (body: import('./types').AddPeerRequest) =>
+    fetchAPI<import('./types').PeerDTO>('/peering/peers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updatePeer: (nodeID: string, body: { trust_level: string }) =>
+    fetchAPI<import('./types').PeerDTO>(`/peering/peers/${encodeURIComponent(nodeID)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deletePeer: (nodeID: string) =>
+    fetchAPI<{ deleted: string; grants_removed: number }>(
+      `/peering/peers/${encodeURIComponent(nodeID)}`,
+      { method: 'DELETE' },
+    ),
+  listGrants: (peer?: string) => {
+    const q = peer ? `?peer=${encodeURIComponent(peer)}` : ''
+    return fetchAPI<import('./types').GrantDTO[]>(`/peering/grants${q}`)
+  },
+  upsertGrant: (peerID: string, agent: string, body: { max_tokens_per_op: number; max_ops_per_hour: number; active: boolean }) =>
+    fetchAPI<import('./types').GrantDTO>(
+      `/peering/grants/${encodeURIComponent(peerID)}/${encodeURIComponent(agent)}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
+  deleteGrant: (peerID: string, agent: string) =>
+    fetchAPI(`/peering/grants/${encodeURIComponent(peerID)}/${encodeURIComponent(agent)}`, {
+      method: 'DELETE',
+    }),
+  listAudit: (params?: { peer?: string; agent?: string; direction?: string; limit?: number }) => {
+    const q = new URLSearchParams()
+    if (params?.peer) q.set('peer', params.peer)
+    if (params?.agent) q.set('agent', params.agent)
+    if (params?.direction) q.set('direction', params.direction)
+    if (params?.limit) q.set('limit', String(params.limit))
+    const qs = q.toString() ? `?${q.toString()}` : ''
+    return fetchAPI<import('./types').AuditDTO[]>(`/peering/audit${qs}`)
+  },
+  listLiveOps: () =>
+    fetchAPI<import('./types').AuditDTO[]>('/peering/live'),
 }

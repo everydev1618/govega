@@ -504,3 +504,55 @@ export interface MemoryGraph {
   edges: MemoryGraphEdge[]
   generated_at: string
 }
+
+// --- Peering (federation over AIRE) ---
+
+export interface PeeringStatus {
+  enabled: boolean
+  node_id?: string
+  listen_addr?: string
+  peer_count?: number
+}
+
+export interface PeerDTO {
+  node_id: string
+  handle: string
+  endpoint: string
+  trust_level: 'trusted' | 'scoped' | 'paused'
+  added_at?: string
+  last_seen_at?: string
+  notes?: string
+}
+
+export interface AddPeerRequest {
+  node_id: string
+  handle: string
+  endpoint: string
+  shared_secret: string
+  notes?: string
+}
+
+export interface GrantDTO {
+  peer_node_id: string
+  local_agent: string
+  max_tokens_per_op: number
+  max_ops_per_hour: number
+  active: boolean
+  created_at?: string
+}
+
+export interface AuditDTO {
+  id: number
+  timestamp: string
+  direction: 'inbound' | 'outbound'
+  peer_node_id: string
+  peer_handle?: string
+  agent: string
+  op_id: number
+  tokens_in: number
+  tokens_out: number
+  cost_usd: number
+  status: 'started' | 'ok' | 'denied' | 'error' | 'cancelled'
+  denial_reason?: string
+  duration_ms: number
+}

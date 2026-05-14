@@ -1002,6 +1002,20 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/stats", s.handleStats)
 	mux.HandleFunc("GET /api/v1/spawn-tree", s.handleSpawnTree)
 
+	// Peering (federation over AIRE). All endpoints respond 404 with
+	// {"error": "peering not enabled"} when VEGA_PEERING_ADDR is unset,
+	// so the React modal naturally hides itself when federation is off.
+	mux.HandleFunc("GET /api/v1/peering/status", s.handlePeeringStatus)
+	mux.HandleFunc("GET /api/v1/peering/peers", s.handleListPeers)
+	mux.HandleFunc("POST /api/v1/peering/peers", s.handleAddPeer)
+	mux.HandleFunc("PATCH /api/v1/peering/peers/{nodeID}", s.handleUpdatePeer)
+	mux.HandleFunc("DELETE /api/v1/peering/peers/{nodeID}", s.handleDeletePeer)
+	mux.HandleFunc("GET /api/v1/peering/grants", s.handleListGrants)
+	mux.HandleFunc("PUT /api/v1/peering/grants/{peerID}/{agent}", s.handleUpsertGrant)
+	mux.HandleFunc("DELETE /api/v1/peering/grants/{peerID}/{agent}", s.handleDeleteGrant)
+	mux.HandleFunc("GET /api/v1/peering/audit", s.handleAuditLog)
+	mux.HandleFunc("GET /api/v1/peering/live", s.handleLiveOps)
+
 	// Population
 	mux.HandleFunc("GET /api/v1/population/search", s.handlePopulationSearch)
 	mux.HandleFunc("GET /api/v1/population/info/{kind}/{name}", s.handlePopulationInfo)

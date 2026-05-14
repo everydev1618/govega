@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { CompanySwitcher } from './CompanySwitcher'
+import { PeeringPill } from './PeeringPill'
 import { AgentAvatar } from './chat/AgentAvatar'
 import { api } from '../lib/api'
 import type { AgentResponse, Channel, InboxItem, ProcessResponse, TenantConfigResponse } from '../lib/types'
@@ -164,8 +165,9 @@ export function Layout() {
 
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-56 border-r border-border bg-card flex flex-col transform transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-3 border-b border-border flex items-center justify-between">
+        <div className="p-3 border-b border-border flex items-center justify-between gap-2">
           <CompanySwitcher />
+          <PeeringPill />
           <button
             onClick={() => setSidebarOpen(false)}
             className="p-1 rounded-md text-muted-foreground hover:text-foreground md:hidden"
