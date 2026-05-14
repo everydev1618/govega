@@ -59,20 +59,38 @@ jobs:
           CHANNEL: ${{ steps.channel.outputs.channel }}
           IMAGE: ${{ steps.image.outputs.ref }}
         run: |
-          # `read -ra` returns 1 when the input lacks the delimiter (single-
-          # entry DEV_APPS), and GitHub Actions' default `bash -e` would
-          # kill the whole script silently. Use a newline-delimited list +
-          # grep instead, which has no such trap.
+          set -o pipefail
           DEV_APPS_LIST=$(echo "$DEV_APPS" | tr ',' '\n')
           is_dev() { echo "$DEV_APPS_LIST" | grep -Fxq "$1"; }
 
-          ALL_APPS=$(flyctl apps list --json \
+          echo "::notice::Channel=$CHANNEL image=$IMAGE dev_apps=$DEV_APPS"
+
+          # Sanity-check the token: flyctl apps list must succeed.
+          if ! APPS_JSON=$(flyctl apps list --json 2>&1); then
+            echo "::error::flyctl apps list failed:"
+            echo "$APPS_JSON"
+            exit 1
+          fi
+
+          ALL_APPS=$(echo "$APPS_JSON" \
             | jq -r '.[] | select(.Name | startswith("govega-")) | select(.Name != "govega-image") | .Name')
+          echo "::notice::Resolved govega-* customer apps: $(echo "$ALL_APPS" | tr '\n' ' ')"
+
+          if [ -z "$ALL_APPS" ]; then
+            echo "::warning::No govega-* customer apps found — nothing to deploy."
+            exit 0
+          fi
 
           FAILED=0
           for app in $ALL_APPS; do
-            if [ "$CHANNEL" = "main" ] && ! is_dev "$app"; then continue; fi
-            if [ "$CHANNEL" = "stable" ] && is_dev "$app"; then continue; fi
+            if [ "$CHANNEL" = "main" ] && ! is_dev "$app"; then
+              echo "Skipping $app (not in DEV_APPS)"
+              continue
+            fi
+            if [ "$CHANNEL" = "stable" ] && is_dev "$app"; then
+              echo "Skipping $app (dev-channel, not deployed on stable releases)"
+              continue
+            fi
 
             echo "::group::Deploying $app ($CHANNEL) → $IMAGE"
             MACHINES=$(flyctl machines list -a "$app" --json | jq -r '.[].id')
