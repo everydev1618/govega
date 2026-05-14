@@ -502,10 +502,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
 	}
 
-	// Fire async memory extraction.
-	go s.extractMemory(userID, baseAgent, req.Message, response)
-	// Fire async typed-memory reflection (no-op unless VEGA_REFLECTION is set).
-	go s.reflectMemory(userID, baseAgent, req.Message, response)
+	// Passive memory extraction is disabled now that the wiki system
+	// (govega#71) is the source of truth. The curator agent in step 3
+	// of #71 takes over the "summarize this turn into long-term memory"
+	// job using the wiki tools — no more typed-layer writes.
 
 	writeJSON(w, http.StatusOK, map[string]string{"response": response})
 }
@@ -661,8 +661,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			if err := s.store.InsertChatMessage(name, "assistant", response, activities); err != nil {
 				slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
 			}
-			go s.extractMemory(userID, baseAgent, req.Message, response)
-			go s.reflectMemory(userID, baseAgent, req.Message, response)
+			// Passive memory extraction disabled — wiki curator handles
+			// long-term memory writes now (govega#71).
 		}
 
 		// Keep the stream in the map briefly so late reconnects can see

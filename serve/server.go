@@ -618,11 +618,10 @@ func (s *Server) Start(ctx context.Context) error {
 	dsl.RegisterTaskTools(s.interp, &taskAdapter{store: s.store})
 
 	// Wire memory injector so agents get their memories + project context during delegated tasks.
+	// Wiki memory injection (govega#71) — "default" matches the userID
+	// that delegated runs are scoped to when there's no per-user context.
 	s.interp.SetMemoryInjector(func(proc *vega.Process, agentName string) {
-		var memText string
-		if memories, err := s.store.GetUserMemory("default", agentName); err == nil && len(memories) > 0 {
-			memText = formatMemoryForInjection(memories)
-		}
+		memText := formatWikiMemoryForInjection(s.store, "default", agentName)
 		projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
 		companyCtx := buildCompanyContext(s.company)
 		if extra := buildExtraSystem(memText, projectCtx, companyCtx); extra != "" {

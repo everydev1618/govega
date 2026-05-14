@@ -132,9 +132,10 @@ func (s *Server) startTelegramBot(parent context.Context, cfg TelegramBotConfig)
 		s.interp,
 		s.store,
 		s.company,
-		func(userID, agent, userMsg, response string) {
-			s.extractMemory(userID, agent, userMsg, response)
-		},
+		// Passive memory extraction disabled — wiki curator (govega#71)
+		// owns long-term memory writes. Hook left in place as a no-op
+		// so the telegram bot's callback signature stays stable.
+		func(userID, agent, userMsg, response string) {},
 		// onIncoming: bind the per-user clone agent to a ReplyTarget so
 		// async dispatch completions push back to this exact chat.
 		func(agentName string, target dsl.ReplyTarget) {
@@ -395,10 +396,8 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	// Load and inject memory into the process before sending.
 	proc, err := t.interp.EnsureAgent(name)
 	if err == nil && proc != nil {
-		var memText string
-		if memories, err := t.store.GetUserMemory(userID, t.agentName); err == nil && len(memories) > 0 {
-			memText = formatMemoryForInjection(memories)
-		}
+		// Wiki memory injection (govega#71).
+		memText := formatWikiMemoryForInjection(t.store, userID, t.agentName)
 		companyCtx := buildCompanyContext(t.company)
 		if extra := buildExtraSystem(memText, "", companyCtx); extra != "" {
 			proc.SetExtraSystem(extra)
