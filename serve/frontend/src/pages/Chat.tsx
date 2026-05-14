@@ -2,15 +2,18 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useSSE } from '../hooks/useSSE'
 import { api, APIError } from '../lib/api'
-import type { AgentResponse, ChatEvent, FileContentResponse } from '../lib/types'
+import type { AgentResponse, ChatEvent, FileContentResponse, TenantConfigResponse } from '../lib/types'
 import { AgentAvatar } from '../components/chat/AgentAvatar'
 import { MessageBubble, type ChatMessage } from '../components/chat/MessageBubble'
 import { ChatInput } from '../components/chat/ChatInput'
 import { FilePreview } from '../components/chat/FilePreview'
 import { ScrollToBottom } from '../components/chat/ScrollToBottom'
 
-const IRIS = 'iris'
-const META_AGENTS = new Set(['iris', 'hera'])
+// Fallback used until tenant config resolves on first load. The actual
+// orchestrator slug (e.g. 'charlie' after rename) is read from
+// /api/v1/tenant/config and stored in state inside <Chat>.
+const FALLBACK_ORCHESTRATOR = 'iris'
+const BUILDER_NAME = 'hera'
 
 const HANDOFF_RE = /→\s+Handing you to \*\*([^*]+)\*\*/
 
@@ -116,18 +119,20 @@ function TabBar({
   onSelect,
   onClose,
   displayInfo,
+  orchestratorName,
 }: {
   tabs: string[]
   activeAgent: string
   onSelect: (name: string) => void
   onClose: (name: string) => void
   displayInfo: Map<string, { displayName: string; title: string; avatar: string }>
+  orchestratorName: string
 }) {
   return (
     <div className="flex">
       {tabs.map((name, idx) => {
         const active = name === activeAgent
-        const isIris = name === IRIS
+        const isIris = name === orchestratorName
         const info = displayInfo.get(name)
         const label = info?.displayName || name
         const borderColor = active
@@ -202,7 +207,21 @@ export function Chat() {
   const navigate = useNavigate()
   const { events } = useSSE()
 
-  const [activeAgent, setActiveAgent] = useState(baseAgentName(agentParam || IRIS))
+  // Orchestrator identity comes from the live tenant config so a rename
+  // (iris → charlie) actually drives chat routing, tab logic, and
+  // display labels — not the hardcoded 'iris' the page used to assume.
+  const [orchestratorName, setOrchestratorName] = useState(FALLBACK_ORCHESTRATOR)
+  const [orchestratorDisplay, setOrchestratorDisplay] = useState('Iris')
+  const [orchestratorTitle, setOrchestratorTitle] = useState('Orchestrator')
+  useEffect(() => {
+    api.getTenantConfig().then((cfg: TenantConfigResponse) => {
+      if (cfg.orchestrator_name) setOrchestratorName(cfg.orchestrator_name)
+      if (cfg.orchestrator_display) setOrchestratorDisplay(cfg.orchestrator_display)
+      if (cfg.orchestrator_title) setOrchestratorTitle(cfg.orchestrator_title)
+    }).catch(() => { /* fall back to defaults */ })
+  }, [])
+
+  const [activeAgent, setActiveAgent] = useState(baseAgentName(agentParam || FALLBACK_ORCHESTRATOR))
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -223,11 +242,11 @@ export function Chat() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Strip any per-user clone suffixes from stored tabs.
           const cleaned = [...new Set(parsed.map(baseAgentName))]
-          return cleaned.includes(IRIS) ? cleaned : [IRIS, ...cleaned]
+          return cleaned.includes(orchestratorName) ? cleaned : [orchestratorName, ...cleaned]
         }
       }
     } catch { /* ignore */ }
-    return [IRIS]
+    return [orchestratorName]
   })
 
   useEffect(() => {
@@ -239,14 +258,14 @@ export function Chat() {
   }, [])
 
   const closeTab = useCallback((name: string) => {
-    if (name === IRIS) return
+    if (name === orchestratorName) return
     setOpenTabs(prev => {
       const idx = prev.indexOf(name)
       if (idx < 0) return prev
       const next = prev.filter(t => t !== name)
-      if (next.length === 0) return [IRIS]
+      if (next.length === 0) return [orchestratorName]
       if (name === activeAgent) {
-        const newActive = next[Math.min(idx, next.length - 1)] || IRIS
+        const newActive = next[Math.min(idx, next.length - 1)] || orchestratorName
         setTimeout(() => switchToAgent(newActive), 0)
       }
       return next
@@ -273,7 +292,7 @@ export function Chat() {
   const fetchAgents = useCallback(() => {
     api.getAgents()
       .then(list => {
-        setSpecialists((list ?? []).filter(a => !META_AGENTS.has(a.name)))
+        setSpecialists((list ?? []).filter(a => !new Set([orchestratorName, BUILDER_NAME]).has(a.name)))
       })
       .catch(() => {})
   }, [])
@@ -307,8 +326,8 @@ export function Chat() {
   useEffect(() => {
     const specialistNames = new Set(specialists.map(a => a.name))
     setOpenTabs(prev => {
-      const filtered = prev.filter(t => META_AGENTS.has(t) || specialistNames.has(t))
-      return filtered.length > 0 ? filtered : [IRIS]
+      const filtered = prev.filter(t => new Set([orchestratorName, BUILDER_NAME]).has(t) || specialistNames.has(t))
+      return filtered.length > 0 ? filtered : [orchestratorName]
     })
   }, [specialists])
 
@@ -444,11 +463,11 @@ export function Chat() {
   }, [])
 
   const checkForHandoff = useCallback((finalContent: string) => {
-    if (activeAgent !== IRIS) return
+    if (activeAgent !== orchestratorName) return
     const match = finalContent.match(HANDOFF_RE)
     if (match) {
       const target = match[1].trim()
-      setHandoffFrom(IRIS)
+      setHandoffFrom(orchestratorName)
       setActiveAgent(target)
     }
   }, [activeAgent])
@@ -492,14 +511,14 @@ export function Chat() {
   }
 
   useEffect(() => {
-    const base = baseAgentName(agentParam || IRIS)
+    const base = baseAgentName(agentParam || orchestratorName)
     if (base !== activeAgent) {
       setActiveAgent(base)
     }
   }, [agentParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const target = activeAgent === IRIS ? '/chat' : `/chat/${activeAgent}`
+    const target = activeAgent === orchestratorName ? '/chat' : `/chat/${activeAgent}`
     navigate(target, { replace: true })
   }, [activeAgent, navigate])
 
@@ -573,9 +592,9 @@ export function Chat() {
     }))
   }
 
-  const isIris = activeAgent === IRIS
+  const isIris = activeAgent === orchestratorName
   const activeAgentData = specialists.find(a => a.name === activeAgent)
-  const agentNames = new Set([IRIS, 'hera', ...specialists.map(a => a.name)])
+  const agentNames = new Set([orchestratorName, BUILDER_NAME, ...specialists.map(a => a.name)])
 
   const agentDisplayInfo = useMemo(() => {
     const m = new Map<string, { displayName: string; title: string; avatar: string }>()
@@ -586,10 +605,10 @@ export function Chat() {
         avatar: a.avatar || '',
       })
     }
-    m.set(IRIS, { displayName: 'Iris', title: 'Orchestrator', avatar: 'n2' })
-    m.set('hera', { displayName: 'Hera', title: 'Agent Builder', avatar: 'n6' })
+    m.set(orchestratorName, { displayName: orchestratorDisplay, title: orchestratorTitle, avatar: 'n2' })
+    m.set(BUILDER_NAME, { displayName: 'Hera', title: 'Agent Builder', avatar: 'n6' })
     return m
-  }, [specialists])
+  }, [specialists, orchestratorName, orchestratorDisplay, orchestratorTitle])
 
   const agentNamesList = useMemo(() => [...agentNames], [agentNames])
 
@@ -604,6 +623,7 @@ export function Chat() {
             onSelect={switchToAgent}
             onClose={closeTab}
             displayInfo={agentDisplayInfo}
+            orchestratorName={orchestratorName}
           />
         </div>
         <div className="flex items-center gap-1 pl-2 pb-1.5 flex-shrink-0">
