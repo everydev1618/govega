@@ -390,28 +390,14 @@ func chatUserID(r *http.Request) string {
 	return "default"
 }
 
-// ensureChatAgent ensures the named agent exists, auto-cloning from a base
-// when name uses the "base:suffix" form. This gives chat clients a way to
-// scope conversations (e.g. per-user, per-document) without registering
-// every clone up front. Mirrors the telegram per-user clone pattern.
-func (s *Server) ensureChatAgent(name string) error {
-	if !strings.Contains(name, ":") {
-		return nil
+// collapseLegacyCloneName trims any "base:suffix" form a chat URL may
+// still carry from the retired per-user clone scheme. Vega is now
+// single-user-per-bot: every channel speaks to the base agent.
+func collapseLegacyCloneName(name string) string {
+	if i := strings.Index(name, ":"); i >= 0 {
+		return name[:i]
 	}
-	if agents := s.interp.Agents(); agents[name] != nil {
-		return nil
-	}
-	base := name[:strings.Index(name, ":")]
-	doc := s.interp.Document()
-	baseDef, ok := doc.Agents[base]
-	if !ok {
-		return fmt.Errorf("base agent '%s' not found", base)
-	}
-	clone := *baseDef
-	if err := s.interp.AddAgent(name, &clone); err != nil {
-		return fmt.Errorf("clone agent %s from %s: %w", name, base, err)
-	}
-	return nil
+	return name
 }
 
 // hydrateAgent loads persisted chat history into a process that has no
@@ -434,11 +420,8 @@ func (s *Server) hydrateAgent(proc *vega.Process, agentName string) {
 
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := collapseLegacyCloneName(r.PathValue("name"))
 	baseAgent := name
-	if i := strings.Index(name, ":"); i >= 0 {
-		baseAgent = name[:i]
-	}
 	userID := chatUserID(r)
 
 	var req struct {
@@ -446,12 +429,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
-		return
-	}
-
-	if err := s.ensureChatAgent(name); err != nil {
-		status, msg := classifyHTTPError(err)
-		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 
@@ -527,11 +504,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := collapseLegacyCloneName(r.PathValue("name"))
 	baseAgent := name
-	if i := strings.Index(name, ":"); i >= 0 {
-		baseAgent = name[:i]
-	}
 	userID := chatUserID(r)
 
 	var req struct {
@@ -540,12 +514,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
-		return
-	}
-
-	if err := s.ensureChatAgent(name); err != nil {
-		status, msg := classifyHTTPError(err)
-		writeJSON(w, status, ErrorResponse{Error: msg})
 		return
 	}
 

@@ -746,17 +746,16 @@ func (s *Server) Start(ctx context.Context) error {
 
 		orchName := s.cfg.Orchestrator.Name
 		// Resolve who to poke: the originating caller if known, else the
-		// base orchestrator. The caller is typically a clone like
-		// "apex:1992054241" for Telegram users, "apex" for the web app.
+		// base orchestrator. Per-user clones are retired — caller names
+		// are now always the base agent.
 		pokeAgent := callerAgent
 		if pokeAgent == "" {
 			pokeAgent = orchName
 		}
 
-		// Don't loop: when the orchestrator (or one of its clones)
-		// finishes its own task, skip the poke.
-		baseCompleted := strings.SplitN(completedAgent, ":", 2)[0]
-		if baseCompleted == orchName {
+		// Don't loop: when the orchestrator finishes its own task, skip
+		// the poke.
+		if completedAgent == orchName {
 			slog.Debug("skipping orchestrator poke — completing agent is the orchestrator itself", "agent", completedAgent)
 			return
 		}
@@ -776,20 +775,14 @@ func (s *Server) Start(ctx context.Context) error {
 				return
 			}
 
-			// Persist the response to the caller's chat. Also fan out to
-			// other clones with the same base name so any web/Telegram
-			// user looking at the orchestrator sees the update too.
-			basePoke := strings.SplitN(pokeAgent, ":", 2)[0]
-			for name := range s.interp.Agents() {
-				if name == basePoke || strings.HasPrefix(name, basePoke+":") {
-					_ = s.store.InsertChatMessage(name, "assistant", resp, nil)
-				}
-			}
+			// Persist the response to the caller's chat. Single agent,
+			// single timeline — no clone fan-out needed.
+			_ = s.store.InsertChatMessage(pokeAgent, "assistant", resp, nil)
 
 			// Notify connected frontends to refresh the orchestrator's chat.
 			s.broker.Publish(BrokerEvent{
 				Type:      "chat.update",
-				Agent:     basePoke,
+				Agent:     pokeAgent,
 				Timestamp: time.Now(),
 			})
 

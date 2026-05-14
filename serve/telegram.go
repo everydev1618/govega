@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -365,38 +367,53 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
+	userID := strconv.FormatInt(update.Message.From.ID, 10)
+	chatID := update.Message.Chat.ID
+
 	text := update.Message.Text
+	if text == "" {
+		text = update.Message.Caption
+	}
+
+	// Voice / audio / video-note messages: download and transcribe before
+	// feeding through the rest of the flow as text. Telegram's typing
+	// indicator naturally expires after ~5s, so we kick it off here so
+	// the user sees activity during the download + Whisper call.
+	if text == "" {
+		fileID, audioLabel := telegramAudioFileID(update.Message)
+		if fileID != "" {
+			_, _ = t.bot.Send(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping))
+			transcript, err := t.transcribeTelegramFile(ctx, fileID)
+			if err != nil {
+				slog.Warn("telegram: voice transcription failed", "error", err)
+				t.bot.Send(tgbotapi.NewMessage(chatID, "Sorry, I couldn't transcribe that "+audioLabel+": "+err.Error()))
+				return
+			}
+			if transcript == "" {
+				t.bot.Send(tgbotapi.NewMessage(chatID, "I couldn't make out any speech in that "+audioLabel+"."))
+				return
+			}
+			text = transcript
+		}
+	}
+
 	if text == "" {
 		return
 	}
 
-	userID := strconv.FormatInt(update.Message.From.ID, 10)
-	chatID := update.Message.Chat.ID
+	// Vega is single-user-per-bot. Telegram talks to the base agent
+	// directly — same conversation as the web UI. userID still flows
+	// into the memory context (memory tools key by user) but no clone
+	// agent is created and no per-user chat thread exists.
+	name := t.agentName
 
-	// Derive a per-user agent name for Telegram multi-user support.
-	name := t.agentName + ":" + userID
-
-	// Bind a ReplyTarget for this user's chat so async dispatch
-	// completions originating from this turn can push back to the same
-	// chat. Re-registering on every message keeps it fresh in case the
-	// user's chat id changes (rare; basically never on Telegram).
 	if t.onIncoming != nil {
 		t.onIncoming(name, &telegramReplyTarget{bot: t.bot, chatID: chatID})
-	}
-
-	// Ensure the per-user agent clone exists.
-	if agents := t.interp.Agents(); agents[name] == nil {
-		doc := t.interp.Document()
-		if baseDef, ok := doc.Agents[t.agentName]; ok {
-			clone := *baseDef
-			t.interp.AddAgent(name, &clone)
-		}
 	}
 
 	// Load and inject memory into the process before sending.
 	proc, err := t.interp.EnsureAgent(name)
 	if err == nil && proc != nil {
-		// Wiki memory injection (govega#71).
 		memText := formatWikiMemoryForInjection(t.store, userID, t.agentName)
 		companyCtx := buildCompanyContext(t.company)
 		if extra := buildExtraSystem(memText, "", companyCtx); extra != "" {
@@ -456,4 +473,54 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	if t.onExchange != nil {
 		t.onExchange(userID, t.agentName, text, resp)
 	}
+}
+
+// telegramAudioFileID extracts a file id from any of Telegram's audio-bearing
+// message types. Returns ("", "") if none.
+func telegramAudioFileID(msg *tgbotapi.Message) (fileID, label string) {
+	switch {
+	case msg.Voice != nil:
+		return msg.Voice.FileID, "voice note"
+	case msg.Audio != nil:
+		return msg.Audio.FileID, "audio"
+	case msg.VideoNote != nil:
+		return msg.VideoNote.FileID, "video note"
+	}
+	return "", ""
+}
+
+// transcribeTelegramFile downloads the file behind fileID via the Telegram
+// Bot API and runs it through the Whisper transcriber.
+func (t *TelegramBot) transcribeTelegramFile(ctx context.Context, fileID string) (string, error) {
+	url, err := t.bot.GetFileDirectURL(fileID)
+	if err != nil {
+		return "", fmt.Errorf("get file url: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("new request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download status %d", resp.StatusCode)
+	}
+	audio, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read body: %w", err)
+	}
+
+	// Telegram voice notes are OGG/Opus; audio messages can be mp3/m4a/etc.
+	// Pass the original filename when present so Whisper sees the right
+	// extension; otherwise fall back to .ogg which covers voice notes.
+	filename := "voice.ogg"
+	if i := strings.LastIndex(url, "/"); i >= 0 && i+1 < len(url) {
+		filename = url[i+1:]
+	}
+
+	return newDefaultTranscriber().Transcribe(ctx, audio, filename)
 }

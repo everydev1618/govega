@@ -311,6 +311,13 @@ func (s *SQLiteStore) Init() error {
 	s.db.Exec(`ALTER TABLE chat_messages ADD COLUMN tool_activities TEXT NOT NULL DEFAULT '[]'`)
 	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN tool_activities TEXT NOT NULL DEFAULT '[]'`)
 
+	// Collapse legacy per-user clone chat rows (agent='base:userID') back
+	// into their base agent's timeline. Vega is single-user-per-bot now —
+	// one Telegram chat, one web UI, one timeline.
+	if err := s.collapseCloneChatMessages(); err != nil {
+		return fmt.Errorf("collapse clone chat messages: %w", err)
+	}
+
 	// Migrate: add mode column to channels if missing.
 	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
 
@@ -667,6 +674,21 @@ func (s *SQLiteStore) ListChatMessages(agent string) ([]ChatMessage, error) {
 // DeleteChatMessages removes all chat messages for an agent.
 func (s *SQLiteStore) DeleteChatMessages(agent string) error {
 	_, err := s.db.Exec(`DELETE FROM chat_messages WHERE agent = ?`, agent)
+	return err
+}
+
+// collapseCloneChatMessages folds rows written under the retired per-user
+// clone naming scheme (agent='base:userID') back into the base agent's
+// history (agent='base'). Vega is now single-user-per-bot: one Telegram
+// account talks to one agent, the same agent the web UI talks to, and
+// there is no clone fan-out. Idempotent — rows without a ':' in agent are
+// left alone.
+func (s *SQLiteStore) collapseCloneChatMessages() error {
+	_, err := s.db.Exec(`
+		UPDATE chat_messages
+		SET agent = substr(agent, 1, instr(agent, ':') - 1)
+		WHERE instr(agent, ':') > 0
+	`)
 	return err
 }
 
