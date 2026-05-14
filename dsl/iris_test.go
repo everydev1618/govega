@@ -104,6 +104,24 @@ func TestIrisSystemPrompt_AntiHallucinationGuardrail(t *testing.T) {
 	}
 }
 
+// TestIrisSystemPrompt_AntiPhantomDispatchGuardrail covers govega#89: the
+// orchestrator fabricated a dispatch ("Dispatched to Scout. She's building
+// it now...") without making any tool calls in that turn. This guardrail
+// blocks the narrate-instead-of-act failure mode. Sister rule to the
+// anti-hallucination guardrail (#76 in spirit) but for claimed actions
+// instead of claimed roster state.
+func TestIrisSystemPrompt_AntiPhantomDispatchGuardrail(t *testing.T) {
+	required := []string{
+		"Never narrate a dispatch you didn't make",
+		"send_to_agent",
+	}
+	for _, s := range required {
+		if !strings.Contains(irisSystemPrompt, s) {
+			t.Errorf("irisSystemPrompt missing required guardrail substring: %q", s)
+		}
+	}
+}
+
 // TestDefaultVisualIdentity covers govega#60: agent-creation paths need a
 // reasonable icon + color so the FE doesn't render blank placeholders before
 // the user picks one. The default must be (a) non-empty, (b) deterministic
