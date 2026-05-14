@@ -1081,6 +1081,13 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/channels/{name}/stream", s.handleChannelStreamReconnect)
 	mux.HandleFunc("POST /api/v1/channels/{name}/read", s.handleMarkChannelRead)
 
+	// Wiki memory (govega#71): graph view + page list + per-page get.
+	// Per-user, scoped via X-Auth-User. Read-only; agents own the
+	// write surface through the memory_* tools.
+	mux.HandleFunc("GET /api/v1/memory/graph", s.handleMemoryGraph)
+	mux.HandleFunc("GET /api/v1/memory/pages", s.handleListMemoryPages)
+	mux.HandleFunc("GET /api/v1/memory/page", s.handleGetMemoryPage)
+
 	// Prompt History (survives reset)
 	mux.HandleFunc("GET /api/v1/prompt-history", s.handleListPromptHistory)
 	mux.HandleFunc("GET /api/v1/prompt-history/search", s.handleSearchPromptHistory)
