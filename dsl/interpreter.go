@@ -1324,11 +1324,13 @@ func (i *Interpreter) evictIdle(idleTTL time.Duration) {
 	i.mu.RUnlock()
 
 	for _, v := range victims {
-		// RemoveAgent stops the process and unregisters it. The agent
-		// definition stays in the document, so EnsureAgent will respawn
-		// on demand the next time someone messages the agent.
-		if err := i.RemoveAgent(v.name); err != nil {
-			slog.Debug("idle-evict: remove failed", "agent", v.name, "error", err)
+		// ResetAgent stops the process and removes it from i.agents but
+		// leaves the definition in i.doc.Agents, so EnsureAgent respawns
+		// on demand the next time someone messages the agent. RemoveAgent
+		// would also wipe the doc entry — that's for explicit deletes
+		// (Hera's delete_agent), not idle eviction (refs govega#76).
+		if err := i.ResetAgent(v.name); err != nil {
+			slog.Debug("idle-evict: reset failed", "agent", v.name, "error", err)
 			continue
 		}
 		slog.Info("idle-evict: removed inactive agent process", "agent", v.name, "idle_for", now.Sub(v.proc.Metrics().LastActiveAt).Truncate(time.Second).String())

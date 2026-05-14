@@ -6,6 +6,65 @@ import (
 	"time"
 )
 
+// TestEvictIdle_PreservesDocAgents covers govega#76: idle eviction was
+// calling RemoveAgent which deletes from BOTH i.agents AND i.doc.Agents,
+// so an evicted agent silently disappeared from list_agents — the exact
+// scenario where scout vanished from the everydev tenant after the 09:00
+// UTC cron firing went idle.
+//
+// The documented contract of evictIdle (see comment in interpreter.go)
+// is: kill the process, leave the definition in doc.Agents so the agent
+// respawns on next use. This test pins that contract.
+func TestEvictIdle_PreservesDocAgents(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	// Add a composed agent via AddAgent — mirrors what restoreComposedAgents
+	// does at boot. Critically NOT a yaml-defined agent (those are excluded
+	// from eviction), and not IsMeta (also excluded).
+	agentDef := &Agent{
+		Name:   "scout",
+		Model:  "test-model",
+		System: "You are scout.",
+		Tools:  []string{},
+	}
+	if err := interp.AddAgent("scout", agentDef); err != nil {
+		t.Fatalf("AddAgent: %v", err)
+	}
+
+	// Sanity: scout is registered in both maps post-AddAgent.
+	if _, ok := interp.Agents()["scout"]; !ok {
+		t.Fatal("scout should be in i.agents after AddAgent")
+	}
+	if _, ok := interp.Document().Agents["scout"]; !ok {
+		t.Fatal("scout should be in doc.Agents after AddAgent")
+	}
+
+	// Force LastActiveAt to non-zero by sending one message through the
+	// stub LLM path. evictIdle skips processes whose LastActiveAt is zero.
+	ctx := context.Background()
+	if _, err := interp.SendToAgent(ctx, "scout", "ping"); err != nil {
+		t.Fatalf("SendToAgent: %v", err)
+	}
+
+	// Trigger eviction with idleTTL=0 so anything active >0ns ago evicts.
+	interp.evictIdle(0)
+
+	// Process should be gone from i.agents (eviction did its job).
+	if _, ok := interp.Agents()["scout"]; ok {
+		t.Error("expected scout's process to be evicted from i.agents")
+	}
+
+	// But the definition MUST remain in doc.Agents so:
+	//   (a) list_agents still returns scout (Charlie can find it)
+	//   (b) EnsureAgent respawns it on the next message
+	// If this assertion fails, scout has effectively disappeared from the
+	// roster even though composed_agents in SQLite still holds the row.
+	if _, ok := interp.Document().Agents["scout"]; !ok {
+		t.Error("evictIdle wiped scout from doc.Agents — list_agents will lose it")
+	}
+}
+
 func TestExecutionContext(t *testing.T) {
 	ctx := &ExecutionContext{
 		Inputs:    map[string]any{"task": "test"},
