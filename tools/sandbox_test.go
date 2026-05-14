@@ -41,8 +41,17 @@ func newFlyMockServer(t *testing.T) *flyMockServer {
 		switch {
 		case r.Method == "POST" && r.URL.Path == "/v1/apps":
 			w.WriteHeader(http.StatusCreated)
-		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/ips/allocate-v4"):
-			w.WriteHeader(http.StatusCreated)
+		case r.Method == "POST" && r.URL.Path == "/graphql":
+			// IP allocation goes through GraphQL — return a synthetic ok
+			// payload so spawnApp's error checks pass.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"allocateIpAddress": map[string]any{
+						"ipAddress": map[string]any{"address": "::1", "type": "v6"},
+					},
+				},
+			})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/machines"):
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "machine-abc123"})
@@ -69,7 +78,7 @@ func newFlyMockServer(t *testing.T) *flyMockServer {
 
 func TestSandboxSpawnApp(t *testing.T) {
 	mock := newFlyMockServer(t)
-	c := &flySandboxClient{token: "test", apiBase: mock.URL + "/v1", org: "vega-apps", image: "registry.fly.io/v39a-sandbox:main", httpClient: http.DefaultClient}
+	c := &flySandboxClient{token: "test", apiBase: mock.URL + "/v1", graphqlBase: mock.URL + "/graphql", org: "vega-apps", image: "registry.fly.io/v39a-sandbox:main", httpClient: http.DefaultClient}
 
 	appID, url, err := c.spawnApp(context.Background(), "todo", 8080)
 	if err != nil {
@@ -82,26 +91,46 @@ func TestSandboxSpawnApp(t *testing.T) {
 		t.Errorf("url mismatch: %q", url)
 	}
 
-	// spawnApp must NOT call /ips/allocate-v4 — that path doesn't exist on
-	// the Machines API (returns 404 in production). The Machines API
-	// auto-assigns shared anycast v4/v6 when an app is created and a
-	// machine binds services with TLS handlers, so *.fly.dev routing works
-	// without explicit IP allocation.
+	// spawnApp must NOT call the Machines REST IP endpoint — that path
+	// doesn't exist (returns 404 in production). IP allocation goes
+	// through GraphQL instead.
 	for _, call := range mock.calls {
 		if strings.Contains(call.Path, "/ips/") {
-			t.Errorf("spawnApp must not hit IP allocation endpoints; got %s %s", call.Method, call.Path)
+			t.Errorf("spawnApp must not hit Machines /ips endpoint; got %s %s", call.Method, call.Path)
 		}
 	}
 
-	// Two calls: create app, create machine — in that order.
-	if len(mock.calls) != 2 {
-		t.Fatalf("expected exactly 2 API calls (create app + create machine), got %d", len(mock.calls))
+	// Expected sequence: create app, allocate v6, allocate shared_v4,
+	// create machine.
+	if len(mock.calls) != 4 {
+		t.Fatalf("expected exactly 4 API calls, got %d: %+v", len(mock.calls), mock.calls)
 	}
 	if mock.calls[0].Method != "POST" || mock.calls[0].Path != "/v1/apps" {
 		t.Errorf("first call should create app, got %s %s", mock.calls[0].Method, mock.calls[0].Path)
 	}
 	if mock.calls[0].Body["org_slug"] != "vega-apps" {
 		t.Errorf("app create should be in vega-apps org, got %v", mock.calls[0].Body["org_slug"])
+	}
+
+	// Second + third call: GraphQL IP allocations, one v6 and one
+	// shared_v4. Order doesn't matter for routing — assert both happen.
+	graphqlTypes := map[string]int{}
+	for _, call := range mock.calls[1:3] {
+		if call.Path != "/graphql" {
+			t.Errorf("expected /graphql call, got %s %s", call.Method, call.Path)
+			continue
+		}
+		vars, _ := call.Body["variables"].(map[string]any)
+		input, _ := vars["input"].(map[string]any)
+		typ, _ := input["type"].(string)
+		appIDArg, _ := input["appId"].(string)
+		if appIDArg != appID {
+			t.Errorf("graphql appId should be %q, got %q", appID, appIDArg)
+		}
+		graphqlTypes[typ]++
+	}
+	if graphqlTypes["v6"] != 1 || graphqlTypes["shared_v4"] != 1 {
+		t.Errorf("expected one v6 + one shared_v4 allocation, got %v", graphqlTypes)
 	}
 
 	// Machine create payload must include the sandbox image and the requested port.

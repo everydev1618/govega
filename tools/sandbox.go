@@ -27,22 +27,26 @@ import (
 )
 
 const (
-	defaultFlyAPIBase  = "https://api.machines.dev/v1"
-	defaultSandboxOrg  = "vega-apps"
-	defaultSandboxImg  = "registry.fly.io/v39a-sandbox:main"
-	defaultRegion      = "iad"
-	httpTimeoutSeconds = 60
+	defaultFlyAPIBase     = "https://api.machines.dev/v1"
+	defaultFlyGraphQLBase = "https://api.fly.io/graphql"
+	defaultSandboxOrg     = "vega-apps"
+	defaultSandboxImg     = "registry.fly.io/v39a-sandbox:main"
+	defaultRegion         = "iad"
+	httpTimeoutSeconds    = 60
 )
 
 // flySandboxClient is a small REST client for the Fly Machines API, scoped
-// to the org that hosts sandbox apps.
+// to the org that hosts sandbox apps. IP allocation goes through Fly's
+// GraphQL endpoint (graphqlBase) rather than the Machines API, which has
+// no IP-allocation resource.
 type flySandboxClient struct {
-	token      string
-	apiBase    string
-	org        string
-	image      string
-	region     string
-	httpClient *http.Client
+	token       string
+	apiBase     string
+	graphqlBase string
+	org         string
+	image       string
+	region      string
+	httpClient  *http.Client
 }
 
 func newFlySandboxClient() (*flySandboxClient, error) {
@@ -51,12 +55,13 @@ func newFlySandboxClient() (*flySandboxClient, error) {
 		return nil, errors.New("FLY_SANDBOX_TOKEN is not set")
 	}
 	return &flySandboxClient{
-		token:      token,
-		apiBase:    envOr("FLY_API_BASE", defaultFlyAPIBase),
-		org:        envOr("FLY_SANDBOX_ORG", defaultSandboxOrg),
-		image:      envOr("FLY_SANDBOX_IMAGE", defaultSandboxImg),
-		region:     envOr("FLY_SANDBOX_REGION", defaultRegion),
-		httpClient: &http.Client{Timeout: time.Duration(httpTimeoutSeconds) * time.Second},
+		token:       token,
+		apiBase:     envOr("FLY_API_BASE", defaultFlyAPIBase),
+		graphqlBase: envOr("FLY_GRAPHQL_BASE", defaultFlyGraphQLBase),
+		org:         envOr("FLY_SANDBOX_ORG", defaultSandboxOrg),
+		image:       envOr("FLY_SANDBOX_IMAGE", defaultSandboxImg),
+		region:      envOr("FLY_SANDBOX_REGION", defaultRegion),
+		httpClient:  &http.Client{Timeout: time.Duration(httpTimeoutSeconds) * time.Second},
 	}, nil
 }
 
@@ -111,6 +116,65 @@ func randomSuffix() string {
 	return hex.EncodeToString(b)
 }
 
+// allocateIP attaches a public IP of the given type to the app via Fly's
+// GraphQL API. ipType is one of: "v6" (dedicated public IPv6), "v4"
+// (dedicated public IPv4 — costs $), "shared_v4" (anycast IPv4, free).
+// Returns the allocated address, which may be empty for shared_v4 (the
+// shared pool has no per-app address).
+//
+// We hit GraphQL rather than REST because the Fly Machines API has no
+// IP-allocation resource. The earlier implementation here POST'd to
+// /apps/{name}/ips/allocate-v4 on the Machines API, which returns a
+// 404 page for every call — that path only exists conceptually inside
+// flyctl, which translates it to this GraphQL mutation. Without IP
+// allocation the spawned app has no public IPs and *.fly.dev DNS
+// returns NXDOMAIN, so the dashboard URL the agent prints is dead.
+func (c *flySandboxClient) allocateIP(ctx context.Context, appName, ipType string) error {
+	body := map[string]any{
+		"query": `mutation($input: AllocateIPAddressInput!) { allocateIpAddress(input: $input) { ipAddress { address type } } }`,
+		"variables": map[string]any{
+			"input": map[string]any{
+				"appId": appName,
+				"type":  ipType,
+			},
+		},
+	}
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal graphql body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.graphqlBase, bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("fly graphql HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	// GraphQL returns HTTP 200 even on logical errors — the errors[] array
+	// is the real failure signal.
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("decode graphql response: %w (body: %s)", err, string(raw))
+	}
+	if len(out.Errors) > 0 {
+		return fmt.Errorf("fly graphql: %s", out.Errors[0].Message)
+	}
+	return nil
+}
+
 // spawnApp creates a Fly app + machine running the sandbox image. Returns the
 // (unique) app id and the public URL the user can visit.
 func (c *flySandboxClient) spawnApp(ctx context.Context, name string, port int) (string, string, error) {
@@ -126,12 +190,18 @@ func (c *flySandboxClient) spawnApp(ctx context.Context, name string, port int) 
 		return "", "", fmt.Errorf("create app: %w", err)
 	}
 
-	// No explicit IP allocation: the Machines API doesn't expose an
-	// /ips/allocate-v4 endpoint (it returns 404), and apps created here
-	// get shared anycast v4 + v6 automatically. *.fly.dev routes to the
-	// machine via the TLS service handlers configured below — no
-	// per-app IP needed for that path. An earlier version of this code
-	// hit /ips/allocate-v4 and broke every spawn_app call with a 404.
+	// IP allocation happens via Fly's GraphQL API — the Machines API has
+	// no IP resource. Without these two calls the app has no public IPs
+	// and *.fly.dev won't resolve, leaving the dashboard unreachable
+	// even though the machine itself runs fine. v6 is a dedicated
+	// public IPv6; shared_v4 opts the app into Fly's anycast IPv4 so
+	// IPv4-only clients can reach it too.
+	if err := c.allocateIP(ctx, appID, "v6"); err != nil {
+		return "", "", fmt.Errorf("allocate v6: %w", err)
+	}
+	if err := c.allocateIP(ctx, appID, "shared_v4"); err != nil {
+		return "", "", fmt.Errorf("allocate shared_v4: %w", err)
+	}
 
 	machineConfig := map[string]any{
 		"region": c.region,
