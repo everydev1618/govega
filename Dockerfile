@@ -17,7 +17,7 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /vega /usr/local/bin/vega
 VOLUME ["/config", "/data"]
-ENV PORT=3001
+ENV PORT=3001 VEGA_HOME=/data
 EXPOSE 3001
 # sh -c so $PORT (injected by Fly / v39a's App Contract) is honored.
 ENTRYPOINT ["sh", "-c", "exec vega serve --addr \":${PORT}\" --db /data/vega.db"]
