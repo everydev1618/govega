@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -720,7 +721,7 @@ func TestApplyOrchestratorOverrides_NoSettingsIsPassthrough(t *testing.T) {
 	store := newTestStore(t)
 	cfg := dsl.IrisConfig{Name: "aria", DisplayName: "ARIA", Title: "Orchestrator"}
 	got := applyOrchestratorOverrides(cfg, store)
-	if got != cfg {
+	if !reflect.DeepEqual(got, cfg) {
 		t.Errorf("expected passthrough, got %+v", got)
 	}
 }

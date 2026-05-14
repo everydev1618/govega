@@ -30,6 +30,10 @@ type HeraConfig struct {
 	SystemPrompt            string // optional prompt override
 	Model                   string
 	FallbackModel           string
+	// Models is an optional per-step-type routing table — see
+	// Agent.ModelFor. When nil, applyDefaults seeds it with Hera's
+	// recommended defaults (classify on Haiku for first-turn intent).
+	Models map[string]string
 }
 
 // DefaultHeraConfig returns the bundled Hera persona with original names.
@@ -62,6 +66,16 @@ func (c *HeraConfig) applyDefaults() {
 	}
 	if c.ProductName == "" {
 		c.ProductName = "Vega"
+	}
+	if c.Models == nil {
+		// Hera's first turn on a new request is intent extraction
+		// ("what kind of agent should I build?") — shallow
+		// classification work that Haiku handles fine. Subsequent
+		// turns that actually generate agent YAML fall through to
+		// cfg.Model (Sonnet) via ModelFor("").
+		c.Models = map[string]string{
+			"classify": "claude-haiku-4-5-20251001",
+		}
 	}
 }
 
@@ -370,6 +384,7 @@ func HeraAgent(cfg HeraConfig) *Agent {
 		AvatarGradient: gradient,
 		Model:          model,
 		FallbackModel:  fallback,
+		Models:         cfg.Models,
 		System:         renderHeraPrompt(cfg),
 		Retry:          &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
 		IsMeta:         true,

@@ -35,6 +35,30 @@ func newHeraTestInterpreter(t *testing.T) *Interpreter {
 	}
 }
 
+// TestHeraAgent_ClassifyDefaultsToHaiku — Hera's first-turn intent
+// extraction ("what do you want me to build?") is shallow
+// classification work; Haiku is the right cost tier for it.
+// Mid-conversation turns where she's actually generating an agent
+// definition still fall back to Sonnet via Agent.Model.
+func TestHeraAgent_ClassifyDefaultsToHaiku(t *testing.T) {
+	def := HeraAgent(DefaultHeraConfig())
+	if def.Models == nil {
+		t.Fatal("HeraAgent should populate Models with sensible defaults, got nil")
+	}
+	if got := def.Models["classify"]; got != "claude-haiku-4-5-20251001" {
+		t.Errorf("Models[classify] = %q, want claude-haiku-4-5-20251001", got)
+	}
+}
+
+func TestHeraAgent_ExplicitModelsRespected(t *testing.T) {
+	cfg := DefaultHeraConfig()
+	cfg.Models = map[string]string{"classify": "claude-sonnet-4-6"}
+	def := HeraAgent(cfg)
+	if got := def.Models["classify"]; got != "claude-sonnet-4-6" {
+		t.Errorf("explicit cfg.Models should win, got %q", got)
+	}
+}
+
 func TestInjectHera(t *testing.T) {
 	interp := newHeraTestInterpreter(t)
 	defer interp.Shutdown()

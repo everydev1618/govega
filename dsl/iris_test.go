@@ -27,6 +27,31 @@ func TestIrisAgentPopulatesTitle(t *testing.T) {
 	}
 }
 
+// TestIrisAgent_ClassifyDefaultsToHaiku pins the orchestrator's per-step
+// routing default: first-turn-with-tools dispatches should run on Haiku
+// because picking "which agent gets this" is N-way classification, not
+// long-form reasoning. Iris stays on Sonnet for synthesis turns where
+// the step-type tag is "" (no rule fires) and ModelFor falls back to
+// Model.
+func TestIrisAgent_ClassifyDefaultsToHaiku(t *testing.T) {
+	def := IrisAgent(DefaultIrisConfig())
+	if def.Models == nil {
+		t.Fatal("IrisAgent should populate Models with sensible defaults, got nil")
+	}
+	if got := def.Models["classify"]; got != "claude-haiku-4-5-20251001" {
+		t.Errorf("Models[classify] = %q, want claude-haiku-4-5-20251001", got)
+	}
+}
+
+func TestIrisAgent_ExplicitModelsRespected(t *testing.T) {
+	cfg := DefaultIrisConfig()
+	cfg.Models = map[string]string{"classify": "claude-sonnet-4-6"}
+	def := IrisAgent(cfg)
+	if got := def.Models["classify"]; got != "claude-sonnet-4-6" {
+		t.Errorf("explicit cfg.Models should win, got %q", got)
+	}
+}
+
 // TestInjectIris_ExposesChannelTools covers govega#57: ARIA (the
 // orchestrator) failed onboarding with "coordination tools / create_channel
 // not available" because the channel tools weren't registered on the

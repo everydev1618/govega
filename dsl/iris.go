@@ -31,6 +31,10 @@ type IrisConfig struct {
 	SystemPrompt       string // optional prompt override; if empty the bundled template is used
 	Model              string // optional model override
 	FallbackModel      string // optional fallback model override
+	// Models is an optional per-step-type routing table — see
+	// Agent.ModelFor. When nil, applyDefaults seeds it with Iris's
+	// recommended defaults (classify on Haiku for routing decisions).
+	Models map[string]string
 }
 
 // DefaultIrisConfig returns the bundled Iris persona with original names.
@@ -63,6 +67,14 @@ func (c *IrisConfig) applyDefaults() {
 	}
 	if c.ProductName == "" {
 		c.ProductName = "Vega"
+	}
+	if c.Models == nil {
+		// Iris's bread-and-butter is "which agent gets this?" — N-way
+		// classification, cheap on Haiku. Synthesis / multi-step
+		// reasoning turns fall through ModelFor("") to cfg.Model.
+		c.Models = map[string]string{
+			"classify": "claude-haiku-4-5-20251001",
+		}
 	}
 }
 
@@ -326,6 +338,7 @@ func IrisAgent(cfg IrisConfig) *Agent {
 		AvatarGradient: gradient,
 		Model:          model,
 		FallbackModel:  fallback,
+		Models:         cfg.Models,
 		System:         renderIrisPrompt(cfg),
 		Retry:          &RetryDef{MaxAttempts: 3, Backoff: "exponential"},
 		IsMeta:         true,
