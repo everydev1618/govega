@@ -122,6 +122,27 @@ func TestIrisSystemPrompt_AntiPhantomDispatchGuardrail(t *testing.T) {
 	}
 }
 
+// TestIrisSystemPrompt_FirstRunIdentityRitual covers govega#92: a brand-new
+// tenant's first conversation with the orchestrator currently opens with
+// "Hey! What do you need?" — efficient, but it leaves the user nameless and
+// the agent without a profile. Mira eventually catches a name from organic
+// chat, but the first few exchanges feel transactional and the agent doesn't
+// know how to address the user. This guardrail forces a one-time bootstrap
+// ritual: if profile.md is missing from the memory injection, ask the user
+// what to call them BEFORE diving into work, then persist the answer.
+func TestIrisSystemPrompt_FirstRunIdentityRitual(t *testing.T) {
+	required := []string{
+		"First conversation",
+		"profile.md",
+		"What should I call you",
+	}
+	for _, s := range required {
+		if !strings.Contains(irisSystemPrompt, s) {
+			t.Errorf("irisSystemPrompt missing required first-run ritual substring: %q", s)
+		}
+	}
+}
+
 // TestDefaultVisualIdentity covers govega#60: agent-creation paths need a
 // reasonable icon + color so the FE doesn't render blank placeholders before
 // the user picks one. The default must be (a) non-empty, (b) deterministic
