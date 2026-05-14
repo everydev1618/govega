@@ -422,8 +422,20 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	agentTools := i.tools
 	if len(def.Tools) > 0 {
 		toolNames := append([]string{}, def.Tools...)
+		// Always-available bucket — tools the host opted into that every
+		// agent gets regardless of its persisted allow-list:
+		//   - "__"-prefixed MCP/builtin server tools
+		//   - sandbox tools (spawn_app etc.), registered only when
+		//     FLY_SANDBOX_TOKEN is set. Without this, agents created before
+		//     the sandbox surface shipped silently fall back to
+		//     `start_service` + `python -m http.server`, handing the user a
+		//     localhost URL instead of a public *.fly.dev URL.
+		sandbox := make(map[string]bool, 4)
+		for _, n := range tools.SandboxToolNames() {
+			sandbox[n] = true
+		}
 		for _, schema := range i.tools.Schema() {
-			if strings.Contains(schema.Name, "__") {
+			if strings.Contains(schema.Name, "__") || sandbox[schema.Name] {
 				toolNames = append(toolNames, schema.Name)
 			}
 		}

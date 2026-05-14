@@ -218,6 +218,14 @@ func (c *flySandboxClient) destroyApp(ctx context.Context, appID string) error {
 	return c.call(ctx, "DELETE", "/apps/"+appID, nil, nil)
 }
 
+// SandboxToolNames is the canonical list of tools RegisterSandboxTools adds
+// when FLY_SANDBOX_TOKEN is set. The DSL layer uses this so longstanding
+// agents (whose persisted Tools allow-list predates the sandbox surface)
+// still receive the sandbox tools when the host supports them.
+func SandboxToolNames() []string {
+	return []string{"spawn_app", "run_in_app", "write_file_to_app", "destroy_app"}
+}
+
 // RegisterSandboxTools wires the four sandbox tools into the Tools collection
 // if FLY_SANDBOX_TOKEN is set. If the token is absent, this is a no-op so the
 // tool surface for agents that don't have sandbox permission stays clean.
@@ -230,10 +238,12 @@ func RegisterSandboxTools(t *Tools) {
 
 	t.Register("spawn_app", ToolDef{
 		Description: "Spawn a new isolated sandbox machine to host a user-built app. " +
-			"Use this whenever the user asks you to build, deploy, or share an app they " +
-			"can visit at a URL. The sandbox comes with node, python, go, git, and " +
-			"common build tools preinstalled. Returns the app id (use with other " +
-			"sandbox tools) and the public URL.",
+			"THIS is how you produce a URL the user can visit — never serve from inside " +
+			"your own container (that URL would be localhost-only and unreachable). " +
+			"Use whenever you build, deploy, preview, or share anything the user opens " +
+			"in a browser: dashboards, static HTML, web apps, demos. The sandbox comes " +
+			"with node, python, go, git, and common build tools preinstalled. Returns " +
+			"the app id (use with other sandbox tools) and the public *.fly.dev URL.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			name, _ := params["name"].(string)
 			port := 8080

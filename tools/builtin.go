@@ -251,7 +251,9 @@ func (t *Tools) RegisterBuiltins() {
 
 	// Background service management — for long-running processes like dev servers.
 	t.Register("start_service", ToolDef{
-		Description: "Start a long-running background process (e.g. npm dev server, python http.server). The process runs until explicitly stopped. Returns the service name and recent output.",
+		Description: "Start a long-running background process inside this agent's container (e.g. a build watcher, a queue worker). The process runs until explicitly stopped. " +
+			"Do NOT use this to serve a URL the user will visit — anything you bind here is only reachable as localhost inside the container. " +
+			"For user-visible apps, use spawn_app, which provisions an isolated Fly machine with a public *.fly.dev URL.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			name, _ := params["name"].(string)
 			command, _ := params["command"].(string)
