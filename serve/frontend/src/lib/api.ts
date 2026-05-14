@@ -221,7 +221,7 @@ export const api = {
     onEvent: (event: import('./types').ChatEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
-    return fetch(`${BASE}/api/agents/${agent}/chat/stream`, {
+    return fetch(`${BASE}/agents/${agent}/chat/stream`, {
       method: 'GET',
       headers: {},
       signal,
@@ -357,7 +357,7 @@ export const api = {
     onEvent: (event: import('./types').ChatEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
-    return fetch(`${BASE}/api/agents/${agent}/chat/stream`, {
+    return fetch(`${BASE}/agents/${agent}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),

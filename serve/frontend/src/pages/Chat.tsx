@@ -821,7 +821,7 @@ export function Chat() {
       <ChatInput
         onSend={send}
         sending={sending}
-        placeholder={isIris ? 'Tell Iris what you need...' : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}...`}
+        placeholder={isIris ? `Tell ${orchestratorDisplay} what you need...` : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}...`}
         borderColor={isIris ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}
         agentNames={agentNamesList}
         agentDisplayInfo={agentDisplayInfo}

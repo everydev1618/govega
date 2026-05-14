@@ -58,6 +58,10 @@ export function Layout() {
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
   const [chatUnread, setChatUnread] = useState<Record<string, number>>({})
   const [runningTasks, setRunningTasks] = useState<ProcessResponse[]>([])
+  // Set of base agent names that currently have a turn-of-work in progress.
+  // 'status === running' on the agent record means alive (registered), not
+  // actively inferring; processes endpoint is the truthful source.
+  const [activeAgentNames, setActiveAgentNames] = useState<Set<string>>(new Set())
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dmCollapsed, setDmCollapsed] = useState(false)
@@ -68,6 +72,23 @@ export function Layout() {
     api.getProcesses().then(procs => {
       const running = (procs ?? []).filter(p => p.status === 'running')
       setRunningTasks(running.filter(p => p.task))
+      // Strip per-user clone suffix ("charlie:42" → "charlie") so the
+      // sidebar lights up for the base agent regardless of which user clone
+      // is doing the work. "status===running" alone just means the process
+      // is *registered* — use metrics.last_active_at within a 30s window as
+      // the truthful "actively working right now" signal.
+      const now = Date.now()
+      const ACTIVE_WINDOW_MS = 30_000
+      const active = new Set<string>()
+      for (const p of running) {
+        const lastActive = p.metrics?.last_active_at
+          ? new Date(p.metrics.last_active_at).getTime()
+          : 0
+        if (!lastActive || now - lastActive > ACTIVE_WINDOW_MS) continue
+        const colon = p.agent.indexOf(':')
+        active.add(colon >= 0 ? p.agent.substring(0, colon) : p.agent)
+      }
+      setActiveAgentNames(active)
     }).catch(() => {})
   }
 
@@ -168,7 +189,7 @@ export function Layout() {
                   displayName={orchestratorAgent.display_name || orchestratorDisplay}
                   avatar={orchestratorAgent.avatar || 'n2'}
                   unreadCount={chatUnread[orchestratorAgent.name] || 0}
-                  busy={orchestratorAgent.streaming || orchestratorAgent.status === 'running'}
+                  busy={Boolean(orchestratorAgent.streaming)}
                 />
               )}
               {specialists.length > 0 && orchestratorAgent && (
