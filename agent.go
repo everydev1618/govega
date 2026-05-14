@@ -108,6 +108,19 @@ func (a Agent) ModelFor(role string) string {
 	return a.Model
 }
 
+// fallbackOptions returns the llm.Options to use when retrying with
+// FallbackModel after the primary model has exhausted retries. The
+// agent's temperature, max_tokens, and effort carry over — only the
+// model swaps.
+func (a Agent) fallbackOptions() llm.Options {
+	return llm.Options{
+		Model:       a.FallbackModel,
+		Temperature: a.Temperature,
+		MaxTokens:   a.MaxTokens,
+		Effort:      a.Effort,
+	}
+}
+
 // SystemPrompt provides the system prompt for an agent.
 // It can be static (StaticPrompt) or dynamic (DynamicPrompt).
 type SystemPrompt interface {

@@ -12,25 +12,28 @@ import (
 	"github.com/everydev1618/govega/llm"
 )
 
-// llmCallContext returns ctx enriched with Agent-level overrides
-// (model, temperature, max_tokens, effort) for the LLM backend to read.
-// The model is chosen by deriveStepType + Agent.ModelFor — agents that
-// haven't declared a per-step models map get Agent.Model exactly as
-// before.
-func (p *Process) llmCallContext(ctx context.Context, messages []llm.Message) context.Context {
-	var toolNames []string
-	if p.Agent.Tools != nil {
-		for _, sch := range p.Agent.Tools.Schema() {
-			toolNames = append(toolNames, sch.Name)
-		}
-	}
-	role := deriveStepType(toolNames, countUserMessages(messages))
+// llmCallContext returns ctx enriched with Agent-level overrides for
+// the LLM backend to read. The model is chosen by Agent.ModelFor(role) —
+// agents without a per-step Models map get Agent.Model.
+func (p *Process) llmCallContext(ctx context.Context, role string) context.Context {
 	return llm.ContextWithOptions(ctx, llm.Options{
 		Model:       p.Agent.ModelFor(role),
 		Temperature: p.Agent.Temperature,
 		MaxTokens:   p.Agent.MaxTokens,
 		Effort:      p.Agent.Effort,
 	})
+}
+
+// stepTypeFor derives the step-type tag for the upcoming LLM call from
+// the agent's current tool surface and the conversation so far.
+func (p *Process) stepTypeFor(messages []llm.Message) string {
+	var toolNames []string
+	if p.Agent.Tools != nil {
+		for _, sch := range p.Agent.Tools.Schema() {
+			toolNames = append(toolNames, sch.Name)
+		}
+	}
+	return deriveStepType(toolNames, countUserMessages(messages))
 }
 
 // codeShapedTools are tool names that strongly suggest the agent is
@@ -191,7 +194,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 		default:
 		}
 
-		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, messages), messages, toolSchemas)
+		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, p.stepTypeFor(messages)), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
 		}
@@ -334,7 +337,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		default:
 		}
 
-		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, messages), messages, toolSchemas)
+		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, p.stepTypeFor(messages)), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
 		}
@@ -504,10 +507,13 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 		maxAttempts = policy.MaxAttempts
 	}
 
+	stepType := p.stepTypeFor(messages)
+	chosenModel := p.Agent.ModelFor(stepType)
+
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		start := time.Now()
-		resp, err := p.llm.Generate(p.llmCallContext(ctx, messages), messages, tools)
+		resp, err := p.llm.Generate(p.llmCallContext(ctx, stepType), messages, tools)
 		latency := time.Since(start)
 
 		if err == nil {
@@ -517,6 +523,8 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 			slog.Debug("llm call succeeded",
 				"process_id", p.ID,
 				"agent", p.Agent.Name,
+				"step_type", stepType,
+				"model", chosenModel,
 				"attempt", attempt+1,
 				"latency_ms", latency.Milliseconds(),
 				"input_tokens", resp.InputTokens,
@@ -534,6 +542,8 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 		slog.Warn("llm call failed",
 			"process_id", p.ID,
 			"agent", p.Agent.Name,
+			"step_type", stepType,
+			"model", chosenModel,
 			"attempt", attempt+1,
 			"max_attempts", maxAttempts,
 			"error", err.Error(),
@@ -570,17 +580,22 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 		p.mu.Unlock()
 	}
 
-	// If a fallback model is configured, try once with it
-	if p.Agent.FallbackModel != "" && p.Agent.FallbackModel != p.Agent.Model {
+	// If a fallback model is configured, try once with it. The previous
+	// implementation called Generate with the bare ctx, so the backend
+	// never saw FallbackModel and silently used its default model.
+	if p.Agent.FallbackModel != "" && p.Agent.FallbackModel != chosenModel {
 		slog.Info("trying fallback model",
 			"process_id", p.ID,
 			"agent", p.Agent.Name,
+			"step_type", stepType,
+			"primary_model", chosenModel,
 			"fallback_model", p.Agent.FallbackModel,
 		)
 
 		fallbackLLM := llm.New()
+		fallbackCtx := llm.ContextWithOptions(ctx, p.Agent.fallbackOptions())
 		start := time.Now()
-		resp, err := fallbackLLM.Generate(ctx, messages, tools)
+		resp, err := fallbackLLM.Generate(fallbackCtx, messages, tools)
 		latency := time.Since(start)
 
 		if err == nil {

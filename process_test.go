@@ -720,6 +720,31 @@ func TestDeriveStepType_MidConversationWithToolsIsUnset(t *testing.T) {
 	}
 }
 
+func TestFallbackOptions_UsesFallbackModelAndAgentSettings(t *testing.T) {
+	mt := 4096
+	temp := 0.5
+	a := Agent{
+		Model:         "claude-sonnet-4-6",
+		FallbackModel: "claude-haiku-4-5-20251001",
+		Temperature:   &temp,
+		MaxTokens:     mt,
+		Effort:        "low",
+	}
+	opts := a.fallbackOptions()
+	if opts.Model != "claude-haiku-4-5-20251001" {
+		t.Errorf("Model = %q, want claude-haiku-4-5-20251001", opts.Model)
+	}
+	if opts.MaxTokens != mt {
+		t.Errorf("MaxTokens = %d, want %d", opts.MaxTokens, mt)
+	}
+	if opts.Effort != "low" {
+		t.Errorf("Effort = %q, want low", opts.Effort)
+	}
+	if opts.Temperature == nil || *opts.Temperature != 0.5 {
+		t.Errorf("Temperature pointer not propagated: %v", opts.Temperature)
+	}
+}
+
 func TestCountUserMessages(t *testing.T) {
 	msgs := []llm.Message{
 		{Role: llm.RoleSystem, Content: "sys"},
