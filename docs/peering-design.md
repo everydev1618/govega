@@ -270,7 +270,12 @@ In order:
 - [x] **1.9** Iris tools: `send_to_remote_agent`, `list_peers`, `add_peer`, `remove_peer`, `grant_peer_access`, `revoke_peer_access`, `local_node_id`. Registered conditionally on peering being enabled.
 - [x] **1.10** Frontend: `PeeringPill.tsx` (sidebar pill, polls /peering/status), `PeeringModal.tsx` (4 tabs: Peers / Grants / Live ops / Audit). Per-message origin badge **deferred** — needs chat_messages plumbing to carry peer_origin; documented as follow-on. Browser-driven manual test pending operator session.
 - [x] **1.11** Documentation: peering section added to `docs/ARCHITECTURE.md`; `website/src/pages/index.astro` features grid gets an "Orchestrator federation" card.
-- [ ] **1.12** File the spec-side issues from §9 against `aire-protocol/aire-spec`.
+- [x] **1.12** Filed 5 issues against `aire-protocol/aire-spec`:
+  - [#16](https://github.com/aire-protocol/aire-spec/issues/16) capability naming convention
+  - [#17](https://github.com/aire-protocol/aire-spec/issues/17) v0.1 auth example
+  - [#18](https://github.com/aire-protocol/aire-spec/issues/18) cost accounting fields
+  - [#19](https://github.com/aire-protocol/aire-spec/issues/19) handle scheme
+  - [#20](https://github.com/aire-protocol/aire-spec/issues/20) v0.1 cancellation contract
 
 ## 11. Open questions
 
