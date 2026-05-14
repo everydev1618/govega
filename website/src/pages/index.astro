@@ -60,8 +60,8 @@ const howItWorks = [
   },
   {
     step: '04',
-    title: 'Everything persists',
-    desc: 'Agents, conversations, memory, and MCP connections survive restarts. Your AI workforce is always ready.',
+    title: 'Mira remembers',
+    desc: 'A dedicated memory curator distills every conversation into a wiki. Agents pull only what they need, so context stays sharp as the org grows.',
   },
 ]
 ---
@@ -88,7 +88,7 @@ const howItWorks = [
       <a href={BASE} class="flex items-center gap-2.5">
         <span class="text-amber-400 text-lg">&#9733;</span>
         <span class="font-mono font-semibold text-sm gradient-text">Vega</span>
-        <span class="text-[10px] font-mono text-zinc-500 border border-zinc-800 rounded px-1.5 py-0.5">v0.4</span>
+        <span class="text-[10px] font-mono text-zinc-500 border border-zinc-800 rounded px-1.5 py-0.5">v0.7</span>
       </a>
       <nav class="hidden md:flex items-center gap-8 text-sm text-zinc-400">
         <a href="#features" class="hover:text-white transition-colors">Features</a>
@@ -262,7 +262,7 @@ const howItWorks = [
           <p class="pl-8">- <span class="syn-key">name</span>: <span class="syn-str">composio</span></p>
           <p class="mt-2"><span class="syn-key">agents</span>:</p>
           <p class="pl-4"><span class="syn-type">writer</span>:</p>
-          <p class="pl-6"><span class="syn-key">model</span>: claude-sonnet-4-20250514</p>
+          <p class="pl-6"><span class="syn-key">model</span>: claude-sonnet-4-6</p>
           <p class="pl-6"><span class="syn-key">system</span>: <span class="syn-str">|</span></p>
           <p class="pl-8 syn-str">You write engaging blog posts.</p>
           <p class="pl-6"><span class="syn-key">tools</span>:</p>
@@ -289,7 +289,7 @@ const howItWorks = [
           <p>)</p>
           <p class="mt-2"><span class="syn-type">proc</span>, _ := orch.<span class="syn-fn">Spawn</span>(vega.Agent&#123;</p>
           <p class="pl-4">Name:  <span class="syn-str">"writer"</span>,</p>
-          <p class="pl-4">Model: <span class="syn-str">"claude-sonnet-4-20250514"</span>,</p>
+          <p class="pl-4">Model: <span class="syn-str">"claude-sonnet-4-6"</span>,</p>
           <p>&#125;)</p>
           <p class="mt-2">resp, _ := proc.<span class="syn-fn">Send</span>(ctx, msg)</p>
         </div>
