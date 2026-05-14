@@ -303,6 +303,10 @@ export function Chat() {
   const messagesRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const streamStartEventCount = useRef(0)
+  // Forces an unconditional jump to the latest message on the next render —
+  // set whenever the active agent changes so switching tabs doesn't leave the
+  // user staring at the top of a long history.
+  const pendingInitialScroll = useRef(false)
 
   const fetchAgents = useCallback(() => {
     api.getAgents()
@@ -357,6 +361,7 @@ export function Chat() {
     setLoaded(false)
     setMessages([])
     setSending(false)
+    pendingInitialScroll.current = true
 
     api.chatHistory(activeAgent)
       .then(history => {
@@ -409,6 +414,11 @@ export function Chat() {
   }, [])
 
   useEffect(() => {
+    if (pendingInitialScroll.current && messages.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+      pendingInitialScroll.current = false
+      return
+    }
     if (isNearBottom()) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }

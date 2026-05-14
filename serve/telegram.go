@@ -361,6 +361,54 @@ func (t *TelegramBot) Start(ctx context.Context) {
 	}
 }
 
+// parseAgentPrefix detects a leading "!agent " routing prefix and, if the
+// name matches a known agent, returns (agent, remaining-body). Otherwise it
+// returns ("", original text).
+//
+// Telegram intercepts "@" (username autocomplete) and "/" (bot commands), so
+// "!" is used as the routing sigil. The match is case-sensitive against the
+// agent name and the name must be the very first token of the message.
+func parseAgentPrefix(text string, has func(string) bool) (agent, body string) {
+	if len(text) < 2 || text[0] != '!' {
+		return "", text
+	}
+	rest := text[1:]
+	// Find the end of the agent token: first whitespace, or end of string.
+	end := len(rest)
+	for i := 0; i < len(rest); i++ {
+		c := rest[i]
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			end = i
+			break
+		}
+	}
+	name := rest[:end]
+	if !isAgentNameLike(name) || !has(name) {
+		return "", text
+	}
+	return name, strings.TrimSpace(rest[end:])
+}
+
+// isAgentNameLike checks for a conservative identifier shape: starts with a
+// letter, followed by letters, digits, '_' or '-'. Keeps routing predictable
+// and avoids treating things like "!!" or "!1234" as agent names.
+func isAgentNameLike(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case i == 0 && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')):
+			continue
+		case i > 0 && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'):
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // handle processes a single Telegram update.
 func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	if update.Message == nil {
@@ -405,7 +453,19 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	// directly — same conversation as the web UI. userID still flows
 	// into the memory context (memory tools key by user) but no clone
 	// agent is created and no per-user chat thread exists.
+	//
+	// As an escape hatch, users can address a specific agent inline with
+	// "!agent rest of message". Unknown names pass through to the base
+	// agent so a stray "!something" never silently disappears.
 	name := t.agentName
+	if target, body := parseAgentPrefix(text, t.interp.HasAgent); target != "" {
+		if body == "" {
+			t.bot.Send(tgbotapi.NewMessage(chatID, "What would you like to ask "+target+"?"))
+			return
+		}
+		name = target
+		text = body
+	}
 
 	if t.onIncoming != nil {
 		t.onIncoming(name, &telegramReplyTarget{bot: t.bot, chatID: chatID})

@@ -1385,6 +1385,16 @@ func (i *Interpreter) Agents() map[string]*vega.Process {
 	return copy
 }
 
+// HasAgent reports whether an agent with this name is defined (whether or
+// not it is currently spawned). Useful for routing decisions where a caller
+// wants to validate a target name without forcing a spawn.
+func (i *Interpreter) HasAgent(name string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	_, ok := i.doc.Agents[name]
+	return ok
+}
+
 // AddAgent adds and spawns a new agent at runtime.
 func (i *Interpreter) AddAgent(name string, def *Agent) error {
 	i.mu.RLock()
