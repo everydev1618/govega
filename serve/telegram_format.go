@@ -60,8 +60,12 @@ func markdownToTelegramHTML(s string) string {
 	// 4. Bold / italic / strike.
 	s = reBoldStar.ReplaceAllString(s, "<b>$1</b>")
 	s = reBoldUnder.ReplaceAllString(s, "<b>$1</b>")
-	s = reItalicStar.ReplaceAllString(s, "<i>$1</i>")
-	s = reItalicUnder.ReplaceAllString(s, "<i>$1</i>")
+	// Italic regexes capture surrounding non-marker chars to avoid matching
+	// inside bold (**x**) or words like under_scored. Go regexp has no
+	// lookahead/lookbehind, so we put those characters back in the
+	// replacement string explicitly.
+	s = reItalicStar.ReplaceAllString(s, "$1<i>$2</i>$3")
+	s = reItalicUnder.ReplaceAllString(s, "$1<i>$2</i>$3")
 	s = reStrike.ReplaceAllString(s, "<s>$1</s>")
 
 	// 5. Links — text is already escaped; URL needs no escape inside an
@@ -110,8 +114,8 @@ var (
 	reHeading     = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
 	reBoldStar    = regexp.MustCompile(`\*\*([^*\n]+)\*\*`)
 	reBoldUnder   = regexp.MustCompile(`__([^_\n]+)__`)
-	reItalicStar  = regexp.MustCompile(`(?:^|[^*])\*([^*\n]+)\*(?:[^*]|$)`)
-	reItalicUnder = regexp.MustCompile(`(?:^|[^_])_([^_\n]+)_(?:[^_]|$)`)
+	reItalicStar  = regexp.MustCompile(`(^|[^*])\*([^*\n]+)\*([^*]|$)`)
+	reItalicUnder = regexp.MustCompile(`(^|[^_])_([^_\n]+)_([^_]|$)`)
 	reStrike      = regexp.MustCompile(`~~([^~\n]+)~~`)
 	reLink        = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)\)`)
 	reBullet      = regexp.MustCompile(`(?m)^([\t ]*)[-*]\s+`)

@@ -26,7 +26,8 @@ func TestMarkdownToTelegramHTML(t *testing.T) {
 		{
 			name: "fenced_code_with_lang",
 			in:   "```go\nfmt.Println(\"hi\")\n```",
-			want: "<pre>fmt.Println(&#34;hi&#34;)\n</pre>",
+			// Quotes don't need HTML-escaping (we only escape & < >).
+			want: "<pre>fmt.Println(\"hi\")\n</pre>",
 		},
 		{
 			name: "code_block_protects_markdown",
