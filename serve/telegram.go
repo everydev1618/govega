@@ -441,8 +441,18 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	if err := t.store.InsertChatMessage(name, "assistant", resp, nil); err != nil {
 		slog.Warn("telegram: failed to insert assistant message", "error", err)
 	}
-	if _, err := t.bot.Send(tgbotapi.NewMessage(chatID, resp)); err != nil {
-		slog.Warn("telegram: failed to send reply", "error", err)
+	// Format the agent's markdown for Telegram's HTML parse mode. If Telegram
+	// rejects the formatted message (e.g. due to malformed HTML from edge-case
+	// model output), fall back to sending plain text so we never silently drop
+	// a reply.
+	msg := tgbotapi.NewMessage(chatID, markdownToTelegramHTML(resp))
+	msg.ParseMode = "HTML"
+	msg.DisableWebPagePreview = true
+	if _, err := t.bot.Send(msg); err != nil {
+		slog.Warn("telegram: HTML reply rejected, falling back to plain", "error", err)
+		if _, err := t.bot.Send(tgbotapi.NewMessage(chatID, resp)); err != nil {
+			slog.Warn("telegram: plain reply also failed", "error", err)
+		}
 	}
 	if t.onExchange != nil {
 		t.onExchange(userID, t.agentName, text, resp)
