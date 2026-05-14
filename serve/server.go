@@ -18,6 +18,7 @@ import (
 	"github.com/everydev1618/govega/internal/envcompat"
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
+	"github.com/everydev1618/govega/serve/peering"
 	"github.com/everydev1618/vega-population/population"
 )
 
@@ -199,6 +200,11 @@ type Server struct {
 	interp    *dsl.Interpreter
 	broker    *EventBroker
 	store     Store
+	// Peering subsystem (orchestrator-to-orchestrator federation over AIRE).
+	// Nil when VEGA_PEERING_ADDR is unset. See peering_boot.go.
+	peeringNode   *peering.Node
+	peeringDialer *peering.Dialer
+	peeringStore  peering.Store
 	// blobs is the optional object-storage backend for binary content
 	// that shouldn't live in the relational DB (refs govega#61 phase 5).
 	// Today only agent brain files use it; when blobs is nil, the brain
@@ -542,6 +548,11 @@ func (s *Server) Start(ctx context.Context) error {
 	if envModel := os.Getenv("ORCHESTRATOR_MODEL"); envModel != "" {
 		s.cfg.Orchestrator.Model = envModel
 	}
+
+	// Start peering (orchestrator-to-orchestrator federation over AIRE)
+	// before meta-agent injection so Iris can pick up federation tools.
+	// No-op when VEGA_PEERING_ADDR is unset; logs + skips on misconfig.
+	s.startPeering(ctx)
 
 	// Inject Hera — the built-in meta-agent for creating agents via chat.
 	s.injectHera()
@@ -940,6 +951,11 @@ func (s *Server) Start(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
+
+	// Tear down peering (close cached outbound conns + stop the AIRE
+	// listener) before the broker so in-flight inbound ops fail fast
+	// rather than getting stuck on a closing SSE channel.
+	s.stopPeering()
 
 	// Close broker first — this closes all SSE subscriber channels,
 	// unblocking their handlers so the HTTP server can drain cleanly.
@@ -1563,7 +1579,14 @@ func (s *Server) injectHera() {
 
 // injectIris adds the orchestrator (default: Iris) to the interpreter.
 func (s *Server) injectIris() {
-	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, "remember", "recall", "forget", "list_inbox", "resolve_inbox", "list_unassigned_tasks", "list_my_tasks", "assign_task", "create_task", "update_task_status", "comment_on_task"); err != nil {
+	extras := []string{"remember", "recall", "forget",
+		"list_inbox", "resolve_inbox",
+		"list_unassigned_tasks", "list_my_tasks", "assign_task",
+		"create_task", "update_task_status", "comment_on_task"}
+	if s.peeringEnabled() {
+		extras = append(extras, peeringToolNames...)
+	}
+	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, extras...); err != nil {
 		slog.Warn("failed to inject Iris agent", "error", err)
 	}
 }

@@ -18,6 +18,13 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+// PeeringStore returns a peering.Store backed by the same database. Used
+// by the orchestrator-to-orchestrator federation layer to share storage
+// without bloating the main Store interface.
+func (s *SQLiteStore) PeeringStore() peering.Store {
+	return peering.NewSQLiteStorage(s.db)
+}
+
 // NewSQLiteStore opens or creates a SQLite database at the given path.
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite", path)

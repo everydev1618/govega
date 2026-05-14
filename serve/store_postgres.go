@@ -23,12 +23,21 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/serve/peering"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // PostgresStore implements Store on top of Postgres.
 type PostgresStore struct {
 	db *sql.DB
+}
+
+// PeeringStore returns a peering.Store backed by the same database. Mirror
+// of SQLiteStore.PeeringStore. The peering tables are created by goose
+// migration 00004_peering.sql which has already run by the time this is
+// called.
+func (s *PostgresStore) PeeringStore() peering.Store {
+	return peering.NewPostgresStorage(s.db)
 }
 
 // NewPostgresStore opens a connection pool against the supplied URL

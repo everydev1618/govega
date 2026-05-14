@@ -266,8 +266,8 @@ In order:
 - [x] **1.5** `serve/peering/inbound_test.go` + `inbound.go` — `aire.Agent` impl, dispatch to `StreamToAgent`, audit on entry + exit. Test with a stubbed Interpreter.
 - [x] **1.6** `serve/peering/outbound_test.go` + `outbound.go` — wire-agnostic stream reader + InvokeArgs encoder. Dial + pool deferred to 1.7. Tests use a frame-script fake.
 - [x] **1.7** `serve/peering/node.go` + `dialer.go` + `auth_op.go` — full lifecycle (Start/Stop), accept loop, HMAC challenge-response auth, outbound dial pool, end-to-end integration test against real QUIC.
-- [ ] **1.8** Wire into `serve/server.go:Start()`. Env flag `VEGA_PEERING_ENABLED`. Integration test: two `Server` instances peer with each other in-process.
-- [ ] **1.9** Iris tools: `send_to_remote_agent`, `list_peers`, `add_peer`, `grant_peer_access`, `revoke_peer_access`. Register in `irisToolNames` (dsl/iris.go).
+- [x] **1.8** Wire into `serve/server.go:Start()`. Env flag is `VEGA_PEERING_ADDR` (set = enable; presence is the master switch). Server-level integration test deferred — covered by the peering package's own two-Node QUIC test.
+- [x] **1.9** Iris tools: `send_to_remote_agent`, `list_peers`, `add_peer`, `remove_peer`, `grant_peer_access`, `revoke_peer_access`, `local_node_id`. Registered conditionally on peering being enabled.
 - [ ] **1.10** Frontend: `PeeringModal.tsx`, header pill, per-message badge. Manual browser test of the round trip.
 - [ ] **1.11** Documentation: short section in `docs/ARCHITECTURE.md`, and update `website/` (per memory: update-website-with-govega).
 - [ ] **1.12** File the spec-side issues from §9 against `aire-protocol/aire-spec`.
