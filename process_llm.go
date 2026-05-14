@@ -9,8 +9,61 @@ import (
 	"sync"
 	"time"
 
+	"github.com/everydev1618/govega/internal/v39a"
 	"github.com/everydev1618/govega/llm"
 )
+
+// v39aReporter is the lazily-initialised reporter used by callLLMWithRetry
+// to ship per-call cost telemetry to v39a's control panel. Nil means env
+// vars weren't set (telemetry disabled) — no calls fire.
+var (
+	v39aReporterOnce sync.Once
+	v39aReporter     *v39a.Reporter
+)
+
+func getV39AReporter() *v39a.Reporter {
+	v39aReporterOnce.Do(func() {
+		v39aReporter = v39a.NewReporterFromEnv()
+	})
+	return v39aReporter
+}
+
+// reportLLMCost fires a cost_recorded event for a successful LLM call,
+// async + fire-and-forget. The reporter is nil when V39A_REPORTER_URL /
+// V39A_INSTANCE_TOKEN aren't set; in that case this is a no-op.
+//
+// The conversation_id is the Process ID — v39a auto-creates a
+// conversation row when it sees a cost for an unknown id, so no
+// separate conversation_started event is needed for the slim slice.
+// Vendor is "anthropic" for any claude-* model, "openai" otherwise.
+func reportLLMCost(p *Process, resp *llm.LLMResponse, stepType, model string) {
+	r := getV39AReporter()
+	if r == nil || resp == nil || resp.CostUSD <= 0 {
+		return
+	}
+	vendor := "openai"
+	if strings.HasPrefix(model, "claude-") {
+		vendor = "anthropic"
+	}
+	ev := v39a.CostEvent{
+		ConversationID: p.ID,
+		Kind:           "llm",
+		Vendor:         vendor,
+		Units:          1,
+		UnitCostUSD:    resp.CostUSD,
+		StepType:       stepType,
+		Model:          model,
+	}
+	go func() {
+		if err := r.RecordCost(context.Background(), ev); err != nil {
+			slog.Warn("v39a reporter: cost_recorded failed",
+				"process_id", p.ID,
+				"agent", p.Agent.Name,
+				"error", err.Error(),
+			)
+		}
+	}()
+}
 
 // llmCallContext returns ctx enriched with Agent-level overrides for
 // the LLM backend to read. The model is chosen by Agent.ModelFor(role) —
@@ -530,6 +583,7 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 				"input_tokens", resp.InputTokens,
 				"output_tokens", resp.OutputTokens,
 			)
+			reportLLMCost(p, resp, stepType, chosenModel)
 			return resp, nil
 		}
 
