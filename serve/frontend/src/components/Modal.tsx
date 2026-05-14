@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ModalProps {
   open: boolean
@@ -15,6 +16,12 @@ interface ModalProps {
 // NOT side panels — side panels squeeze the main content and bury the
 // detail in a narrow column. Modals dim the page, focus the user, and
 // scale better at all viewports.
+//
+// Rendered through a portal into document.body so the overlay escapes any
+// ancestor with `transform` / `filter` / `will-change`, which would
+// otherwise create a containing block for `position: fixed` and pin the
+// modal inside (e.g. the slide-in sidebar in Layout.tsx clips child modals
+// without this).
 export function Modal({ open, onClose, title, children, widthClass = 'w-[600px]' }: ModalProps) {
   // Close on Escape — standard accelerator users expect.
   useEffect(() => {
@@ -26,7 +33,7 @@ export function Modal({ open, onClose, title, children, widthClass = 'w-[600px]'
 
   if (!open) return null
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={onClose}
@@ -51,6 +58,7 @@ export function Modal({ open, onClose, title, children, widthClass = 'w-[600px]'
         )}
         <div className="overflow-auto flex-1 min-h-0">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
