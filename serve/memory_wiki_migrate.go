@@ -1,10 +1,87 @@
 package serve
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 )
+
+// --- Legacy formatters (migrated from memory_extract.go) ---
+//
+// Render the old typed user_memory JSON blobs back to readable
+// markdown so the migration can drop them into wiki pages. The
+// original extractor is gone (refs govega#71), but the formatters
+// stay until the legacy tables are dropped and migration retires.
+
+// journalEntry is the legacy coaching-session row stored as JSON in
+// user_memory.journal.
+type journalEntry struct {
+	Date           string   `json:"date"`
+	Challenge      string   `json:"challenge"`
+	Advice         string   `json:"advice"`
+	ActionItems    []string `json:"action_items"`
+	FrameworksUsed []string `json:"frameworks_used"`
+}
+
+func formatProfileContent(content string) string {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		return content
+	}
+	var b strings.Builder
+	for k, v := range data {
+		b.WriteString(fmt.Sprintf("%s: %v\n", k, v))
+	}
+	return b.String()
+}
+
+func formatTopicsContent(content string) string {
+	var topics map[string]string
+	if err := json.Unmarshal([]byte(content), &topics); err != nil {
+		return content
+	}
+	var b strings.Builder
+	for topic, summary := range topics {
+		b.WriteString(fmt.Sprintf("- **%s**: %s\n", topic, summary))
+	}
+	return b.String()
+}
+
+func formatNotesContent(content string) string {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		return content
+	}
+	var b strings.Builder
+	for k, v := range data {
+		b.WriteString(fmt.Sprintf("%s: %v\n", k, v))
+	}
+	return b.String()
+}
+
+func formatJournalContent(content string) string {
+	var entries []journalEntry
+	if err := json.Unmarshal([]byte(content), &entries); err != nil {
+		return content
+	}
+	start := 0
+	if len(entries) > 10 {
+		start = len(entries) - 10
+	}
+	var b strings.Builder
+	for _, e := range entries[start:] {
+		b.WriteString(fmt.Sprintf("- %s: %s", e.Date, e.Challenge))
+		if e.Advice != "" {
+			b.WriteString(fmt.Sprintf(" — %s", e.Advice))
+		}
+		if len(e.ActionItems) > 0 {
+			b.WriteString(fmt.Sprintf(" Action items: %s.", strings.Join(e.ActionItems, ", ")))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
 
 // Refs govega#71. One-shot migration from the typed user_memory and
 // memory_items tables into wiki pages. Runs at boot (Server.Start),
