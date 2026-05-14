@@ -1,0 +1,94 @@
+name: Deploy Fly Customers
+
+# Runs after Publish Container Image finishes a main-branch push or a v*
+# release tag, and rolls the new image out to customer Fly machines.
+#
+# Channel model:
+#   - main branch push   → deploy to DEV-channel apps (e.g. govega-everydev)
+#   - v* release tag     → deploy to STABLE-channel apps (everything else)
+# Each machine is pinned to :sha-<short> for reproducibility — :main and
+# :stable are moving pointers, used by humans + new-customer provisioning.
+
+on:
+  workflow_run:
+    workflows: ["Publish Container Image"]
+    types: [completed]
+
+concurrency:
+  group: deploy-fly
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      # Apps that track :main (deployed on every main push). Comma-separated.
+      # Everything else under govega-* (except the image-holder app) is
+      # treated as a stable-channel customer and only updates on v* releases.
+      DEV_APPS: govega-everydev
+    steps:
+      - name: Determine channel
+        id: channel
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          if [[ "$BRANCH" =~ ^v[0-9] ]]; then
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" == "main" ]]; then
+            echo "channel=main" >> $GITHUB_OUTPUT
+          else
+            # workflow_dispatch or another branch — nothing to deploy.
+            echo "channel=skip" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Resolve image
+        if: steps.channel.outputs.channel != 'skip'
+        id: image
+        run: |
+          SHORT_SHA=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-7)
+          echo "ref=registry.fly.io/govega-image:sha-$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Setup flyctl
+        if: steps.channel.outputs.channel != 'skip'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Update Fly machines
+        if: steps.channel.outputs.channel != 'skip'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -u
+          IFS=',' read -ra DEV <<< "$DEV_APPS"
+          is_dev() {
+            for d in "${DEV[@]}"; do [ "$d" = "$1" ] && return 0; done
+            return 1
+          }
+
+          ALL_APPS=$(flyctl apps list --json \
+            | jq -r '.[] | select(.Name | startswith("govega-")) | select(.Name != "govega-image") | .Name')
+
+          FAILED=0
+          for app in $ALL_APPS; do
+            if [ "$CHANNEL" = "main" ] && ! is_dev "$app"; then continue; fi
+            if [ "$CHANNEL" = "stable" ] && is_dev "$app"; then continue; fi
+
+            echo "::group::Deploying $app ($CHANNEL) → $IMAGE"
+            MACHINES=$(flyctl machines list -a "$app" --json | jq -r '.[].id')
+            if [ -z "$MACHINES" ]; then
+              echo "::warning::No machines in $app"
+              echo "::endgroup::"
+              continue
+            fi
+            for m in $MACHINES; do
+              echo "Updating $m"
+              if ! flyctl machine update "$m" -a "$app" --image "$IMAGE" --yes; then
+                echo "::error::Failed to update machine $m in $app"
+                FAILED=1
+              fi
+            done
+            echo "::endgroup::"
+          done
+
+          exit $FAILED
