@@ -607,6 +607,15 @@ func TestDualStore_ResetData(t *testing.T) {
 		_ = store.InsertEvent(StoreEvent{Type: "test", Timestamp: time.Now().UTC()})
 		_ = store.InsertTask(Task{ID: "t1", Title: "x", Status: TaskStatusTodo})
 		_ = store.UpsertSetting(Setting{Key: "preserved", Value: "yes"})
+		_ = store.UpsertMemoryPage(MemoryPage{
+			Scope: MemoryScopeUser, ScopeID: "u1", UserID: "u1",
+			Path: "MEMORY.md", Content: "- [a](a.md)",
+		})
+		_ = store.UpsertMemoryPage(MemoryPage{
+			Scope: MemoryScopeUser, ScopeID: "u1", UserID: "u1",
+			Path: "a.md", Content: "page a",
+		})
+		_ = store.ReplaceMemoryLinks(MemoryScopeUser, "u1", "u1", "MEMORY.md", []string{"a.md"})
 
 		if err := store.ResetData(); err != nil {
 			t.Fatalf("ResetData: %v", err)
@@ -619,6 +628,15 @@ func TestDualStore_ResetData(t *testing.T) {
 		tasks, _ := store.ListTasks(TaskFilter{})
 		if len(tasks) != 0 {
 			t.Errorf("tasks after reset = %d", len(tasks))
+		}
+		// Wiki memory pages + links cleared.
+		pages, _ := store.ListMemoryPages(MemoryScopeUser, "u1", "u1", "")
+		if len(pages) != 0 {
+			t.Errorf("memory pages after reset = %d, want 0", len(pages))
+		}
+		links, _ := store.ListMemoryLinks(MemoryScopeUser, "u1", "u1")
+		if len(links) != 0 {
+			t.Errorf("memory links after reset = %d, want 0", len(links))
 		}
 		// Settings preserved.
 		got, _ := store.GetSetting("preserved")

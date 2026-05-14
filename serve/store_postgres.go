@@ -2030,6 +2030,7 @@ func (s *PostgresStore) ResetData() error {
 	_, err := s.db.Exec(`
 TRUNCATE TABLE
     composed_agents, chat_messages, user_memory, memory_items,
+    memory_pages, memory_links,
     events, process_snapshots, workflow_runs, scheduled_jobs,
     channel_messages, channels, inbox_replies, agent_inbox,
     workspace_files, channel_read_cursors, chat_read_cursors,

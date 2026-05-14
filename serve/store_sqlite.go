@@ -1596,6 +1596,8 @@ func (s *SQLiteStore) ResetData() error {
 		"chat_messages",
 		"user_memory",
 		"memory_items",
+		"memory_pages",
+		"memory_links",
 		"events",
 		"process_snapshots",
 		"workflow_runs",

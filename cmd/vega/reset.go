@@ -25,7 +25,7 @@ Reset Vega to a fresh state by deleting all data.
 This will delete:
   - All composed agents (Hera and Iris are built-in and unaffected)
   - All chat history
-  - All agent memory
+  - All agent memory (typed layers, items, and wiki pages/links)
   - All process events and snapshots
   - All workflow runs
   - All scheduled jobs
@@ -83,6 +83,8 @@ Examples:
 		{"Chat messages", "chat_messages"},
 		{"Memory layers", "user_memory"},
 		{"Memory items", "memory_items"},
+		{"Memory pages", "memory_pages"},
+		{"Memory links", "memory_links"},
 		{"Events", "events"},
 		{"Process snapshots", "process_snapshots"},
 		{"Workflow runs", "workflow_runs"},
