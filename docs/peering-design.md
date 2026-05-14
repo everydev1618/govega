@@ -264,7 +264,7 @@ In order:
 - [x] **1.3** Store migrations: `peer_orchestrators`, `peer_agent_grants`, `peer_audit_log`. Tests against both SQLite + Postgres via existing dual-test pattern.
 - [x] **1.4** `serve/peering/acl_test.go` + `acl.go` — grant lookups, default-deny, rate-limit accounting.
 - [x] **1.5** `serve/peering/inbound_test.go` + `inbound.go` — `aire.Agent` impl, dispatch to `StreamToAgent`, audit on entry + exit. Test with a stubbed Interpreter.
-- [ ] **1.6** `serve/peering/outbound_test.go` + `outbound.go` — Dial + Invoke + stream-into-inbox. Test against a local `peering.Node` instance.
+- [x] **1.6** `serve/peering/outbound_test.go` + `outbound.go` — wire-agnostic stream reader + InvokeArgs encoder. Dial + pool deferred to 1.7. Tests use a frame-script fake.
 - [ ] **1.7** `serve/peering/node.go` — lifecycle: Init, Shutdown. Tests verify clean shutdown drains in-flight ops.
 - [ ] **1.8** Wire into `serve/server.go:Start()`. Env flag `VEGA_PEERING_ENABLED`. Integration test: two `Server` instances peer with each other in-process.
 - [ ] **1.9** Iris tools: `send_to_remote_agent`, `list_peers`, `add_peer`, `grant_peer_access`, `revoke_peer_access`. Register in `irisToolNames` (dsl/iris.go).
