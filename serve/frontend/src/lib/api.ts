@@ -159,6 +159,22 @@ export const api = {
   deleteSetting: (key: string) =>
     fetchAPI<{ status: string }>(`/settings/${key}`, { method: 'DELETE' }),
 
+  // Wiki memory (govega#71)
+  getMemoryGraph: () => fetchAPI<import('./types').MemoryGraph>('/memory/graph'),
+  listMemoryPages: () =>
+    fetchAPI<import('./types').MemoryPageMetadata[] | null>('/memory/pages')
+      .then((res) => res ?? []),
+  getMemoryPage: async (path: string) => {
+    try {
+      return await fetchAPI<import('./types').MemoryPage>(
+        `/memory/page?path=${encodeURIComponent(path)}`,
+      )
+    } catch (err) {
+      if (err instanceof APIError && err.status === 404) return null
+      throw err
+    }
+  },
+
   // Schedules
   getSchedules: () => fetchAPI<import('./types').ScheduledJob[]>('/schedules'),
   deleteSchedule: (name: string) =>

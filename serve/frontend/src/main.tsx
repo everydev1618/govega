@@ -20,6 +20,7 @@ import { Files } from './pages/Files'
 import { Schedules } from './pages/Schedules'
 import { Settings } from './pages/Settings'
 import { Visualize } from './pages/Visualize'
+import { Memory } from './pages/Memory'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -44,6 +45,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="workflows" element={<WorkflowLauncher />} />
           <Route path="schedules" element={<Schedules />} />
           <Route path="files" element={<Files />} />
+          <Route path="memory" element={<Memory />} />
           <Route path="costs" element={<CostDashboard />} />
           <Route path="settings" element={<Settings />} />
           <Route path="visualize" element={<Visualize />} />

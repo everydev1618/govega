@@ -444,3 +444,54 @@ export interface ToolCallState {
   collapsed: boolean
   nested_agent?: string
 }
+
+// Wiki memory (govega#71). Mirrors serve/handlers_memory.go.
+export type MemoryCluster =
+  | 'index'
+  | 'profile'
+  | 'notes'
+  | 'decisions'
+  | 'topics'
+  | 'people'
+  | 'legacy'
+  | 'other'
+
+export interface MemoryPageMetadata {
+  path: string
+  title: string
+  bytes: number
+  created_at: string
+  updated_at: string
+  cluster: MemoryCluster
+}
+
+export interface MemoryPage {
+  scope: 'user' | 'agent'
+  scope_id: string
+  user_id: string
+  path: string
+  content: string
+  frontmatter?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MemoryGraphNode {
+  path: string
+  title: string
+  bytes: number
+  updated_at: string
+  cluster: MemoryCluster
+}
+
+export interface MemoryGraphEdge {
+  from: string
+  to: string
+  weight: number
+}
+
+export interface MemoryGraph {
+  nodes: MemoryGraphNode[]
+  edges: MemoryGraphEdge[]
+  generated_at: string
+}
