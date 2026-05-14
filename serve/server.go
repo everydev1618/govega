@@ -773,7 +773,13 @@ func (s *Server) Start(ctx context.Context) error {
 
 		slog.Info("dispatch complete, poking originating conversation", "completed", completedAgent, "caller", pokeAgent)
 		go func() {
-			msg := fmt.Sprintf("Agent **%s** just finished a task. Check your inbox (list_inbox) for their report and take action — resolve it, dispatch follow-up work, or escalate if needed. Do NOT just acknowledge — act on the results.", completedAgent)
+			// composeDispatchCompletePoke pulls URLs out of the dispatched
+			// agent's response and embeds them as a "paste verbatim" block.
+			// Without this, the orchestrator's LLM mangles long hex
+			// suffixes when relaying the URL (e.g. acme-dashboard-8b24eb
+			// → made-up nadia-dashboard-zw5gpf) and hands the user a dead
+			// link.
+			msg := composeDispatchCompletePoke(completedAgent, dispatchResp)
 			// Detach from the dispatch goroutine's cancel/deadline but
 			// preserve its values — most importantly the BYOK API key
 			// from the original user request, so the orchestrator's
