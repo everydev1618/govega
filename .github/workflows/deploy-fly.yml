@@ -59,12 +59,12 @@ jobs:
           CHANNEL: ${{ steps.channel.outputs.channel }}
           IMAGE: ${{ steps.image.outputs.ref }}
         run: |
-          set -u
-          IFS=',' read -ra DEV <<< "$DEV_APPS"
-          is_dev() {
-            for d in "${DEV[@]}"; do [ "$d" = "$1" ] && return 0; done
-            return 1
-          }
+          # `read -ra` returns 1 when the input lacks the delimiter (single-
+          # entry DEV_APPS), and GitHub Actions' default `bash -e` would
+          # kill the whole script silently. Use a newline-delimited list +
+          # grep instead, which has no such trap.
+          DEV_APPS_LIST=$(echo "$DEV_APPS" | tr ',' '\n')
+          is_dev() { echo "$DEV_APPS_LIST" | grep -Fxq "$1"; }
 
           ALL_APPS=$(flyctl apps list --json \
             | jq -r '.[] | select(.Name | startswith("govega-")) | select(.Name != "govega-image") | .Name')
