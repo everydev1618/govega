@@ -507,7 +507,11 @@ func (s *Server) Start(ctx context.Context) error {
 	// persisted to settings before we apply, so an external rename becomes
 	// the authoritative identity on every boot.
 	if envName := os.Getenv("ORCHESTRATOR_NAME"); envName != "" && envName != s.cfg.Orchestrator.Name {
-		if err := persistOrchestratorOverrides(s.store, envName, "", ""); err != nil {
+		// Mirror the env name into DisplayName too — that's what the
+		// orchestrator's system prompt actually surfaces to the LLM, so
+		// without this the agent answers 'My name is Iris' even though
+		// the registry has her as 'Charlie'.
+		if err := persistOrchestratorOverrides(s.store, envName, envName, ""); err != nil {
 			slog.Warn("ORCHESTRATOR_NAME env: failed to persist override", "name", envName, "error", err)
 		}
 	}
