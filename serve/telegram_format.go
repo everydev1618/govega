@@ -49,6 +49,15 @@ func markdownToTelegramHTML(s string) string {
 		inner := reInlineCode.FindStringSubmatch(m)
 		return stash("<code>" + escapeHTML(inner[1]) + "</code>")
 	})
+	// Links stashed BEFORE italic/bold conversion — otherwise an underscore
+	// in a URL or anchor text (e.g. commit_baseline.json) gets _-italicized,
+	// shredding the href into malformed HTML that Telegram rejects with a
+	// parse error → fallback to plain text → user sees raw markdown.
+	s = reLink.ReplaceAllStringFunc(s, func(m string) string {
+		parts := reLink.FindStringSubmatch(m)
+		text, url := parts[1], parts[2]
+		return stash(`<a href="` + escapeHTML(url) + `">` + escapeHTML(text) + `</a>`)
+	})
 
 	// 2. Escape HTML special characters in the rest.
 	s = escapeHTML(s)
@@ -68,19 +77,10 @@ func markdownToTelegramHTML(s string) string {
 	s = reItalicUnder.ReplaceAllString(s, "$1<i>$2</i>$3")
 	s = reStrike.ReplaceAllString(s, "<s>$1</s>")
 
-	// 5. Links — text is already escaped; URL needs no escape inside an
-	// attribute value as long as we keep " as the quote and the URL doesn't
-	// contain raw " (rare).
-	s = reLink.ReplaceAllStringFunc(s, func(m string) string {
-		parts := reLink.FindStringSubmatch(m)
-		text, url := parts[1], parts[2]
-		return `<a href="` + url + `">` + text + `</a>`
-	})
-
-	// 6. Bulleted lists — replace "- " or "* " at line start with a bullet.
+	// 5. Bulleted lists — replace "- " or "* " at line start with a bullet.
 	s = reBullet.ReplaceAllString(s, "$1• ")
 
-	// 7. Restore code placeholders.
+	// 6. Restore stashed placeholders (code + links).
 	for _, p := range placeholders {
 		s = strings.ReplaceAll(s, p.token, p.html)
 	}

@@ -16,6 +16,16 @@ func TestMarkdownToTelegramHTML(t *testing.T) {
 		{"inline_code", "use `npm install`", "use <code>npm install</code>"},
 		{"heading", "# Title\nbody", "<b>Title</b>\nbody"},
 		{"link", "see [docs](https://example.com)", `see <a href="https://example.com">docs</a>`},
+		{
+			// Real-world case: a URL with underscores in the path used to
+			// get its underscores eaten by the italic regex, producing
+			// malformed HTML and a Telegram parse error → plain-text
+			// fallback. Stashing the link BEFORE italic conversion
+			// fixes it.
+			name: "link_with_underscored_path_and_text",
+			in:   "see [commit_baseline.json](http://x.test/commit_baseline.json)",
+			want: `see <a href="http://x.test/commit_baseline.json">commit_baseline.json</a>`,
+		},
 		{"bullets", "- one\n- two", "• one\n• two"},
 		{"html_escape", "<script>&", "&lt;script&gt;&amp;"},
 		{
