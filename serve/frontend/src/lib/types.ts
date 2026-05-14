@@ -321,6 +321,15 @@ export interface CompanyResponse {
   siblings?: CompanySiblingResponse[]
 }
 
+export interface TenantConfigResponse {
+  orchestrator_name: string
+  orchestrator_display: string
+  orchestrator_title: string
+  product_name?: string
+  accent_color?: string
+  logo_url?: string
+}
+
 // --- Agent Template Types ---
 
 export interface AgentTemplateResponse {

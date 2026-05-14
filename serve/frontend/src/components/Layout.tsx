@@ -3,10 +3,15 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { CompanySwitcher } from './CompanySwitcher'
 import { AgentAvatar } from './chat/AgentAvatar'
 import { api } from '../lib/api'
-import type { AgentResponse, Channel, InboxItem, ProcessResponse } from '../lib/types'
+import type { AgentResponse, Channel, InboxItem, ProcessResponse, TenantConfigResponse } from '../lib/types'
 
-const IRIS = 'iris'
-const META_AGENTS = new Set(['iris', 'hera'])
+// Fallback names used until the tenant-config endpoint resolves on first
+// load. After that, the live orchestrator/builder names from the server
+// drive the sidebar identity (so renamed agents like "Charlie" show up
+// in the orchestrator slot instead of falling through to the specialists
+// list).
+const DEFAULT_ORCHESTRATOR = 'iris'
+const BUILDER_NAME = 'hera'
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
@@ -57,6 +62,7 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dmCollapsed, setDmCollapsed] = useState(false)
   const [channelsCollapsed, setChannelsCollapsed] = useState(false)
+  const [tenant, setTenant] = useState<TenantConfigResponse | null>(null)
 
   const fetchRunningTasks = () => {
     api.getProcesses().then(procs => {
@@ -70,6 +76,7 @@ export function Layout() {
     api.getChannels().then(list => setChannels(list ?? [])).catch(() => {})
     api.getInbox('pending').then(list => setInboxItems(list ?? [])).catch(() => {})
     api.chatUnreadCounts().then(counts => setChatUnread(counts ?? {})).catch(() => {})
+    api.getTenantConfig().then(cfg => setTenant(cfg)).catch(() => {})
     fetchRunningTasks()
   }, [])
 
@@ -85,12 +92,18 @@ export function Layout() {
     return () => clearInterval(id)
   }, [])
 
-  const irisAgent = agents.find(a => a.name === IRIS)
+  const orchestratorName = tenant?.orchestrator_name || DEFAULT_ORCHESTRATOR
+  const orchestratorDisplay = tenant?.orchestrator_display || 'Iris'
+  const metaAgentNames = useMemo(
+    () => new Set([orchestratorName.toLowerCase(), BUILDER_NAME]),
+    [orchestratorName]
+  )
+  const orchestratorAgent = agents.find(a => a.name.toLowerCase() === orchestratorName.toLowerCase())
   const specialists = useMemo(() =>
     agents
-      .filter(a => !META_AGENTS.has(a.name))
+      .filter(a => !metaAgentNames.has(a.name.toLowerCase()))
       .sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name)),
-    [agents]
+    [agents, metaAgentNames]
   )
 
   const inboxCount = inboxItems.length
@@ -147,18 +160,18 @@ export function Layout() {
           <SectionHeader collapsed={dmCollapsed} onToggle={() => setDmCollapsed(v => !v)}>Direct Messages</SectionHeader>
           {!dmCollapsed && (
             <div className="space-y-0.5">
-              {/* Iris always first */}
-              {irisAgent && (
+              {/* Orchestrator (default: Iris; may be renamed via tenant config) always first */}
+              {orchestratorAgent && (
                 <AgentNavItem
-                  agent={irisAgent}
-                  to={'/chat'}
-                  displayName="Iris"
-                  avatar="n2"
-                  unreadCount={chatUnread[irisAgent.name] || 0}
-                  busy={irisAgent.streaming}
+                  agent={orchestratorAgent}
+                  to={`/chat/${orchestratorAgent.name}`}
+                  displayName={orchestratorAgent.display_name || orchestratorDisplay}
+                  avatar={orchestratorAgent.avatar || 'n2'}
+                  unreadCount={chatUnread[orchestratorAgent.name] || 0}
+                  busy={orchestratorAgent.streaming}
                 />
               )}
-              {specialists.length > 0 && irisAgent && (
+              {specialists.length > 0 && orchestratorAgent && (
                 <div className="mx-3 my-1 border-t border-border/50" />
               )}
               {specialists.map(a => (

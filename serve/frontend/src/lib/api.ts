@@ -37,6 +37,7 @@ export async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> 
 export const api = {
   // Company
   getCompany: () => fetchAPI<import('./types').CompanyResponse>('/company'),
+  getTenantConfig: () => fetchAPI<import('./types').TenantConfigResponse>('/tenant/config'),
 
   // Agent templates
   exportAgentTemplate: (name: string) =>
