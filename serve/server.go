@@ -502,6 +502,15 @@ func (s *Server) Start(ctx context.Context) error {
 	// injected programmatically from cfg.Orchestrator and doesn't have a
 	// composed_agent record. Reading settings here lets a renamed
 	// orchestrator survive a restart.
+	//
+	// ORCHESTRATOR_NAME env var (set by v39a from /company/account) gets
+	// persisted to settings before we apply, so an external rename becomes
+	// the authoritative identity on every boot.
+	if envName := os.Getenv("ORCHESTRATOR_NAME"); envName != "" && envName != s.cfg.Orchestrator.Name {
+		if err := persistOrchestratorOverrides(s.store, envName, "", ""); err != nil {
+			slog.Warn("ORCHESTRATOR_NAME env: failed to persist override", "name", envName, "error", err)
+		}
+	}
 	s.cfg.Orchestrator = applyOrchestratorOverrides(s.cfg.Orchestrator, s.store)
 
 	// Inject Hera — the built-in meta-agent for creating agents via chat.
