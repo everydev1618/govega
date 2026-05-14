@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/everydev1618/govega/dsl"
@@ -412,8 +413,24 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	// Add memory context so tools can access the store.
 	ctx = ContextWithMemory(ctx, t.store, userID, t.agentName)
 
+	// Show "typing..." in the user's chat for the duration of inference.
+	// Telegram's typing indicator naturally expires after ~5s, so refresh
+	// every 4s until the response is ready.
+	stopTyping := make(chan struct{})
+	go func() {
+		for {
+			_, _ = t.bot.Send(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping))
+			select {
+			case <-stopTyping:
+				return
+			case <-time.After(4 * time.Second):
+			}
+		}
+	}()
+
 	// Send to agent.
 	resp, err := t.interp.SendToAgent(ctx, name, text)
+	close(stopTyping)
 	if err != nil {
 		slog.Warn("telegram: SendToAgent failed", "error", err)
 		t.bot.Send(tgbotapi.NewMessage(chatID, "Error: "+err.Error()))
