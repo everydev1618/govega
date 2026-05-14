@@ -263,7 +263,7 @@ In order:
 - [x] **1.2** `serve/peering/auth.go` — implement; tests pass.
 - [x] **1.3** Store migrations: `peer_orchestrators`, `peer_agent_grants`, `peer_audit_log`. Tests against both SQLite + Postgres via existing dual-test pattern.
 - [x] **1.4** `serve/peering/acl_test.go` + `acl.go` — grant lookups, default-deny, rate-limit accounting.
-- [ ] **1.5** `serve/peering/inbound_test.go` + `inbound.go` — `aire.Agent` impl, dispatch to `StreamToAgent`, audit on entry + exit. Test with a stubbed Interpreter.
+- [x] **1.5** `serve/peering/inbound_test.go` + `inbound.go` — `aire.Agent` impl, dispatch to `StreamToAgent`, audit on entry + exit. Test with a stubbed Interpreter.
 - [ ] **1.6** `serve/peering/outbound_test.go` + `outbound.go` — Dial + Invoke + stream-into-inbox. Test against a local `peering.Node` instance.
 - [ ] **1.7** `serve/peering/node.go` — lifecycle: Init, Shutdown. Tests verify clean shutdown drains in-flight ops.
 - [ ] **1.8** Wire into `serve/server.go:Start()`. Env flag `VEGA_PEERING_ENABLED`. Integration test: two `Server` instances peer with each other in-process.
