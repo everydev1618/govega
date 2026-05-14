@@ -3,13 +3,22 @@ package peering
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	aire "github.com/aire-protocol/aire-go"
 	"github.com/google/uuid"
 )
+
+// jsonUnmarshal is aliased to keep node.go's switch readable.
+var jsonUnmarshal = json.Unmarshal
+
+// timeNow is a seam for tests that want to inject a clock. Production
+// callers use it as a synonym for time.Now().UTC().
+var timeNow = func() time.Time { return time.Now().UTC() }
 
 // NodeConfig is the construction-time configuration for a peering Node. The
 // runtime address + TLS config are passed to Start, not NewNode, so the
@@ -70,30 +79,184 @@ func (n *Node) NodeID() string {
 }
 
 // Start opens an AIRE listener on addr (e.g., ":4433") with the given TLS
-// config and begins accepting peer connections in the background. Idempotent
-// in the sense that calling Start twice on the same Node returns an error
-// rather than starting two listeners.
-//
-// The accept loop + inbound dispatch + auth-op handling are wired in a
-// follow-on commit. This skeleton establishes the lifecycle contract.
+// config and begins accepting peer connections in the background.
 func (n *Node) Start(addr string, tlsConf *tls.Config) error {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	if n.started {
+		n.mu.Unlock()
 		return errors.New("peering: Node.Start: already started")
 	}
 	if n.stopped {
+		n.mu.Unlock()
 		return errors.New("peering: Node.Start: already stopped")
 	}
 	l, err := aire.Listen(addr, tlsConf)
 	if err != nil {
+		n.mu.Unlock()
 		return err
 	}
 	n.listener = l
 	n.started = true
-	// Accept loop intentionally not started yet — wired in next commit
-	// once inbound dispatch + auth-op handler are merged.
+	n.mu.Unlock()
+
+	n.wg.Add(1)
+	go n.acceptLoop()
 	return nil
+}
+
+// Addr returns the listener's network address, or "" if Start hasn't run.
+func (n *Node) Addr() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.listener == nil {
+		return ""
+	}
+	return n.listener.Addr().String()
+}
+
+// localNodeConfig is the aire.NodeConfig advertised during every HELLO. The
+// required vega.shared-secret/1 capability is the interop signal that both
+// sides will exchange an HMAC auth-op before dispatch is accepted.
+func (n *Node) localNodeConfig() aire.NodeConfig {
+	return aire.NodeConfig{
+		NodeID: n.nodeID,
+		Capabilities: []aire.Capability{
+			{Name: SharedSecretCapName, Version: 1, Required: true},
+		},
+	}
+}
+
+// SharedSecretCapName is the AIRE capability name peers advertise to commit
+// to the shared-secret auth protocol implemented in auth.go. v0.1 stopgap;
+// dropped when AIRE v0.2 DIDs ship.
+const SharedSecretCapName = "vega.shared-secret/1"
+
+// AgentIDVega is the single AIRE-level agent name a peer addresses for any
+// dispatch. The target local agent name is carried inside InvokeArgs.Agent.
+// Keeps the AIRE registry static; per-grant dynamics live in our ACL layer.
+const AgentIDVega = "vega"
+
+// AgentIDAuth is the well-known AIRE-level agent name a peer addresses for
+// the HMAC challenge-response on a fresh connection.
+const AgentIDAuth = "_aire/auth"
+
+// acceptLoop pulls connections off the listener until Stop cancels the ctx.
+// Each connection is served by a dedicated goroutine.
+func (n *Node) acceptLoop() {
+	defer n.wg.Done()
+	for {
+		conn, err := n.listener.Accept(n.ctx)
+		if err != nil {
+			return
+		}
+		n.wg.Add(1)
+		go func() {
+			defer n.wg.Done()
+			n.serveConn(conn)
+		}()
+	}
+}
+
+// connState tracks per-connection state that handlers (notably the auth-op
+// handler) need to share with downstream dispatch.
+type connState struct {
+	peerNodeID string
+
+	mu     sync.Mutex
+	authed bool
+}
+
+// markAuthed flips authed=true. Called by the server-side auth-op after a
+// successful HMAC verification.
+func (s *connState) markAuthed() {
+	s.mu.Lock()
+	s.authed = true
+	s.mu.Unlock()
+}
+
+// isAuthed reports whether the conn has completed the auth-op successfully.
+func (s *connState) isAuthed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.authed
+}
+
+// serveConn runs the handshake for one inbound connection, then loops on
+// AcceptOperation, dispatching to either the auth-op handler or the main
+// inbound handler.
+func (n *Node) serveConn(conn *aire.Conn) {
+	defer func() { _ = conn.Close() }()
+
+	state, err := conn.Handshake(n.ctx, n.localNodeConfig())
+	if err != nil {
+		return
+	}
+	cs := &connState{peerNodeID: state.PeerNodeID}
+
+	// Surface this peer's last-seen timestamp on every successful conn.
+	// Failure to update is non-fatal — the conn proceeds either way.
+	_ = n.cfg.Store.TouchPeerLastSeen(cs.peerNodeID, timeNow())
+
+	for {
+		op, err := conn.AcceptOperation(n.ctx)
+		if err != nil {
+			return
+		}
+		n.wg.Add(1)
+		go func() {
+			defer n.wg.Done()
+			n.serveOp(cs, op)
+		}()
+	}
+}
+
+// serveOp recognizes one inbound Operation: receive the INVOKE frame,
+// decode its payload, and route by AgentID to either the auth-op or
+// the dispatch flow.
+func (n *Node) serveOp(cs *connState, op *aire.Operation) {
+	io := NewAireInboundOp(op)
+	f, err := op.Recv()
+	if err != nil {
+		_ = op.Close()
+		return
+	}
+	if f.Type != aire.FrameInvoke {
+		_ = op.Close()
+		return
+	}
+	agentID, _, args, err := decodeInvokePayload(f.Payload)
+	if err != nil {
+		_ = io.SendError(ErrCodeMalformedArgs, "malformed INVOKE payload")
+		_ = op.Close()
+		return
+	}
+
+	switch agentID {
+	case AgentIDAuth:
+		n.serveAuthOp(cs, io, args)
+	case AgentIDVega:
+		if !cs.isAuthed() {
+			_ = io.SendError(ErrCodeDenied, "auth required: call _aire/auth first")
+			_ = op.Close()
+			return
+		}
+		var ia InvokeArgs
+		if err := jsonUnmarshal(args, &ia); err != nil {
+			_ = io.SendError(ErrCodeMalformedArgs, "args must be JSON {agent, message}")
+			_ = op.Close()
+			return
+		}
+		// Look up peer for the handle (audit attribution).
+		peer, _ := n.cfg.Store.GetPeer(cs.peerNodeID)
+		handle := ""
+		if peer != nil {
+			handle = peer.Handle
+		}
+		_ = HandleInbound(n.ctx, cs.peerNodeID, handle, ia.Agent, ia.Message, io, n.cfg.Store, n.cfg.Dispatcher)
+	default:
+		_ = io.SendError(ErrCodeDenied, "unknown agent id: "+agentID)
+		_ = op.Close()
+	}
 }
 
 // Stop closes the listener (if Started) and waits for any in-flight
