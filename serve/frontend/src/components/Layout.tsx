@@ -168,7 +168,7 @@ export function Layout() {
                   displayName={orchestratorAgent.display_name || orchestratorDisplay}
                   avatar={orchestratorAgent.avatar || 'n2'}
                   unreadCount={chatUnread[orchestratorAgent.name] || 0}
-                  busy={orchestratorAgent.streaming}
+                  busy={orchestratorAgent.streaming || orchestratorAgent.status === 'running'}
                 />
               )}
               {specialists.length > 0 && orchestratorAgent && (
@@ -182,7 +182,7 @@ export function Layout() {
                   displayName={a.display_name || capitalize(a.name)}
                   avatar={a.avatar}
                   unreadCount={chatUnread[a.name] || 0}
-                  busy={a.streaming}
+                  busy={a.streaming || a.status === 'running'}
                 />
               ))}
             </div>
