@@ -120,13 +120,19 @@ func (s *Server) handleKillProcess(w http.ResponseWriter, r *http.Request) {
 
 // isHiddenAgent reports whether the named agent should be hidden from the
 // public API. The builder meta-agent is internal-only (accessed via the
-// orchestrator), and any "base:suffix" name is a per-user clone (e.g.
-// "iris:Etienne") that the API surface treats as part of its base.
+// orchestrator), any "base:suffix" name is a per-user clone (e.g.
+// "iris:Etienne") that the API surface treats as part of its base, and
+// any IsMeta=true agent other than the orchestrator (Mira and similar
+// system agents) is hidden from the user-facing agents list — users
+// inspect them by direct URL rather than by browsing.
 func (s *Server) isHiddenAgent(name string) bool {
 	if name == s.cfg.Builder.Name {
 		return true
 	}
 	if strings.Contains(name, ":") {
+		return true
+	}
+	if def, ok := s.interp.Document().Agents[name]; ok && def.IsMeta && name != s.cfg.Orchestrator.Name {
 		return true
 	}
 	return false
