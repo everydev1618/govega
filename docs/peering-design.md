@@ -259,9 +259,9 @@ These come out of the design and should land as GitHub issues. They are findings
 
 In order:
 
-- [ ] **1.1** `serve/peering/auth_test.go` — table-driven test for HMAC capability negotiation. Fail first.
-- [ ] **1.2** `serve/peering/auth.go` — implement; tests pass.
-- [ ] **1.3** Store migrations: `peer_orchestrators`, `peer_agent_grants`, `peer_audit_log`. Tests against both SQLite + Postgres via existing dual-test pattern.
+- [x] **1.1** `serve/peering/auth_test.go` — table-driven test for HMAC capability negotiation. Fail first.
+- [x] **1.2** `serve/peering/auth.go` — implement; tests pass.
+- [x] **1.3** Store migrations: `peer_orchestrators`, `peer_agent_grants`, `peer_audit_log`. Tests against both SQLite + Postgres via existing dual-test pattern.
 - [ ] **1.4** `serve/peering/acl_test.go` + `acl.go` — grant lookups, default-deny, rate-limit accounting.
 - [ ] **1.5** `serve/peering/inbound_test.go` + `inbound.go` — `aire.Agent` impl, dispatch to `StreamToAgent`, audit on entry + exit. Test with a stubbed Interpreter.
 - [ ] **1.6** `serve/peering/outbound_test.go` + `outbound.go` — Dial + Invoke + stream-into-inbox. Test against a local `peering.Node` instance.

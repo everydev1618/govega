@@ -9,6 +9,7 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/serve/peering"
 	_ "modernc.org/sqlite"
 )
 
@@ -278,6 +279,13 @@ func (s *SQLiteStore) Init() error {
 	`
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
+	}
+
+	// Peering tables for orchestrator-to-orchestrator federation. Kept in
+	// the peering package so DDL lives next to the access methods (and the
+	// Postgres goose migration in serve/migrations/postgres/00004_peering.sql).
+	if err := peering.ApplySQLiteSchema(s.db); err != nil {
+		return fmt.Errorf("apply peering schema: %w", err)
 	}
 
 	// Migrate: add tools column to composed_agents if missing (added after initial release).
