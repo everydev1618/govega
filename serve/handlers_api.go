@@ -464,10 +464,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	s.hydrateAgent(proc, name)
 
 	// Load and inject memory + project context into the process before sending.
-	var memText string
-	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
-		memText = formatMemoryForInjection(memories)
-	}
+	// Wiki memory (govega#71) replaces the typed user_memory injection. Legacy
+	// extraction still writes to user_memory in the background until step-2
+	// migration; that data becomes visible again once migrated into the wiki.
+	memText := formatWikiMemoryForInjection(s.store, userID, baseAgent)
 	projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtx := buildCompanyContext(s.company)
 	if extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memText, projectCtx, companyCtx); extra != "" {
@@ -555,10 +555,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	s.hydrateAgent(proc, name)
 
 	// Load and inject memory + project context into the process before sending.
-	var memTextStream string
-	if memories, err := s.store.GetUserMemory(userID, baseAgent); err == nil && len(memories) > 0 {
-		memTextStream = formatMemoryForInjection(memories)
-	}
+	// Wiki memory (govega#71) — see chat (non-stream) call site above.
+	memTextStream := formatWikiMemoryForInjection(s.store, userID, baseAgent)
 	projectCtxStream := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtxStream := buildCompanyContext(s.company)
 	extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memTextStream, projectCtxStream, companyCtxStream)

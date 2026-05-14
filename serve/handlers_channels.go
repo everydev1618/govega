@@ -527,10 +527,8 @@ func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentNa
 	}
 	s.hydrateAgent(proc, agentName)
 
-	var memText string
-	if memories, err := s.store.GetUserMemory(userID, agentName); err == nil && len(memories) > 0 {
-		memText = formatMemoryForInjection(memories)
-	}
+	// Wiki memory (govega#71) — replaces the typed user_memory injection.
+	memText := formatWikiMemoryForInjection(s.store, userID, agentName)
 	companyCtx := buildCompanyContext(s.company)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
