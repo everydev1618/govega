@@ -541,6 +541,12 @@ export interface GrantDTO {
   created_at?: string
 }
 
+export interface InviteDTO {
+  node_id: string
+  endpoint: string
+  shared_secret: string
+}
+
 export interface AuditDTO {
   id: number
   timestamp: string

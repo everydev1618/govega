@@ -1015,6 +1015,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/peering/grants/{peerID}/{agent}", s.handleDeleteGrant)
 	mux.HandleFunc("GET /api/v1/peering/audit", s.handleAuditLog)
 	mux.HandleFunc("GET /api/v1/peering/live", s.handleLiveOps)
+	mux.HandleFunc("POST /api/v1/peering/invites", s.handleCreateInvite)
+	mux.HandleFunc("POST /api/v1/peering/invites/return", s.handleReturnInvite)
 
 	// Population
 	mux.HandleFunc("GET /api/v1/population/search", s.handlePopulationSearch)

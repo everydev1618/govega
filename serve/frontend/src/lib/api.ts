@@ -443,4 +443,11 @@ export const api = {
   },
   listLiveOps: () =>
     fetchAPI<import('./types').AuditDTO[]>('/peering/live'),
+  createInvite: () =>
+    fetchAPI<import('./types').InviteDTO>('/peering/invites', { method: 'POST' }),
+  returnInvite: (received: import('./types').InviteDTO) =>
+    fetchAPI<import('./types').InviteDTO>('/peering/invites/return', {
+      method: 'POST',
+      body: JSON.stringify(received),
+    }),
 }

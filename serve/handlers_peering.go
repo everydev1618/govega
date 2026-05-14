@@ -3,6 +3,7 @@ package serve
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/everydev1618/govega/serve/peering"
@@ -329,6 +330,73 @@ func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
 		out = append(out, auditToDTO(e))
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// InviteDTO is the shape both sides exchange to set up a peer relationship.
+// All three fields are required for the recipient to dial back and prove
+// possession of the shared secret. Format is intentionally JSON so users
+// can copy-paste over any secure channel (Signal, encrypted email, etc.).
+type InviteDTO struct {
+	NodeID       string `json:"node_id"`
+	Endpoint     string `json:"endpoint"`
+	SharedSecret string `json:"shared_secret"`
+}
+
+// handleCreateInvite mints a fresh invite for the local node. Stateless —
+// nothing is persisted until the receiving side accepts and the local side
+// gets a return invite + persists via /peers.
+//
+// Endpoint defaults to VEGA_PEERING_PUBLIC_ENDPOINT when set, falling back
+// to the listener's advertised address. Operators behind NAT should set
+// the public env so the invite carries something the peer can actually dial.
+func (s *Server) handleCreateInvite(w http.ResponseWriter, _ *http.Request) {
+	if !s.peeringEnabledGuard(w) {
+		return
+	}
+	secret, err := peering.NewSharedSecret()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, InviteDTO{
+		NodeID:       s.peeringNode.NodeID(),
+		Endpoint:     s.peeringEndpointForInvite(),
+		SharedSecret: secret,
+	})
+}
+
+// handleReturnInvite produces an invite that reuses the shared secret from
+// a received invite, so both sides end up with the same secret in their
+// peer tables. Body is the incoming InviteDTO; response is the reciprocal
+// for the recipient to send back to the original inviter.
+func (s *Server) handleReturnInvite(w http.ResponseWriter, r *http.Request) {
+	if !s.peeringEnabledGuard(w) {
+		return
+	}
+	var in InviteDTO
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid invite JSON"})
+		return
+	}
+	if in.SharedSecret == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invite is missing shared_secret"})
+		return
+	}
+	writeJSON(w, http.StatusOK, InviteDTO{
+		NodeID:       s.peeringNode.NodeID(),
+		Endpoint:     s.peeringEndpointForInvite(),
+		SharedSecret: in.SharedSecret,
+	})
+}
+
+// peeringEndpointForInvite returns the address peers should dial. Prefers
+// VEGA_PEERING_PUBLIC_ENDPOINT (set by operators behind NAT or running on
+// non-routable interfaces) over the listener address.
+func (s *Server) peeringEndpointForInvite() string {
+	if pub := os.Getenv("VEGA_PEERING_PUBLIC_ENDPOINT"); pub != "" {
+		return pub
+	}
+	return s.peeringNode.Addr()
 }
 
 // handleLiveOps returns audit rows where Status == 'started'. v1 polls this

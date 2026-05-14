@@ -2,8 +2,6 @@ package serve
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -278,15 +276,3 @@ func intParam(params map[string]any, key string, def int) int {
 	return def
 }
 
-// generateSharedSecret returns 32 random bytes hex-encoded (64 chars). Used
-// by an Iris hint when asking a peer to add this orchestrator: "share this
-// secret with them over a secure channel". Not registered as a tool itself.
-func generateSharedSecret() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
-}
-
-var _ = generateSharedSecret // reserved for the add-peer wizard in 1.10

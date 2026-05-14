@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"time"
 )
@@ -110,4 +111,15 @@ func NewNonce() ([]byte, error) {
 		return nil, err
 	}
 	return buf, nil
+}
+
+// NewSharedSecret returns 32 cryptographically-random bytes hex-encoded as
+// 64 characters. Suitable for use as a peer_orchestrators.shared_secret
+// value and for embedding in an invite payload.
+func NewSharedSecret() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }
