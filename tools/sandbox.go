@@ -126,9 +126,12 @@ func (c *flySandboxClient) spawnApp(ctx context.Context, name string, port int) 
 		return "", "", fmt.Errorf("create app: %w", err)
 	}
 
-	if err := c.call(ctx, "POST", "/apps/"+appID+"/ips/allocate-v4", map[string]any{}, nil); err != nil {
-		return "", "", fmt.Errorf("allocate ip: %w", err)
-	}
+	// No explicit IP allocation: the Machines API doesn't expose an
+	// /ips/allocate-v4 endpoint (it returns 404), and apps created here
+	// get shared anycast v4 + v6 automatically. *.fly.dev routes to the
+	// machine via the TLS service handlers configured below — no
+	// per-app IP needed for that path. An earlier version of this code
+	// hit /ips/allocate-v4 and broke every spawn_app call with a 404.
 
 	machineConfig := map[string]any{
 		"region": c.region,

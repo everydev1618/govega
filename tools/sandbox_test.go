@@ -82,9 +82,20 @@ func TestSandboxSpawnApp(t *testing.T) {
 		t.Errorf("url mismatch: %q", url)
 	}
 
-	// Must have created app, allocated IP, and created machine — in that order.
-	if len(mock.calls) < 3 {
-		t.Fatalf("expected at least 3 API calls, got %d", len(mock.calls))
+	// spawnApp must NOT call /ips/allocate-v4 — that path doesn't exist on
+	// the Machines API (returns 404 in production). The Machines API
+	// auto-assigns shared anycast v4/v6 when an app is created and a
+	// machine binds services with TLS handlers, so *.fly.dev routing works
+	// without explicit IP allocation.
+	for _, call := range mock.calls {
+		if strings.Contains(call.Path, "/ips/") {
+			t.Errorf("spawnApp must not hit IP allocation endpoints; got %s %s", call.Method, call.Path)
+		}
+	}
+
+	// Two calls: create app, create machine — in that order.
+	if len(mock.calls) != 2 {
+		t.Fatalf("expected exactly 2 API calls (create app + create machine), got %d", len(mock.calls))
 	}
 	if mock.calls[0].Method != "POST" || mock.calls[0].Path != "/v1/apps" {
 		t.Errorf("first call should create app, got %s %s", mock.calls[0].Method, mock.calls[0].Path)
