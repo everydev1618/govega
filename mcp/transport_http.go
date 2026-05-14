@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -97,9 +98,11 @@ func (t *HTTPTransport) Send(ctx context.Context, method string, params any) (js
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	var rpcResp JSONRPCResponse
-	if err := json.Unmarshal(body, &rpcResp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+	// Streamable HTTP MCP servers can respond either as a JSON object or as
+	// an SSE event stream — Content-Type tells us which. Composio uses SSE.
+	rpcResp, err := parseHTTPRPCResponse(resp.Header.Get("Content-Type"), body)
+	if err != nil {
+		return nil, err
 	}
 
 	if rpcResp.Error != nil {
@@ -107,6 +110,49 @@ func (t *HTTPTransport) Send(ctx context.Context, method string, params any) (js
 	}
 
 	return rpcResp.Result, nil
+}
+
+// parseHTTPRPCResponse handles both `application/json` (object) and
+// `text/event-stream` (SSE frames) bodies. For SSE we walk the frames and
+// take the first frame's `data:` payload, which the MCP spec defines as the
+// JSON-RPC response for the originating request.
+func parseHTTPRPCResponse(contentType string, body []byte) (*JSONRPCResponse, error) {
+	if strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+		// Walk SSE frames line-by-line, accumulating `data:` lines into a single
+		// JSON payload (per SSE spec, multiline data: lines are concatenated
+		// with newlines).
+		var dataLines []string
+		for _, line := range strings.Split(string(body), "\n") {
+			line = strings.TrimRight(line, "\r")
+			if rest, ok := strings.CutPrefix(line, "data:"); ok {
+				dataLines = append(dataLines, strings.TrimPrefix(strings.TrimSpace(rest), " "))
+				continue
+			}
+			if line == "" && len(dataLines) > 0 {
+				// End of a frame — try to parse what we accumulated.
+				var rpcResp JSONRPCResponse
+				if err := json.Unmarshal([]byte(strings.Join(dataLines, "\n")), &rpcResp); err == nil {
+					return &rpcResp, nil
+				}
+				dataLines = dataLines[:0]
+			}
+		}
+		// EOF without a trailing blank line — try whatever we have.
+		if len(dataLines) > 0 {
+			var rpcResp JSONRPCResponse
+			if err := json.Unmarshal([]byte(strings.Join(dataLines, "\n")), &rpcResp); err != nil {
+				return nil, fmt.Errorf("parse SSE response: %w", err)
+			}
+			return &rpcResp, nil
+		}
+		return nil, fmt.Errorf("parse SSE response: no data frames in body")
+	}
+
+	var rpcResp JSONRPCResponse
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+	return &rpcResp, nil
 }
 
 // Close closes the HTTP transport.
