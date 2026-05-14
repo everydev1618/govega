@@ -120,16 +120,26 @@ func (s *Server) handleKillProcess(w http.ResponseWriter, r *http.Request) {
 
 // isHiddenAgent reports whether the named agent should be hidden from the
 // public API. The builder meta-agent is internal-only (accessed via the
-// orchestrator), any "base:suffix" name is a per-user clone (e.g.
-// "iris:Etienne") that the API surface treats as part of its base, and
-// any IsMeta=true agent other than the orchestrator (Mira and similar
-// system agents) is hidden from the user-facing agents list — users
-// inspect them by direct URL rather than by browsing.
+// orchestrator), and any "base:suffix" name is a per-user clone (e.g.
+// "iris:Etienne") that the API surface treats as part of its base.
 func (s *Server) isHiddenAgent(name string) bool {
 	if name == s.cfg.Builder.Name {
 		return true
 	}
 	if strings.Contains(name, ":") {
+		return true
+	}
+	return false
+}
+
+// isHiddenFromList extends isHiddenAgent with a list-only filter for
+// IsMeta agents (Mira and similar system meta-agents). They stay
+// reachable by direct URL — users navigate to /agents/<name> to
+// inspect their chat history — but don't pollute the public agents
+// list that the UI uses to render the sidebar. The orchestrator
+// stays visible: users expect to see and talk to it.
+func (s *Server) isHiddenFromList(name string) bool {
+	if s.isHiddenAgent(name) {
 		return true
 	}
 	if def, ok := s.interp.Document().Agents[name]; ok && def.IsMeta && name != s.cfg.Orchestrator.Name {
@@ -304,7 +314,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]AgentResponse, 0, len(doc.Agents))
 	for name, def := range doc.Agents {
-		if s.isHiddenAgent(name) {
+		if s.isHiddenFromList(name) {
 			continue
 		}
 		var composed *ComposedAgent
