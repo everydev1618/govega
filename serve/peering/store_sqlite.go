@@ -56,6 +56,13 @@ CREATE INDEX IF NOT EXISTS idx_peer_audit_peer_agent_ts
     ON peer_audit_log(peer_node_id, agent, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_peer_audit_ts
     ON peer_audit_log(ts DESC);
+
+-- Peering-local key/value settings. Used today for the locally-generated
+-- NodeID; new keys added as the federation feature grows.
+CREATE TABLE IF NOT EXISTS peering_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
 `
 
 // ApplySQLiteSchema executes the peering DDL against db. Idempotent —
@@ -373,4 +380,24 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// --- Settings ---
+
+func (s *SQLiteStorage) GetSetting(key string) (string, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM peering_settings WHERE key = ?`, key).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return v, err
+}
+
+func (s *SQLiteStorage) SetSetting(key, value string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO peering_settings (key, value) VALUES (?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		key, value,
+	)
+	return err
 }

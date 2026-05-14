@@ -121,7 +121,18 @@ type Store interface {
 	// CountOpsInWindow counts non-denied audit rows for (peer, agent) since
 	// `since`. Denied rows do NOT count — see TestAudit_CountOpsInWindow_ExcludesDenied.
 	CountOpsInWindow(peerNodeID, localAgent string, since time.Time) (int, error)
+
+	// Settings. A tiny KV table for peering-local configuration that wants
+	// stability across restarts (notably: the local NodeID). Returns "" + nil
+	// when the key is unset so callers don't need a separate "exists" check.
+	GetSetting(key string) (string, error)
+	SetSetting(key, value string) error
 }
+
+// SettingNodeID is the settings key under which the locally-generated
+// orchestrator NodeID is persisted (e.g. "vega:01ABC..."). See
+// LoadOrGenerateNodeID in node.go.
+const SettingNodeID = "local_node_id"
 
 // ErrNilDB is returned by ApplySQLiteSchema / NewSQLiteStorage when handed a
 // nil *sql.DB. Better than a panic deep inside a database/sql call site.

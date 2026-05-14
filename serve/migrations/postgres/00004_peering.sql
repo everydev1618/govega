@@ -53,7 +53,14 @@ CREATE INDEX IF NOT EXISTS idx_peer_audit_peer_agent_ts
 CREATE INDEX IF NOT EXISTS idx_peer_audit_ts
     ON peer_audit_log(ts DESC);
 
+-- Peering-local key/value settings (local NodeID, etc.).
+CREATE TABLE IF NOT EXISTS peering_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
+
 -- +goose Down
+DROP TABLE IF EXISTS peering_settings;
 DROP TABLE IF EXISTS peer_audit_log;
 DROP TABLE IF EXISTS peer_agent_grants;
 DROP TABLE IF EXISTS peer_orchestrators;

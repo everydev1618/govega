@@ -250,6 +250,26 @@ func (s *PostgresStorage) CountOpsInWindow(peerNodeID, localAgent string, since 
 	return n, err
 }
 
+// --- Settings ---
+
+func (s *PostgresStorage) GetSetting(key string) (string, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM peering_settings WHERE key = $1`, key).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return v, err
+}
+
+func (s *PostgresStorage) SetSetting(key, value string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO peering_settings (key, value) VALUES ($1, $2)
+		 ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value`,
+		key, value,
+	)
+	return err
+}
+
 // scanGrantPG mirrors scanGrant but expects a BOOLEAN for active rather
 // than SQLite's INTEGER 0/1.
 func scanGrantPG(r rowScanner) (*Grant, error) {

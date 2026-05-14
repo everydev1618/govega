@@ -2,7 +2,6 @@ package peering
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -83,15 +82,6 @@ func grantedSetup(t *testing.T) (Store, Peer) {
 	return s, p
 }
 
-func encodeArgs(t *testing.T, message string) []byte {
-	t.Helper()
-	b, err := json.Marshal(InvokeArgs{Message: message})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
 // --- tests ---
 
 func TestHandleInbound_HappyPath(t *testing.T) {
@@ -104,7 +94,7 @@ func TestHandleInbound_HappyPath(t *testing.T) {
 
 	err := HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", encodeArgs(t, "hi"),
+		"researcher", "hi",
 		op, s, disp)
 	if err != nil {
 		t.Fatalf("HandleInbound: %v", err)
@@ -139,7 +129,7 @@ func TestHandleInbound_UnknownPeerDeniesAndAudits(t *testing.T) {
 
 	err := HandleInbound(context.Background(),
 		"vega:nobody", "",
-		"researcher", encodeArgs(t, "hi"),
+		"researcher", "hi",
 		op, s, disp)
 	if err != nil {
 		t.Fatalf("HandleInbound: %v", err)
@@ -175,7 +165,7 @@ func TestHandleInbound_NoGrantDenies(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", encodeArgs(t, "hi"),
+		"researcher", "hi",
 		op, s, disp)
 
 	rows, _ := s.ListAudit(AuditFilter{Limit: 10})
@@ -187,27 +177,6 @@ func TestHandleInbound_NoGrantDenies(t *testing.T) {
 	}
 }
 
-func TestHandleInbound_MalformedArgs(t *testing.T) {
-	s, p := grantedSetup(t)
-	op := &fakeOp{opID: 1}
-	disp := &fakeDispatcher{}
-
-	err := HandleInbound(context.Background(),
-		p.NodeID, p.Handle,
-		"researcher", []byte("{not valid json"),
-		op, s, disp)
-	if err != nil {
-		t.Fatalf("HandleInbound should swallow + audit, not bubble: %v", err)
-	}
-	if len(op.errMsgs) != 1 {
-		t.Fatalf("expected one error frame, got %v", op.errMsgs)
-	}
-	rows, _ := s.ListAudit(AuditFilter{Limit: 10})
-	if len(rows) != 1 || rows[0].Status != AuditStatusError {
-		t.Fatalf("expected one error audit row; got %+v", rows)
-	}
-}
-
 func TestHandleInbound_EmptyMessageRejected(t *testing.T) {
 	s, p := grantedSetup(t)
 	op := &fakeOp{opID: 1}
@@ -215,7 +184,7 @@ func TestHandleInbound_EmptyMessageRejected(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", encodeArgs(t, ""),
+		"researcher", "",
 		op, s, disp)
 	if disp.gotAgent != "" {
 		t.Fatal("dispatcher should not run on empty message")
@@ -233,7 +202,7 @@ func TestHandleInbound_DispatcherErrorAuditedAsError(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", encodeArgs(t, "hi"),
+		"researcher", "hi",
 		op, s, disp)
 
 	if len(op.errMsgs) != 1 || !strings.Contains(op.errMsgs[0].Message, "exploded") {
@@ -253,7 +222,7 @@ func TestHandleInbound_DurationRecorded(t *testing.T) {
 	start := time.Now()
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", encodeArgs(t, "hi"),
+		"researcher", "hi",
 		op, s, disp)
 	elapsed := time.Since(start)
 
@@ -270,7 +239,7 @@ func TestHandleInbound_AgentCanonicalized(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"Researcher:proc-12345", encodeArgs(t, "hi"),
+		"Researcher:proc-12345", "hi",
 		op, s, disp)
 
 	if disp.gotAgent != "researcher" {

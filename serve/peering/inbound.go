@@ -2,14 +2,16 @@ package peering
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"time"
 )
 
 // InvokeArgs is the JSON shape carried in an INVOKE frame's args payload.
-// v1 is just a message string; structured input + tool args land later.
+// At the wire level peers always address AgentID="vega" with structured
+// args carrying the target local agent name and the message; the agent
+// extraction happens at the Node level (node.go) before HandleInbound is
+// called.
 type InvokeArgs struct {
+	Agent   string `json:"agent"`
 	Message string `json:"message"`
 }
 
@@ -55,9 +57,13 @@ const (
 // frames and recorded in the audit log. The non-nil return signature is
 // kept for future expansion (e.g. transport-level errors worth propagating).
 //
+// Args parsing happens at the Node level (node.go) before this is called;
+// HandleInbound takes the already-extracted agent + message so its own
+// concerns stay focused on authorization, dispatch, and audit.
+//
 // Steps (see docs/peering-design.md §2.4):
 //  1. Authorize → deny path: ERROR frame + denied audit row, return.
-//  2. Decode args → malformed path: ERROR frame + error audit row, return.
+//  2. Validate non-empty message.
 //  3. Write started audit row.
 //  4. Dispatch via dispatcher, streaming chunks to the peer.
 //  5. Finalize audit row (status, tokens, duration).
@@ -66,7 +72,7 @@ func HandleInbound(
 	ctx context.Context,
 	peerNodeID, peerHandle string,
 	agentID string,
-	args []byte,
+	message string,
 	op InboundOp,
 	store Store,
 	dispatcher Dispatcher,
@@ -80,7 +86,6 @@ func HandleInbound(
 	// 1. Authorize.
 	decision, err := Authorize(store, peerNodeID, agentID, now)
 	if err != nil {
-		// Storage-level failures are themselves auditable: log as error.
 		_, _ = store.InsertAudit(AuditEntry{
 			Timestamp:    now,
 			Direction:    DirectionInbound,
@@ -111,15 +116,8 @@ func HandleInbound(
 		return nil
 	}
 
-	// 2. Decode args.
-	var parsed InvokeArgs
-	if err := json.Unmarshal(args, &parsed); err != nil {
-		recordError(store, peerNodeID, peerHandle, canonical, op.OpID(), now, start,
-			fmt.Sprintf("malformed args: %v", err))
-		_ = op.SendError(ErrCodeMalformedArgs, "malformed args (expected JSON {message: string})")
-		return nil
-	}
-	if parsed.Message == "" {
+	// 2. Validate message.
+	if message == "" {
 		recordError(store, peerNodeID, peerHandle, canonical, op.OpID(), now, start, "empty message")
 		_ = op.SendError(ErrCodeEmptyMessage, "message is required and may not be empty")
 		return nil
@@ -141,7 +139,7 @@ func HandleInbound(
 	}
 
 	// 4. Dispatch + stream.
-	stats, dispatchErr := dispatcher.Dispatch(ctx, canonical, parsed.Message, op.SendChunk)
+	stats, dispatchErr := dispatcher.Dispatch(ctx, canonical, message, op.SendChunk)
 
 	// 5. Finalize audit + report failures.
 	duration := int(time.Since(start).Milliseconds())
