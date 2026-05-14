@@ -5,10 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/tools"
 )
+
+// canonicalAgentName returns the stable lowercase identity used as the
+// `agent` column in memory storage. Strips any ":<process-id>" suffix
+// (a runtime leak — refs #79) and lowercases the remainder. Without
+// this, an orchestrator renamed from Iris → Charlie writes memories
+// under four different identities and can never recall its own past
+// (refs #83).
+func canonicalAgentName(name string) string {
+	if i := strings.IndexByte(name, ':'); i >= 0 {
+		name = name[:i]
+	}
+	return strings.ToLower(name)
+}
 
 // memoryContextKey is a type for memory context keys.
 type memoryContextKey string
@@ -24,7 +38,7 @@ const (
 func ContextWithMemory(ctx context.Context, store Store, userID, agent string) context.Context {
 	ctx = context.WithValue(ctx, memCtxStore, store)
 	ctx = context.WithValue(ctx, memCtxUserID, userID)
-	ctx = context.WithValue(ctx, memCtxAgent, agent)
+	ctx = context.WithValue(ctx, memCtxAgent, canonicalAgentName(agent))
 	return ctx
 }
 
