@@ -1711,39 +1711,14 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 			resp, err = i.SendToAgent(detached, agentName, message)
 		}
 
-		// Post completion notification to inbox as pending so Iris triages it.
-		// Three outcomes:
-		//   - err != nil → explicit failure, marked urgent
-		//   - resp is blank → agent ran but produced no text (no tools, LLM
-		//     bailed without output, etc.); previously masqueraded as
-		//     success because err was nil. Mark urgent so the
-		//     orchestrator surfaces the gap to the user instead of
-		//     confidently claiming a task is done.
-		//   - resp has content → success, normal priority.
+		// Post completion notification to inbox as pending so the
+		// orchestrator triages it. classifyDispatchOutcome distinguishes
+		// outright errors, empty responses, completed work, and
+		// trail-off-mid-thought responses that previously masqueraded as
+		// successes (see dispatch_outcome.go).
 		if i.inboxBackend != nil {
-			switch {
-			case err != nil:
-				i.inboxBackend.InsertInboxItem(
-					agentName,
-					fmt.Sprintf("Task failed for %s", agentName),
-					fmt.Sprintf("Error: %s\n\nOriginal request: %s", err.Error(), truncateStr(message, 500)),
-					"urgent",
-				)
-			case strings.TrimSpace(resp) == "":
-				i.inboxBackend.InsertInboxItem(
-					agentName,
-					fmt.Sprintf("Task incomplete from %s", agentName),
-					fmt.Sprintf("Agent produced no output — they may not have the tools required, or they ran without invoking the LLM. Do not assume the task is done; tell the user.\n\nOriginal request: %s", truncateStr(message, 500)),
-					"urgent",
-				)
-			default:
-				i.inboxBackend.InsertInboxItem(
-					agentName,
-					fmt.Sprintf("Task completed by %s", agentName),
-					fmt.Sprintf("Result: %s\n\nOriginal request: %s", truncateStr(resp, 1000), truncateStr(message, 500)),
-					"normal",
-				)
-			}
+			subject, body, priority := classifyDispatchOutcome(agentName, message, resp, err)
+			i.inboxBackend.InsertInboxItem(agentName, subject, body, priority)
 		}
 
 		// Post a summary to the agent's team channel for user visibility.
