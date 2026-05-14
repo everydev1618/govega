@@ -70,6 +70,10 @@ func (t *HTTPTransport) Send(ctx context.Context, method string, params any) (js
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	// Streamable HTTP MCP servers (e.g. Composio) require the client to
+	// advertise both content types — response is either a JSON object or
+	// an SSE stream depending on the operation.
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
 	for k, v := range t.config.Headers {
 		httpReq.Header.Set(k, v)
 	}
