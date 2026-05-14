@@ -42,7 +42,7 @@ jobs:
           ACCOUNT_ID=$(curl -fsS https://api.cloudflare.com/client/v4/accounts \
             -H "X-Auth-Email: $CLOUDFLARE_EMAIL" \
             -H "X-Auth-Key: $CLOUDFLARE_API_KEY" \
-            | jq -er '.result[0].id')
+            | jq -er '.result[] | select(.name == "everydev") | .id')
           echo "::add-mask::$ACCOUNT_ID"
           echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
 
