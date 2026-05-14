@@ -523,11 +523,15 @@ func (s *Server) Start(ctx context.Context) error {
 	// persisted to settings before we apply, so an external rename becomes
 	// the authoritative identity on every boot.
 	if envName := os.Getenv("ORCHESTRATOR_NAME"); envName != "" {
-		// Always re-persist on boot so Name AND DisplayName converge to the
-		// env value — the system prompt embeds DisplayName, so just setting
-		// Name leaves the LLM introducing itself by the old identity.
-		// persistOrchestratorOverrides is idempotent (UPSERT).
-		if err := persistOrchestratorOverrides(s.store, envName, envName, ""); err != nil {
+		// Two roles for the env value:
+		//   - Name (slug) is the canonical id used in URLs / API paths /
+		//     agent-map lookups. Lowercased so /chat/charlie and
+		//     /chat/Charlie don't diverge into two different keys.
+		//   - DisplayName preserves the user's casing for the system prompt
+		//     and UI labels, so the LLM still introduces itself as "Charlie".
+		slug := strings.ToLower(envName)
+		display := envName
+		if err := persistOrchestratorOverrides(s.store, slug, display, ""); err != nil {
 			slog.Warn("ORCHESTRATOR_NAME env: failed to persist override", "name", envName, "error", err)
 		}
 	}
