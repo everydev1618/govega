@@ -491,6 +491,18 @@ func (s *Server) Start(ctx context.Context) error {
 	// migration window.
 	RegisterWikiMemoryTools(s.interp)
 
+	// One-shot migration of legacy user_memory + memory_items into the
+	// wiki (govega#71). Idempotent — gated by the
+	// memory_wiki_migrated_v1 setting. Logged but non-fatal: a
+	// migration failure shouldn't block startup.
+	if report, err := migrateToWikiMemory(s.store); err != nil {
+		slog.Error("wiki memory migration failed; continuing without migrating", "error", err)
+	} else if report.JustApplied {
+		slog.Info("wiki memory migration applied",
+			"users", report.Users, "agents_touched", report.AgentsTouched,
+			"pages_written", report.PagesWritten)
+	}
+
 	// Register channel tools BEFORE injecting meta-agents — both Hera and
 	// Iris list channel tools in their `Tools` slice, and spawnAgent's
 	// Filter() takes a snapshot at injection time. If channel tools register

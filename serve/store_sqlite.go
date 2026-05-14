@@ -711,6 +711,53 @@ func (s *SQLiteStore) DeleteUserMemory(userID, agent string) error {
 	return err
 }
 
+// ListAllUserMemory returns every row in user_memory. Migration helper
+// (govega#71). Iteration order is (user_id, agent, layer) ascending so
+// the migration's grouping logic sees adjacent rows.
+func (s *SQLiteStore) ListAllUserMemory() ([]UserMemory, error) {
+	rows, err := s.db.Query(
+		`SELECT user_id, agent, layer, content, created_at, updated_at
+		 FROM user_memory ORDER BY user_id, agent, layer`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []UserMemory{}
+	for rows.Next() {
+		var m UserMemory
+		if err := rows.Scan(&m.UserID, &m.Agent, &m.Layer, &m.Content, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ListAllMemoryItems returns every row in memory_items. Migration
+// helper (govega#71). Ordered by (user_id, agent, topic, created_at).
+func (s *SQLiteStore) ListAllMemoryItems() ([]MemoryItem, error) {
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
+		 FROM memory_items ORDER BY user_id, agent, topic, created_at`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MemoryItem{}
+	for rows.Next() {
+		var m MemoryItem
+		var typeStr string
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &typeStr, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		m.Type = MemoryType(typeStr)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // --- Wiki memory (govega#71) ---
 
 // UpsertMemoryPage inserts a page if absent, or replaces Content +

@@ -434,6 +434,50 @@ func (s *PostgresStore) DeleteUserMemory(userID, agent string) error {
 	return err
 }
 
+// ListAllUserMemory is a migration helper — see SQLiteStore counterpart.
+func (s *PostgresStore) ListAllUserMemory() ([]UserMemory, error) {
+	rows, err := s.db.Query(
+		`SELECT user_id, agent, layer, content, created_at, updated_at
+		 FROM user_memory ORDER BY user_id, agent, layer`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []UserMemory{}
+	for rows.Next() {
+		var m UserMemory
+		if err := rows.Scan(&m.UserID, &m.Agent, &m.Layer, &m.Content, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ListAllMemoryItems is a migration helper — see SQLiteStore counterpart.
+func (s *PostgresStore) ListAllMemoryItems() ([]MemoryItem, error) {
+	rows, err := s.db.Query(
+		`SELECT id, user_id, agent, type, topic, content, tags, created_at, updated_at
+		 FROM memory_items ORDER BY user_id, agent, topic, created_at`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MemoryItem{}
+	for rows.Next() {
+		var m MemoryItem
+		var typeStr string
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Agent, &typeStr, &m.Topic, &m.Content, &m.Tags, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		m.Type = MemoryType(typeStr)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // --- Wiki memory (govega#71) ---
 
 func (s *PostgresStore) UpsertMemoryPage(p MemoryPage) error {

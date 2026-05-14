@@ -124,6 +124,15 @@ type Store interface {
 	// DeleteMemoryItem removes a memory item by ID.
 	DeleteMemoryItem(id int64) error
 
+	// ListAllUserMemory returns every row in user_memory. Bulk-load helper
+	// used by the wiki-memory migration (govega#71). Removed once the
+	// legacy user_memory table is dropped.
+	ListAllUserMemory() ([]UserMemory, error)
+
+	// ListAllMemoryItems returns every row in memory_items. Bulk-load
+	// helper for the wiki-memory migration. Removed alongside the table.
+	ListAllMemoryItems() ([]MemoryItem, error)
+
 	// ListMemoryItemsByTopic returns memory items for a given user+agent+topic.
 	ListMemoryItemsByTopic(userID, agent, topic string) ([]MemoryItem, error)
 
