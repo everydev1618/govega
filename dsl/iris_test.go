@@ -84,6 +84,26 @@ func TestInjectIris_ExposesChannelTools(t *testing.T) {
 	}
 }
 
+// TestIrisSystemPrompt_AntiHallucinationGuardrail pins the rule that prevents
+// the orchestrator from confabulating an agent's non-existence. Charlie (the
+// everydev-tenant orchestrator) confidently told the user "there is no Scout
+// agent — and never was" when scout was in composed_agents the whole time.
+// Root cause: irisSystemPrompt told the orchestrator to call list_agents in
+// team-creation / delegation flows, but not when answering existence questions.
+// This test pins a guardrail that forces list_agents before any "X doesn't
+// exist" answer.
+func TestIrisSystemPrompt_AntiHallucinationGuardrail(t *testing.T) {
+	required := []string{
+		"Never claim an agent doesn't exist from memory",
+		"list_agents",
+	}
+	for _, s := range required {
+		if !strings.Contains(irisSystemPrompt, s) {
+			t.Errorf("irisSystemPrompt missing required guardrail substring: %q", s)
+		}
+	}
+}
+
 // TestDefaultVisualIdentity covers govega#60: agent-creation paths need a
 // reasonable icon + color so the FE doesn't render blank placeholders before
 // the user picks one. The default must be (a) non-empty, (b) deterministic
