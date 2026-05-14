@@ -115,6 +115,7 @@ Examples:
 		DBPath:        *dbPath,
 		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		TelegramAgent: os.Getenv("TELEGRAM_AGENT"),
+		PublicURL:     os.Getenv("PUBLIC_URL"),
 		Company:       company,
 	}
 

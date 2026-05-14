@@ -905,8 +905,14 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	// Extract the port from the resolved address and build a clean base URL.
+	// Prefer s.cfg.PublicURL (set by operators / v39a) so file links the
+	// agent generates point at the customer-visible hostname, not the
+	// container's localhost.
 	_, port, _ := net.SplitHostPort(addr)
-	baseURL := fmt.Sprintf("http://localhost:%s", port)
+	baseURL := strings.TrimRight(s.cfg.PublicURL, "/")
+	if baseURL == "" {
+		baseURL = fmt.Sprintf("http://localhost:%s", port)
+	}
 	s.interp.SetServerBaseURL(baseURL)
 
 	authCfg, err := LoadAuthConfig(ctx)
