@@ -605,3 +605,47 @@ func TestSupervision(t *testing.T) {
     assert.Equal(t, "success", resp)
 }
 ```
+
+## Federation (Peering)
+
+Vega orchestrators can talk to other Vega orchestrators over [AIRE](https://aire.fyi) — a QUIC-native agent protocol. See `docs/peering-design.md` for the full design memo.
+
+### Enabling
+
+Set `VEGA_PEERING_ADDR=:4433` (or any host:port). Peering opens a UDP listener on that address. When the env var is unset, no UDP socket is opened and no federation tools are registered — Vega runs exactly as before.
+
+### Trust model
+
+Default-deny throughout:
+
+1. Each Vega instance has a stable `NodeID` (format: `vega:<uuidv4>`) auto-generated on first boot and persisted in `peering_settings`.
+2. Operators add trusted peers manually via the `add_peer` Iris tool — out-of-band exchange of `(NodeID, endpoint, shared_secret)`.
+3. Each peer is granted access to specific local agents (`grant_peer_access`); ungranted invokes are rejected with a structured `code=4001 denied` error frame.
+4. Every inbound + outbound op writes an audit row (status, tokens, cost, duration, denial reason).
+
+### Auth (v0.1 stopgap)
+
+Until AIRE v0.2 ships DID-based identity, peering layers HMAC-SHA256 auth over a custom AIRE capability:
+
+1. Both sides advertise `vega.shared-secret/1` as a required capability during HELLO. Absence = `MISSING_REQUIRED_CAPABILITY`, connection rejected.
+2. After handshake, the client invokes the well-known agent `_aire/auth`. The server returns a fresh 16-byte nonce; the client returns `HMAC(secret, peer_node_id || nonce || timestamp)`. Replay protected by a 5-minute freshness window.
+3. Only after a successful auth-op does the server accept dispatch invokes addressed to the well-known `vega` agent. The actual target local-agent name and message live in the JSON args.
+
+### Package layout
+
+`serve/peering/` is the only package in govega allowed to import `github.com/aire-protocol/aire-go` — mirrors the AIRE-side decoupling rule. Outside that package, the rest of govega sees only Vega-native types.
+
+```
+serve/peering/
+  auth.go         HMAC challenge primitives + freshness window
+  auth_op.go      challenge-response wire flow
+  store.go        Store interface (peers, grants, audit, settings)
+  store_sqlite.go SQLite-backed impl + schema
+  store_postgres.go Postgres-backed impl
+  acl.go          single Authorize() decision point
+  inbound.go      per-Invoke handler: authorize → dispatch → audit
+  outbound.go     wire-agnostic stream reader
+  dialer.go       outbound dial cache + SendToRemoteAgent
+  node.go         lifecycle (Start/Stop), accept loop, INVOKE codec
+  aire_op.go      adapter between aire.Operation and peering's interfaces
+```
