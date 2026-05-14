@@ -486,6 +486,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Register memory tools before injecting meta-agents so they can use them.
 	RegisterMemoryTools(s.interp)
+	// Wiki-style memory tools (govega#71). Registered alongside the
+	// legacy remember/recall/forget surface — both available during the
+	// migration window.
+	RegisterWikiMemoryTools(s.interp)
 
 	// Register channel tools BEFORE injecting meta-agents — both Hera and
 	// Iris list channel tools in their `Tools` slice, and spawnAgent's
