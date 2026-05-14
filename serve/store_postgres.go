@@ -434,6 +434,214 @@ func (s *PostgresStore) DeleteUserMemory(userID, agent string) error {
 	return err
 }
 
+// --- Wiki memory (govega#71) ---
+
+func (s *PostgresStore) UpsertMemoryPage(p MemoryPage) error {
+	_, err := s.db.Exec(
+		`INSERT INTO memory_pages (scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		 ON CONFLICT (scope, scope_id, user_id, path)
+		 DO UPDATE SET
+		   content = EXCLUDED.content,
+		   frontmatter = EXCLUDED.frontmatter,
+		   updated_at = CURRENT_TIMESTAMP`,
+		string(p.Scope), p.ScopeID, p.UserID, p.Path, p.Content, p.Frontmatter,
+	)
+	return err
+}
+
+func (s *PostgresStore) GetMemoryPage(scope MemoryScope, scopeID, userID, path string) (*MemoryPage, error) {
+	row := s.db.QueryRow(
+		`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+		 FROM memory_pages
+		 WHERE scope = $1 AND scope_id = $2 AND user_id = $3 AND path = $4`,
+		string(scope), scopeID, userID, path,
+	)
+	var p MemoryPage
+	var scopeStr string
+	if err := row.Scan(&scopeStr, &p.ScopeID, &p.UserID, &p.Path, &p.Content, &p.Frontmatter, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	p.Scope = MemoryScope(scopeStr)
+	return &p, nil
+}
+
+func (s *PostgresStore) ListMemoryPages(scope MemoryScope, scopeID, userID, pathPrefix string) ([]MemoryPage, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if pathPrefix == "" {
+		rows, err = s.db.Query(
+			`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+			 FROM memory_pages
+			 WHERE scope = $1 AND scope_id = $2 AND user_id = $3
+			 ORDER BY updated_at DESC`,
+			string(scope), scopeID, userID,
+		)
+	} else {
+		rows, err = s.db.Query(
+			`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+			 FROM memory_pages
+			 WHERE scope = $1 AND scope_id = $2 AND user_id = $3 AND path LIKE $4 || '%'
+			 ORDER BY updated_at DESC`,
+			string(scope), scopeID, userID, pathPrefix,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MemoryPage{}
+	for rows.Next() {
+		var p MemoryPage
+		var scopeStr string
+		if err := rows.Scan(&scopeStr, &p.ScopeID, &p.UserID, &p.Path, &p.Content, &p.Frontmatter, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.Scope = MemoryScope(scopeStr)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresStore) DeleteMemoryPage(scope MemoryScope, scopeID, userID, path string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`DELETE FROM memory_pages WHERE scope = $1 AND scope_id = $2 AND user_id = $3 AND path = $4`,
+		string(scope), scopeID, userID, path,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM memory_links WHERE scope = $1 AND scope_id = $2 AND user_id = $3 AND (from_path = $4 OR to_path = $4)`,
+		string(scope), scopeID, userID, path,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) RenameMemoryPage(scope MemoryScope, scopeID, userID, oldPath, newPath string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`UPDATE memory_pages SET path = $1, updated_at = CURRENT_TIMESTAMP
+		 WHERE scope = $2 AND scope_id = $3 AND user_id = $4 AND path = $5`,
+		newPath, string(scope), scopeID, userID, oldPath,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`UPDATE memory_links SET from_path = $1
+		 WHERE scope = $2 AND scope_id = $3 AND user_id = $4 AND from_path = $5`,
+		newPath, string(scope), scopeID, userID, oldPath,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`UPDATE memory_links SET to_path = $1
+		 WHERE scope = $2 AND scope_id = $3 AND user_id = $4 AND to_path = $5`,
+		newPath, string(scope), scopeID, userID, oldPath,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) SearchMemoryPages(scope MemoryScope, scopeID, userID, query string, limit int) ([]MemoryPage, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+		 FROM memory_pages
+		 WHERE scope = $1 AND scope_id = $2 AND user_id = $3
+		   AND (LOWER(path) LIKE LOWER($4) OR LOWER(content) LIKE LOWER($4))
+		 ORDER BY updated_at DESC
+		 LIMIT $5`,
+		string(scope), scopeID, userID, pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MemoryPage{}
+	for rows.Next() {
+		var p MemoryPage
+		var scopeStr string
+		if err := rows.Scan(&scopeStr, &p.ScopeID, &p.UserID, &p.Path, &p.Content, &p.Frontmatter, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.Scope = MemoryScope(scopeStr)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresStore) ReplaceMemoryLinks(scope MemoryScope, scopeID, userID, fromPath string, toPaths []string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`DELETE FROM memory_links WHERE scope = $1 AND scope_id = $2 AND user_id = $3 AND from_path = $4`,
+		string(scope), scopeID, userID, fromPath,
+	); err != nil {
+		return err
+	}
+	for _, to := range toPaths {
+		if to == "" || to == fromPath {
+			continue
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO memory_links (scope, scope_id, user_id, from_path, to_path)
+			 VALUES ($1, $2, $3, $4, $5)
+			 ON CONFLICT DO NOTHING`,
+			string(scope), scopeID, userID, fromPath, to,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresStore) ListMemoryLinks(scope MemoryScope, scopeID, userID string) ([]MemoryLink, error) {
+	rows, err := s.db.Query(
+		`SELECT scope, scope_id, user_id, from_path, to_path
+		 FROM memory_links
+		 WHERE scope = $1 AND scope_id = $2 AND user_id = $3`,
+		string(scope), scopeID, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MemoryLink{}
+	for rows.Next() {
+		var l MemoryLink
+		var scopeStr string
+		if err := rows.Scan(&scopeStr, &l.ScopeID, &l.UserID, &l.FromPath, &l.ToPath); err != nil {
+			return nil, err
+		}
+		l.Scope = MemoryScope(scopeStr)
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // --- Scheduled jobs ---
 
 func (s *PostgresStore) UpsertScheduledJob(job ScheduledJob) error {

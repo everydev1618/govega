@@ -239,6 +239,37 @@ func (s *SQLiteStore) Init() error {
 		PRIMARY KEY (agent, user_id)
 	);
 
+	-- Wiki-style memory pages (govega#71). Replaces the typed
+	-- user_memory / memory_items system in steps 2+. Path is a logical
+	-- slash-separated address ("MEMORY.md", "topics/sushi.md"), NOT a
+	-- filesystem path.
+	CREATE TABLE IF NOT EXISTS memory_pages (
+		scope       TEXT NOT NULL,
+		scope_id    TEXT NOT NULL,
+		user_id     TEXT NOT NULL,
+		path        TEXT NOT NULL,
+		content     TEXT NOT NULL DEFAULT '',
+		frontmatter TEXT NOT NULL DEFAULT '',
+		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (scope, scope_id, user_id, path)
+	);
+	CREATE INDEX IF NOT EXISTS idx_memory_pages_updated
+		ON memory_pages(scope, scope_id, user_id, updated_at DESC);
+
+	-- Directed link edges between memory pages. Extracted from content
+	-- on every write so the graph endpoint is cheap.
+	CREATE TABLE IF NOT EXISTS memory_links (
+		scope     TEXT NOT NULL,
+		scope_id  TEXT NOT NULL,
+		user_id   TEXT NOT NULL,
+		from_path TEXT NOT NULL,
+		to_path   TEXT NOT NULL,
+		PRIMARY KEY (scope, scope_id, user_id, from_path, to_path)
+	);
+	CREATE INDEX IF NOT EXISTS idx_memory_links_to
+		ON memory_links(scope, scope_id, user_id, to_path);
+
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
@@ -678,6 +709,234 @@ func (s *SQLiteStore) GetUserMemory(userID, agent string) ([]UserMemory, error) 
 func (s *SQLiteStore) DeleteUserMemory(userID, agent string) error {
 	_, err := s.db.Exec(`DELETE FROM user_memory WHERE user_id = ? AND agent = ?`, userID, agent)
 	return err
+}
+
+// --- Wiki memory (govega#71) ---
+
+// UpsertMemoryPage inserts a page if absent, or replaces Content +
+// Frontmatter + advances updated_at on conflict. CreatedAt is preserved
+// across updates by leaving created_at out of the DO UPDATE clause.
+func (s *SQLiteStore) UpsertMemoryPage(p MemoryPage) error {
+	_, err := s.db.Exec(
+		`INSERT INTO memory_pages (scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		 ON CONFLICT(scope, scope_id, user_id, path)
+		 DO UPDATE SET
+		   content = excluded.content,
+		   frontmatter = excluded.frontmatter,
+		   updated_at = CURRENT_TIMESTAMP`,
+		string(p.Scope), p.ScopeID, p.UserID, p.Path, p.Content, p.Frontmatter,
+	)
+	return err
+}
+
+// GetMemoryPage returns one page, or nil when not found.
+func (s *SQLiteStore) GetMemoryPage(scope MemoryScope, scopeID, userID, path string) (*MemoryPage, error) {
+	row := s.db.QueryRow(
+		`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+		 FROM memory_pages
+		 WHERE scope = ? AND scope_id = ? AND user_id = ? AND path = ?`,
+		string(scope), scopeID, userID, path,
+	)
+	var p MemoryPage
+	var scopeStr string
+	if err := row.Scan(&scopeStr, &p.ScopeID, &p.UserID, &p.Path, &p.Content, &p.Frontmatter, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	p.Scope = MemoryScope(scopeStr)
+	return &p, nil
+}
+
+// ListMemoryPages returns every page under (scope, scopeID, userID),
+// optionally filtered by path prefix. Ordered by updated_at DESC.
+func (s *SQLiteStore) ListMemoryPages(scope MemoryScope, scopeID, userID, pathPrefix string) ([]MemoryPage, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if pathPrefix == "" {
+		rows, err = s.db.Query(
+			`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+			 FROM memory_pages
+			 WHERE scope = ? AND scope_id = ? AND user_id = ?
+			 ORDER BY updated_at DESC`,
+			string(scope), scopeID, userID,
+		)
+	} else {
+		rows, err = s.db.Query(
+			`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+			 FROM memory_pages
+			 WHERE scope = ? AND scope_id = ? AND user_id = ? AND path LIKE ? || '%'
+			 ORDER BY updated_at DESC`,
+			string(scope), scopeID, userID, pathPrefix,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []MemoryPage{}
+	for rows.Next() {
+		var p MemoryPage
+		var scopeStr string
+		if err := rows.Scan(&scopeStr, &p.ScopeID, &p.UserID, &p.Path, &p.Content, &p.Frontmatter, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.Scope = MemoryScope(scopeStr)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// DeleteMemoryPage removes one page and cascades through memory_links
+// (rows where the page appears as from_path or to_path are also dropped).
+// Missing page is a no-op.
+func (s *SQLiteStore) DeleteMemoryPage(scope MemoryScope, scopeID, userID, path string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`DELETE FROM memory_pages WHERE scope = ? AND scope_id = ? AND user_id = ? AND path = ?`,
+		string(scope), scopeID, userID, path,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM memory_links WHERE scope = ? AND scope_id = ? AND user_id = ? AND (from_path = ? OR to_path = ?)`,
+		string(scope), scopeID, userID, path, path,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RenameMemoryPage moves a page from oldPath to newPath and rewrites
+// every link where oldPath appears as from_path or to_path. Atomic.
+//
+// Note: newPath must not already exist — this fails the page insert at
+// the unique constraint. Callers who want overwrite semantics should
+// delete the destination first.
+func (s *SQLiteStore) RenameMemoryPage(scope MemoryScope, scopeID, userID, oldPath, newPath string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`UPDATE memory_pages SET path = ?, updated_at = CURRENT_TIMESTAMP
+		 WHERE scope = ? AND scope_id = ? AND user_id = ? AND path = ?`,
+		newPath, string(scope), scopeID, userID, oldPath,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`UPDATE memory_links SET from_path = ?
+		 WHERE scope = ? AND scope_id = ? AND user_id = ? AND from_path = ?`,
+		newPath, string(scope), scopeID, userID, oldPath,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`UPDATE memory_links SET to_path = ?
+		 WHERE scope = ? AND scope_id = ? AND user_id = ? AND to_path = ?`,
+		newPath, string(scope), scopeID, userID, oldPath,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SearchMemoryPages does a case-insensitive substring search across
+// path and content, ranked by updated_at DESC.
+func (s *SQLiteStore) SearchMemoryPages(scope MemoryScope, scopeID, userID, query string, limit int) ([]MemoryPage, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT scope, scope_id, user_id, path, content, frontmatter, created_at, updated_at
+		 FROM memory_pages
+		 WHERE scope = ? AND scope_id = ? AND user_id = ?
+		   AND (LOWER(path) LIKE LOWER(?) OR LOWER(content) LIKE LOWER(?))
+		 ORDER BY updated_at DESC
+		 LIMIT ?`,
+		string(scope), scopeID, userID, pattern, pattern, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MemoryPage{}
+	for rows.Next() {
+		var p MemoryPage
+		var scopeStr string
+		if err := rows.Scan(&scopeStr, &p.ScopeID, &p.UserID, &p.Path, &p.Content, &p.Frontmatter, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.Scope = MemoryScope(scopeStr)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// ReplaceMemoryLinks atomically replaces the out-edges from fromPath
+// with one row per (fromPath, to) in toPaths. Empty toPaths clears.
+func (s *SQLiteStore) ReplaceMemoryLinks(scope MemoryScope, scopeID, userID, fromPath string, toPaths []string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`DELETE FROM memory_links WHERE scope = ? AND scope_id = ? AND user_id = ? AND from_path = ?`,
+		string(scope), scopeID, userID, fromPath,
+	); err != nil {
+		return err
+	}
+	for _, to := range toPaths {
+		if to == "" || to == fromPath {
+			continue
+		}
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO memory_links (scope, scope_id, user_id, from_path, to_path)
+			 VALUES (?, ?, ?, ?, ?)`,
+			string(scope), scopeID, userID, fromPath, to,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// ListMemoryLinks returns every link under (scope, scopeID, userID).
+func (s *SQLiteStore) ListMemoryLinks(scope MemoryScope, scopeID, userID string) ([]MemoryLink, error) {
+	rows, err := s.db.Query(
+		`SELECT scope, scope_id, user_id, from_path, to_path
+		 FROM memory_links
+		 WHERE scope = ? AND scope_id = ? AND user_id = ?`,
+		string(scope), scopeID, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MemoryLink{}
+	for rows.Next() {
+		var l MemoryLink
+		var scopeStr string
+		if err := rows.Scan(&scopeStr, &l.ScopeID, &l.UserID, &l.FromPath, &l.ToPath); err != nil {
+			return nil, err
+		}
+		l.Scope = MemoryScope(scopeStr)
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 // UpsertScheduledJob creates or replaces a scheduled job. The Name field

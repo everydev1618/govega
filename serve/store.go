@@ -64,6 +64,41 @@ type Store interface {
 	// DeleteChatMessages removes all chat messages for an agent.
 	DeleteChatMessages(agent string) error
 
+	// UpsertMemoryPage creates a page if absent, or overwrites Content +
+	// Frontmatter + advances UpdatedAt on conflict (PK = scope, scope_id,
+	// user_id, path). CreatedAt is preserved across updates. Refs govega#71.
+	UpsertMemoryPage(p MemoryPage) error
+
+	// GetMemoryPage returns one page, or nil when not found.
+	GetMemoryPage(scope MemoryScope, scopeID, userID, path string) (*MemoryPage, error)
+
+	// ListMemoryPages returns every page under (scope, scopeID, userID).
+	// When pathPrefix is non-empty, results are filtered to paths that
+	// start with the prefix. Ordered by updated_at DESC.
+	ListMemoryPages(scope MemoryScope, scopeID, userID, pathPrefix string) ([]MemoryPage, error)
+
+	// DeleteMemoryPage removes one page. Also clears any link rows where
+	// the page appears as from_path or to_path.
+	DeleteMemoryPage(scope MemoryScope, scopeID, userID, path string) error
+
+	// RenameMemoryPage moves a page from oldPath to newPath, and rewrites
+	// every link row that referenced oldPath (as from_path or to_path) to
+	// point at newPath. Atomic: either both succeed or neither does.
+	RenameMemoryPage(scope MemoryScope, scopeID, userID, oldPath, newPath string) error
+
+	// SearchMemoryPages does a case-insensitive substring search across
+	// path and content, ranked by updated_at DESC. Limit defaults to 25.
+	SearchMemoryPages(scope MemoryScope, scopeID, userID, query string, limit int) ([]MemoryPage, error)
+
+	// ReplaceMemoryLinks replaces the set of out-edges from fromPath
+	// atomically: removes existing rows where from_path = fromPath,
+	// inserts one row per (fromPath, to) in toPaths. Empty toPaths just
+	// clears the out-edges. Refs govega#71.
+	ReplaceMemoryLinks(scope MemoryScope, scopeID, userID, fromPath string, toPaths []string) error
+
+	// ListMemoryLinks returns every link under (scope, scopeID, userID).
+	ListMemoryLinks(scope MemoryScope, scopeID, userID string) ([]MemoryLink, error)
+
 	// UpsertUserMemory creates or updates a memory layer for a user+agent.
 	UpsertUserMemory(userID, agent, layer, content string) error
 
@@ -291,6 +326,45 @@ type Store interface {
 	// single query. Used by the agents API to surface "how productive is
 	// this agent" stats. Empty assignees are excluded.
 	TaskStatsByAssignee() (map[string]AgentStatsResponse, error)
+}
+
+// MemoryScope distinguishes a shared-user wiki from a per-agent
+// working-notes wiki. Refs govega#71.
+type MemoryScope string
+
+const (
+	// MemoryScopeUser is the shared wiki for a user, readable and
+	// writable by every agent that talks to them. ScopeID equals UserID.
+	MemoryScopeUser MemoryScope = "user"
+
+	// MemoryScopeAgent is an agent's private working notes about a
+	// specific user. ScopeID is the agent name; UserID is the user the
+	// notes pertain to.
+	MemoryScopeAgent MemoryScope = "agent"
+)
+
+// MemoryPage is a single page in a wiki-style memory store. Path is a
+// logical slash-separated address (e.g. "MEMORY.md", "topics/sushi.md"),
+// not a filesystem path. Refs govega#71.
+type MemoryPage struct {
+	Scope       MemoryScope `json:"scope"`
+	ScopeID     string      `json:"scope_id"`
+	UserID      string      `json:"user_id"`
+	Path        string      `json:"path"`
+	Content     string      `json:"content"`
+	Frontmatter string      `json:"frontmatter,omitempty"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+}
+
+// MemoryLink is a directed link between two memory pages, extracted
+// from a page's content at write time. Drives the graph endpoint.
+type MemoryLink struct {
+	Scope    MemoryScope `json:"scope"`
+	ScopeID  string      `json:"scope_id"`
+	UserID   string      `json:"user_id"`
+	FromPath string      `json:"from_path"`
+	ToPath   string      `json:"to_path"`
 }
 
 // UserMemory is a persisted memory layer for a user+agent pair.
