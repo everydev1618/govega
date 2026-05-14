@@ -14,14 +14,66 @@ import (
 
 // llmCallContext returns ctx enriched with Agent-level overrides
 // (model, temperature, max_tokens, effort) for the LLM backend to read.
-// Empty / zero fields fall back to the backend's defaults.
-func (p *Process) llmCallContext(ctx context.Context) context.Context {
+// The model is chosen by deriveStepType + Agent.ModelFor — agents that
+// haven't declared a per-step models map get Agent.Model exactly as
+// before.
+func (p *Process) llmCallContext(ctx context.Context, messages []llm.Message) context.Context {
+	var toolNames []string
+	if p.Agent.Tools != nil {
+		for _, sch := range p.Agent.Tools.Schema() {
+			toolNames = append(toolNames, sch.Name)
+		}
+	}
+	role := deriveStepType(toolNames, countUserMessages(messages))
 	return llm.ContextWithOptions(ctx, llm.Options{
-		Model:       p.Agent.Model,
+		Model:       p.Agent.ModelFor(role),
 		Temperature: p.Agent.Temperature,
 		MaxTokens:   p.Agent.MaxTokens,
 		Effort:      p.Agent.Effort,
 	})
+}
+
+// codeShapedTools are tool names that strongly suggest the agent is
+// about to produce or run code on this turn. The list is conservative —
+// false positives push a turn onto a heavier model than needed, which
+// is a cost regression, not a correctness one.
+var codeShapedTools = map[string]struct{}{
+	"write_file":  {},
+	"edit_file":   {},
+	"run_command": {},
+	"shell":       {},
+	"bash":        {},
+	"apply_patch": {},
+}
+
+// deriveStepType returns a best-effort tag describing the upcoming LLM
+// turn, given the agent's tool surface and how much of a conversation
+// has accrued. Returns "" when no rule fires so ModelFor falls back to
+// the agent's primary Model. Pure so it's trivially testable.
+func deriveStepType(toolNames []string, userMessages int) string {
+	for _, n := range toolNames {
+		if _, ok := codeShapedTools[n]; ok {
+			return "code"
+		}
+	}
+	if len(toolNames) == 0 {
+		return "chat"
+	}
+	if userMessages <= 1 {
+		return "classify"
+	}
+	return ""
+}
+
+// countUserMessages counts user-role messages in a conversation.
+func countUserMessages(messages []llm.Message) int {
+	n := 0
+	for _, m := range messages {
+		if m.Role == llm.RoleUser {
+			n++
+		}
+	}
+	return n
 }
 
 // executeLLMLoop runs the LLM call loop, handling tool calls.
@@ -139,7 +191,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 		default:
 		}
 
-		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx), messages, toolSchemas)
+		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, messages), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
 		}
@@ -282,7 +334,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		default:
 		}
 
-		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx), messages, toolSchemas)
+		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, messages), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
 		}
@@ -455,7 +507,7 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		start := time.Now()
-		resp, err := p.llm.Generate(p.llmCallContext(ctx), messages, tools)
+		resp, err := p.llm.Generate(p.llmCallContext(ctx, messages), messages, tools)
 		latency := time.Since(start)
 
 		if err == nil {

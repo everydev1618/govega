@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/everydev1618/govega/llm"
 )
 
 func TestStatus(t *testing.T) {
@@ -673,5 +675,62 @@ func TestExitReasonStrings(t *testing.T) {
 		if string(tt.reason) != tt.want {
 			t.Errorf("ExitReason = %q, want %q", tt.reason, tt.want)
 		}
+	}
+}
+
+func TestDeriveStepType_CodeToolForcesCode(t *testing.T) {
+	cases := [][]string{
+		{"write_file"},
+		{"read_file", "edit_file"},
+		{"run_command"},
+		{"shell"},
+		{"bash"},
+		{"apply_patch"},
+	}
+	for _, tools := range cases {
+		if got := deriveStepType(tools, 5); got != "code" {
+			t.Errorf("deriveStepType(%v, 5) = %q, want \"code\"", tools, got)
+		}
+	}
+}
+
+func TestDeriveStepType_NoToolsIsChat(t *testing.T) {
+	if got := deriveStepType(nil, 3); got != "chat" {
+		t.Errorf("deriveStepType(nil, 3) = %q, want \"chat\"", got)
+	}
+	if got := deriveStepType([]string{}, 0); got != "chat" {
+		t.Errorf("deriveStepType([], 0) = %q, want \"chat\"", got)
+	}
+}
+
+func TestDeriveStepType_FirstTurnWithToolsIsClassify(t *testing.T) {
+	tools := []string{"send_to_agent", "list_agents"}
+	if got := deriveStepType(tools, 1); got != "classify" {
+		t.Errorf("first turn with non-code tools should be classify, got %q", got)
+	}
+	if got := deriveStepType(tools, 0); got != "classify" {
+		t.Errorf("zero user msgs (system-init) should also be classify, got %q", got)
+	}
+}
+
+func TestDeriveStepType_MidConversationWithToolsIsUnset(t *testing.T) {
+	tools := []string{"send_to_agent", "remember"}
+	if got := deriveStepType(tools, 3); got != "" {
+		t.Errorf("mid-conversation should fall through to default, got %q", got)
+	}
+}
+
+func TestCountUserMessages(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleSystem, Content: "sys"},
+		{Role: llm.RoleUser, Content: "hi"},
+		{Role: llm.RoleAssistant, Content: "hello"},
+		{Role: llm.RoleUser, Content: "next"},
+	}
+	if got := countUserMessages(msgs); got != 2 {
+		t.Errorf("countUserMessages = %d, want 2", got)
+	}
+	if got := countUserMessages(nil); got != 0 {
+		t.Errorf("countUserMessages(nil) = %d, want 0", got)
 	}
 }
