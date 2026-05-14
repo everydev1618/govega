@@ -221,6 +221,21 @@ export function Chat() {
     }).catch(() => { /* fall back to defaults */ })
   }, [])
 
+  // Reconcile activeAgent + openTabs when the orchestrator name changes from
+  // the FALLBACK to the real one. Without this, the chat view stays pinned to
+  // 'iris' (the FALLBACK) even though the real orchestrator is e.g. 'charlie'
+  // — leaving a ghost iris tab next to a Charlie sidebar entry. Only fires
+  // when the user landed without an explicit agent in the URL.
+  useEffect(() => {
+    if (orchestratorName === FALLBACK_ORCHESTRATOR) return
+    if (agentParam) return // user navigated to a specific agent — respect that
+    setActiveAgent(prev => (prev === FALLBACK_ORCHESTRATOR ? orchestratorName : prev))
+    setOpenTabs(prev => {
+      const swapped = prev.map(t => (t === FALLBACK_ORCHESTRATOR ? orchestratorName : t))
+      return [...new Set(swapped)]
+    })
+  }, [orchestratorName, agentParam])
+
   const [activeAgent, setActiveAgent] = useState(baseAgentName(agentParam || FALLBACK_ORCHESTRATOR))
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
