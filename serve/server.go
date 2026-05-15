@@ -509,6 +509,18 @@ func (s *Server) Start(ctx context.Context) error {
 			"pages_written", report.PagesWritten)
 	}
 
+	// v2 backfill — picks up memory_items rows that landed after the v1
+	// stamp (e.g. anything `remember`d before Iris's tool cutover) and
+	// publishes them to a user-scope legacy-items.md so they're visible
+	// in /memory. Gated by memory_wiki_backfilled_v2; non-fatal.
+	if report, err := backfillUserScopeLegacyItems(s.store); err != nil {
+		slog.Error("wiki memory backfill v2 failed; continuing", "error", err)
+	} else if report.JustApplied {
+		slog.Info("wiki memory backfill v2 applied",
+			"users_touched", report.UsersTouched,
+			"pages_written", report.PagesWritten)
+	}
+
 	// Register channel tools BEFORE injecting meta-agents — both Hera and
 	// Iris list channel tools in their `Tools` slice, and spawnAgent's
 	// Filter() takes a snapshot at injection time. If channel tools register
