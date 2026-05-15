@@ -191,6 +191,60 @@ func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost Ch
 		}),
 	})
 
+	t.Register("read_channel", tools.ToolDef{
+		Description: "Read the full, untruncated message bodies from a channel. Use this when check_status shows a preview that's cut off and you need to see the complete message (e.g. another agent posted a long brief). Returns up to `limit` most-recent messages with each author's full text.",
+		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
+			name, _ := params["channel"].(string)
+			if name == "" {
+				return "", fmt.Errorf("channel is required")
+			}
+			name = strings.TrimPrefix(name, "#")
+
+			limit := 20
+			if v, ok := params["limit"].(float64); ok && v > 0 {
+				limit = int(v)
+				if limit > 100 {
+					limit = 100
+				}
+			}
+
+			ch, err := backend.GetChannelByName(name)
+			if err != nil || ch == nil {
+				return "", fmt.Errorf("channel #%s not found", name)
+			}
+
+			msgs, err := backend.RecentChannelMessages(ch.ID, limit)
+			if err != nil {
+				return "", fmt.Errorf("read channel: %w", err)
+			}
+			if len(msgs) == 0 {
+				return fmt.Sprintf("#%s: No messages yet.", name), nil
+			}
+
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("## #%s — last %d message(s)\n\n", name, len(msgs)))
+			for _, m := range msgs {
+				author := m.Agent
+				if m.Sender != "" && m.Sender != m.Agent {
+					author = fmt.Sprintf("%s (sender: %s)", m.Agent, m.Sender)
+				}
+				sb.WriteString(fmt.Sprintf("**%s**:\n%s\n\n", author, m.Content))
+			}
+			return strings.TrimRight(sb.String(), "\n"), nil
+		}),
+		Params: map[string]tools.ParamDef{
+			"channel": {
+				Type:        "string",
+				Description: "Channel name (with or without leading '#').",
+				Required:    true,
+			},
+			"limit": {
+				Type:        "number",
+				Description: "Max messages to return (default 20, capped at 100). Most recent first-N from the channel.",
+			},
+		},
+	})
+
 	t.Register("create_channel", tools.ToolDef{
 		Description: "Create a Slack-style channel for a team of agents to collaborate in. The user can see and participate in the channel from the UI.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {

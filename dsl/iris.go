@@ -151,7 +151,7 @@ That seeds their identity into the shared user wiki for every future turn. Only 
 
 ## Your powers
 
-list_agents, send_to_agent, check_status, memory_read, memory_list, memory_search, memory_write, memory_append, memory_edit, set_project, list_projects, list_files, connect_mcp, disconnect_mcp, list_mcp_registry, list_mcp_status, list_inbox, resolve_inbox, create_channel, post_to_channel, list_my_channels, list_unassigned_tasks, list_my_tasks, assign_task, create_task, update_task_status, comment_on_task.
+list_agents, send_to_agent, check_status, memory_read, memory_list, memory_search, memory_write, memory_append, memory_edit, set_project, list_projects, list_files, connect_mcp, disconnect_mcp, list_mcp_registry, list_mcp_status, list_inbox, resolve_inbox, create_channel, post_to_channel, list_my_channels, read_channel, list_unassigned_tasks, list_my_tasks, assign_task, create_task, update_task_status, comment_on_task.
 
 ## Inbox
 
@@ -283,12 +283,13 @@ Channels are where teams work in the open. The user watches channels to see agen
 - create_channel — create a new channel for a team
 - post_to_channel — post a message to a channel
 - list_my_channels — see which channels you're in
+- read_channel — read the full untruncated message bodies from a channel
 
 When bootstrapping teams, ALWAYS ensure a channel exists. If Hera didn't create one, create it yourself with create_channel. After sending first tasks to agents, post a kickoff message to the channel so the user can see things are moving.
 
 ## Status checks
 
-When the user asks "what's the status", "how's it going", "what are the agents doing", or anything about progress — use **check_status** first. It reads channels and workspace files WITHOUT messaging any agent. Only use send_to_agent if you need to give an agent NEW instructions or ask them to DO something. Checking status should never trigger work.
+When the user asks "what's the status", "how's it going", "what are the agents doing", or anything about progress — use **check_status** first. It reads channels and workspace files WITHOUT messaging any agent. check_status only shows a short preview of each message — if a relevant message looks cut off and you need the full body before relaying it to the user, call **read_channel** for that channel. Do NOT ask the original agent to "repost" or "DM you the full thing" — the full message is already there, just read it. Only use send_to_agent if you need to give an agent NEW instructions or ask them to DO something. Checking status should never trigger work.
 
 ## Rules
 
@@ -405,7 +406,7 @@ func InjectIris(interp *Interpreter, cfg IrisConfig, channelBackend ChannelBacke
 		"set_project", "list_projects",
 		"list_files", "read_file", "exec",
 		"fetch__fetch",
-		"create_channel", "post_to_channel", "list_my_channels",
+		"create_channel", "post_to_channel", "list_my_channels", "read_channel",
 	}, extraTools...)
 
 	return interp.AddAgent(cfg.Name, def)
@@ -791,7 +792,7 @@ func newListProjectsTool(interp *Interpreter) tools.ToolDef {
 // channel membership.
 func newCheckStatusTool(interp *Interpreter, backend ChannelBackend, orchestratorName string) tools.ToolDef {
 	return tools.ToolDef{
-		Description: "Get a read-only status overview: agents, channels, recent channel messages, and workspace files. Use this INSTEAD of send_to_agent when the user asks 'what's the status' or 'how's it going'. This does NOT trigger any agent work.",
+		Description: "Get a read-only status overview: agents, channels, recent channel messages, and workspace files. Use this INSTEAD of send_to_agent when the user asks 'what's the status' or 'how's it going'. This does NOT trigger any agent work. Message bodies are previewed — if a preview ends with '…(truncated, use read_channel)' and you need the full text, call read_channel(channel=...) for the complete message bodies.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			var sb strings.Builder
 
@@ -842,7 +843,7 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend, orchestrato
 				for _, m := range msgs {
 					content := m.Content
 					if len(content) > 150 {
-						content = content[:150] + "..."
+						content = content[:150] + "…(truncated, use read_channel)"
 					}
 					sb.WriteString(fmt.Sprintf("  - **%s**: %s\n", m.Agent, content))
 				}
@@ -877,7 +878,7 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend, orchestrato
 }
 
 // irisToolNames are the tools Iris uses.
-var irisToolNames = []string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "list_inbox", "resolve_inbox", "create_channel", "post_to_channel", "list_my_channels", "list_unassigned_tasks", "list_my_tasks", "assign_task", "create_task", "update_task_status", "comment_on_task"}
+var irisToolNames = []string{"list_agents", "send_to_agent", "check_status", "connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status", "set_project", "list_projects", "list_files", "list_inbox", "resolve_inbox", "create_channel", "post_to_channel", "list_my_channels", "read_channel", "list_unassigned_tasks", "list_my_tasks", "assign_task", "create_task", "update_task_status", "comment_on_task"}
 
 // IsIrisTool reports whether a tool name is one of Iris's tools.
 func IsIrisTool(name string) bool {
