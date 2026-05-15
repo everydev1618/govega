@@ -68,6 +68,99 @@ func (f *fakeInboxBackend) DeleteInboxItem(id int64) error {
 	return errors.New("not found")
 }
 
+func (f *fakeInboxBackend) TriageInboxItems(ids []int64, threshold int) ([]int64, error) {
+	aged := make([]int64, 0)
+	for _, id := range ids {
+		for i := range f.items {
+			if f.items[i].ID != id || f.items[i].Status != "pending" {
+				continue
+			}
+			f.items[i].TriageCount++
+			now := time.Now()
+			f.items[i].LastTriagedAt = &now
+			if f.items[i].TriageCount >= threshold {
+				f.items[i].Status = "resolved"
+				f.items[i].Resolution = "auto-aged"
+				f.items[i].ResolvedAt = &now
+				aged = append(aged, id)
+			}
+			break
+		}
+	}
+	return aged, nil
+}
+
+func (f *fakeInboxBackend) InsertResolvedInboxItem(fromAgent, subject, body, resolution string) (int64, error) {
+	if f.insertErr != nil {
+		return 0, f.insertErr
+	}
+	f.nextID++
+	now := time.Now()
+	f.items = append(f.items, InboxItem{
+		ID:         f.nextID,
+		FromAgent:  fromAgent,
+		Subject:    subject,
+		Body:       body,
+		Priority:   "normal",
+		Status:     "resolved",
+		Resolution: resolution,
+		CreatedAt:  now,
+		ResolvedAt: &now,
+	})
+	return f.nextID, nil
+}
+
+// TestRecordDispatchOutcome covers the success/non-success routing:
+// "Task completed by X" lands directly in Done (status=resolved) so the
+// orchestrator never reads it; everything else stays in the pending
+// queue under the existing dedupe semantics.
+func TestRecordDispatchOutcome(t *testing.T) {
+	t.Run("success path inserts as resolved", func(t *testing.T) {
+		b := &fakeInboxBackend{}
+		id, err := recordDispatchOutcome(b, "scout", "Task completed by scout", "Result: ok.", "normal")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if id == 0 {
+			t.Errorf("expected non-zero id")
+		}
+		if len(b.items) != 1 {
+			t.Fatalf("expected 1 item, got %d", len(b.items))
+		}
+		if b.items[0].Status != "resolved" {
+			t.Errorf("status = %q, want resolved", b.items[0].Status)
+		}
+		if b.items[0].Resolution == "" {
+			t.Errorf("resolution should not be empty for auto-success")
+		}
+	})
+
+	t.Run("non-success path inserts as pending (with dedupe)", func(t *testing.T) {
+		b := &fakeInboxBackend{}
+		_, err := recordDispatchOutcome(b, "scout", "Task may be incomplete from scout", "body", "urgent")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(b.items) != 1 || b.items[0].Status != "pending" {
+			t.Errorf("non-success should be pending, got %+v", b.items)
+		}
+		// Second identical insertion is deduped (existing behavior).
+		_, _ = recordDispatchOutcome(b, "scout", "Task may be incomplete from scout", "body v2", "urgent")
+		if len(b.items) != 1 {
+			t.Errorf("dedupe broken: got %d items", len(b.items))
+		}
+	})
+
+	t.Run("Task failed path is pending and not deduped against success", func(t *testing.T) {
+		b := &fakeInboxBackend{}
+		_, _ = recordDispatchOutcome(b, "scout", "Task completed by scout", "Result: ok.", "normal")
+		_, _ = recordDispatchOutcome(b, "scout", "Task failed for scout", "Error: boom.", "urgent")
+		if len(b.items) != 2 {
+			t.Fatalf("expected 2 items (1 resolved, 1 pending), got %d", len(b.items))
+		}
+	})
+}
+
 // TestInsertDispatchOutcomeDedup pins the dedupe behavior used by
 // DispatchToAgent: when an agent finishes a dispatched run, the
 // classifier-generated subject is deterministic ("Task may be incomplete

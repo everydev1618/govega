@@ -3854,6 +3854,12 @@ components:
         resolved_at:
           type: string
           format: date-time
+        triage_count:
+          type: integer
+          description: Number of times the orchestrator's list_inbox tool has seen this item; auto-ages at threshold.
+        last_triaged_at:
+          type: string
+          format: date-time
 
     # ── Tasks ─────────────────────────────────────────────────────────
     Task:

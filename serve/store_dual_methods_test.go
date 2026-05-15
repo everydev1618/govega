@@ -516,6 +516,126 @@ func TestDualStore_Inbox(t *testing.T) {
 	})
 }
 
+// TestDualStore_InsertResolvedInboxItem covers the auto-success path:
+// classifyDispatchOutcome's "Task completed by X" results bypass the
+// pending queue and land in Done directly so the orchestrator doesn't
+// waste tokens reviewing them every heartbeat. The row must be
+// queryable as resolved and carry a resolution string.
+func TestDualStore_InsertResolvedInboxItem(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		id, err := store.InsertResolvedInboxItem("scout", "Task completed by scout", "Result: dashboard rebuilt.", "auto-resolved: dispatched run reported success")
+		if err != nil {
+			t.Fatalf("InsertResolvedInboxItem: %v", err)
+		}
+		got, err := store.GetInboxItem(id)
+		if err != nil || got == nil {
+			t.Fatalf("GetInboxItem: %v, %+v", err, got)
+		}
+		if got.Status != "resolved" {
+			t.Errorf("status = %q, want resolved", got.Status)
+		}
+		if got.Resolution == "" {
+			t.Errorf("resolution should not be empty")
+		}
+		if got.ResolvedAt == nil {
+			t.Errorf("resolved_at should be set")
+		}
+
+		// Should not appear in a pending list query.
+		pending, _ := store.ListInboxItems("pending", 10)
+		for _, it := range pending {
+			if it.ID == id {
+				t.Errorf("resolved-on-insert item leaked into pending list")
+			}
+		}
+		// Should appear in a resolved list query.
+		resolved, _ := store.ListInboxItems("resolved", 10)
+		found := false
+		for _, it := range resolved {
+			if it.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("resolved-on-insert item missing from resolved list")
+		}
+	})
+}
+
+// TestDualStore_TriageInboxItems pins the orchestrator-token-saving
+// backstop: each list_inbox read bumps triage_count for the items
+// returned. When triage_count >= threshold, the store auto-resolves the
+// item with a synthetic resolution so the orchestrator stops re-reading
+// it every heartbeat. The method returns the set of ids that were
+// auto-aged on this call so the tool layer can log/report them.
+func TestDualStore_TriageInboxItems(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		id1, _ := store.InsertInboxItem("scout", "indecisive item", "body", "normal")
+		id2, _ := store.InsertInboxItem("scout", "another indecisive item", "body", "normal")
+
+		// First triage: counts go from 0 → 1; threshold=3 means nothing
+		// auto-ages yet.
+		aged, err := store.TriageInboxItems([]int64{id1, id2}, 3)
+		if err != nil {
+			t.Fatalf("triage #1: %v", err)
+		}
+		if len(aged) != 0 {
+			t.Errorf("first triage should not auto-age anything, got %v", aged)
+		}
+		got, _ := store.GetInboxItem(id1)
+		if got.TriageCount != 1 {
+			t.Errorf("after triage #1, count = %d, want 1", got.TriageCount)
+		}
+		if got.LastTriagedAt == nil {
+			t.Errorf("last_triaged_at not stamped")
+		}
+
+		// Second triage: 1 → 2. Still below threshold=3.
+		aged, _ = store.TriageInboxItems([]int64{id1, id2}, 3)
+		if len(aged) != 0 {
+			t.Errorf("second triage should not auto-age, got %v", aged)
+		}
+
+		// Third triage: 2 → 3 → auto-age both, since the increment puts
+		// them at the threshold. After this call the items must be
+		// status=resolved.
+		aged, _ = store.TriageInboxItems([]int64{id1, id2}, 3)
+		if len(aged) != 2 {
+			t.Errorf("third triage should auto-age 2 items, got %d (%v)", len(aged), aged)
+		}
+		for _, id := range []int64{id1, id2} {
+			it, _ := store.GetInboxItem(id)
+			if it == nil {
+				t.Errorf("item %d disappeared", id)
+				continue
+			}
+			if it.Status != "resolved" {
+				t.Errorf("item %d status = %q, want resolved", id, it.Status)
+			}
+			if !strings.Contains(it.Resolution, "auto-aged") {
+				t.Errorf("item %d resolution = %q, want 'auto-aged' marker", id, it.Resolution)
+			}
+		}
+
+		// Already-resolved items should be ignored — no count change,
+		// no double auto-age.
+		aged, _ = store.TriageInboxItems([]int64{id1, id2}, 3)
+		if len(aged) != 0 {
+			t.Errorf("triaging already-resolved should be a no-op, got %v", aged)
+		}
+
+		// Triaging an unknown id is silently ignored (no error).
+		aged, err = store.TriageInboxItems([]int64{99999}, 3)
+		if err != nil {
+			t.Errorf("unknown id should not error, got %v", err)
+		}
+		if len(aged) != 0 {
+			t.Errorf("unknown id should not auto-age anything, got %v", aged)
+		}
+	})
+}
+
 // TestDualStore_DeleteInboxItem covers the human-driven dismiss path:
 // the user wants a single inbox item gone, regardless of status. The
 // row-not-found case must surface as sql.ErrNoRows so HTTP handlers

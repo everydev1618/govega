@@ -245,6 +245,14 @@ type Store interface {
 	// InsertInboxItem creates a new inbox item.
 	InsertInboxItem(fromAgent, subject, body, priority string) (int64, error)
 
+	// InsertResolvedInboxItem creates an inbox item that is already resolved.
+	// Used by the success path of classifyDispatchOutcome so "Task
+	// completed by X" entries skip the pending queue and land directly in
+	// Done — keeps the orchestrator's working set focused on items that
+	// actually need a decision. The resolution string is required and
+	// surfaces in the UI's Done column.
+	InsertResolvedInboxItem(fromAgent, subject, body, resolution string) (int64, error)
+
 	// ListInboxItems returns inbox items filtered by status.
 	ListInboxItems(status string, limit int) ([]InboxItem, error)
 
@@ -260,6 +268,15 @@ type Store interface {
 	// DeleteInboxItem removes a single inbox item (and its replies) by id,
 	// regardless of status. Returns sql.ErrNoRows if no item matches.
 	DeleteInboxItem(id int64) error
+
+	// TriageInboxItems increments triage_count + stamps last_triaged_at
+	// for each pending id, then auto-resolves any whose post-increment
+	// count is >= threshold. Returns the ids that were auto-aged on
+	// this call so callers can log/report. Already-resolved items and
+	// unknown ids are silently ignored. The threshold guard is what
+	// stops the orchestrator burning tokens re-reading items it can't
+	// decide every heartbeat.
+	TriageInboxItems(ids []int64, threshold int) ([]int64, error)
 
 	// InsertChannelMessage inserts a message into a channel.
 	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string, activities []vega.ToolActivity) (int64, error)

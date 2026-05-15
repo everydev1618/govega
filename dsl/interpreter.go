@@ -1761,19 +1761,14 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 			resp, err = i.SendToAgent(detached, agentName, message)
 		}
 
-		// Post completion notification to inbox as pending so the
-		// orchestrator triages it. classifyDispatchOutcome distinguishes
-		// outright errors, empty responses, completed work, and
-		// trail-off-mid-thought responses that previously masqueraded as
-		// successes (see dispatch_outcome.go).
-		//
-		// insertDispatchOutcome dedupes against existing pending items
-		// with the same (from_agent, subject); re-dispatching an agent
-		// that keeps producing the same outcome no longer buries the
-		// orchestrator under identical urgent cards.
+		// File the outcome via recordDispatchOutcome, which splits the
+		// success path (resolved-on-insert, never seen by the
+		// orchestrator) from the pending path (deduped against existing
+		// (from_agent, subject) so re-dispatches don't pile up).
+		// See dsl/dispatch_outcome.go for the routing logic.
 		if i.inboxBackend != nil {
 			subject, body, priority := classifyDispatchOutcome(agentName, message, resp, err)
-			insertDispatchOutcome(i.inboxBackend, agentName, subject, body, priority)
+			recordDispatchOutcome(i.inboxBackend, agentName, subject, body, priority)
 		}
 
 		// Post a summary to the agent's team channel for user visibility.

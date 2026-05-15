@@ -202,15 +202,17 @@ func (s *SQLiteStore) Init() error {
 	CREATE INDEX IF NOT EXISTS idx_channel_messages_thread ON channel_messages(thread_id);
 
 	CREATE TABLE IF NOT EXISTS agent_inbox (
-		id          INTEGER PRIMARY KEY AUTOINCREMENT,
-		from_agent  TEXT NOT NULL,
-		subject     TEXT NOT NULL,
-		body        TEXT NOT NULL DEFAULT '',
-		priority    TEXT NOT NULL DEFAULT 'normal',
-		status      TEXT NOT NULL DEFAULT 'pending',
-		resolution  TEXT DEFAULT '',
-		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		resolved_at DATETIME
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_agent      TEXT NOT NULL,
+		subject         TEXT NOT NULL,
+		body            TEXT NOT NULL DEFAULT '',
+		priority        TEXT NOT NULL DEFAULT 'normal',
+		status          TEXT NOT NULL DEFAULT 'pending',
+		resolution      TEXT DEFAULT '',
+		created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		resolved_at     DATETIME,
+		triage_count    INTEGER NOT NULL DEFAULT 0,
+		last_triaged_at DATETIME
 	);
 	CREATE INDEX IF NOT EXISTS idx_agent_inbox_status ON agent_inbox(status, created_at);
 
@@ -344,6 +346,15 @@ func (s *SQLiteStore) Init() error {
 
 	// Migrate: add sender column to channel_messages for multi-user identity.
 	s.db.Exec(`ALTER TABLE channel_messages ADD COLUMN sender TEXT DEFAULT ''`)
+
+	// Migrate: add triage_count + last_triaged_at to agent_inbox. The
+	// triage_count is incremented every time the orchestrator's list_inbox
+	// tool returns the item — after N reads without a resolution the
+	// store auto-ages the item to status='resolved' so the orchestrator
+	// stops paying token cost on items it can't decide. See
+	// TriageInboxItems in this package.
+	s.db.Exec(`ALTER TABLE agent_inbox ADD COLUMN triage_count INTEGER NOT NULL DEFAULT 0`)
+	s.db.Exec(`ALTER TABLE agent_inbox ADD COLUMN last_triaged_at DATETIME`)
 
 	// Agent budgets — per-agent monthly cap + enforcement state
 	// (refs govega#47). period_start/period_end aren't stored — period
@@ -2163,6 +2174,21 @@ func (s *SQLiteStore) InsertInboxItem(fromAgent, subject, body, priority string)
 	return result.LastInsertId()
 }
 
+// InsertResolvedInboxItem inserts an item already marked resolved. Used
+// for auto-success dispatch outcomes that don't need orchestrator
+// triage.
+func (s *SQLiteStore) InsertResolvedInboxItem(fromAgent, subject, body, resolution string) (int64, error) {
+	result, err := s.db.Exec(
+		`INSERT INTO agent_inbox (from_agent, subject, body, priority, status, resolution, resolved_at)
+		 VALUES (?, ?, ?, 'normal', 'resolved', ?, CURRENT_TIMESTAMP)`,
+		fromAgent, subject, body, resolution,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
 // ListInboxItems returns inbox items filtered by status.
 // PendingInboxCount returns the number of pending inbox items (cheap query, no LLM needed).
 func (s *SQLiteStore) PendingInboxCount() (int, error) {
@@ -2179,11 +2205,11 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 	var query string
 	var args []any
 	if status == "all" || status == "" {
-		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at, triage_count, last_triaged_at
 			FROM agent_inbox ORDER BY created_at DESC LIMIT ?`
 		args = []any{limit}
 	} else {
-		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		query = `SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at, triage_count, last_triaged_at
 			FROM agent_inbox WHERE status = ? ORDER BY created_at DESC LIMIT ?`
 		args = []any{status, limit}
 	}
@@ -2198,9 +2224,10 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 	for rows.Next() {
 		var item InboxItem
 		var resolution sql.NullString
-		var resolvedAt sql.NullTime
+		var resolvedAt, lastTriagedAt sql.NullTime
 		if err := rows.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
-			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt,
+			&item.TriageCount, &lastTriagedAt); err != nil {
 			return nil, err
 		}
 		if resolution.Valid {
@@ -2208,6 +2235,9 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 		}
 		if resolvedAt.Valid {
 			item.ResolvedAt = &resolvedAt.Time
+		}
+		if lastTriagedAt.Valid {
+			item.LastTriagedAt = &lastTriagedAt.Time
 		}
 		items = append(items, item)
 	}
@@ -2217,14 +2247,15 @@ func (s *SQLiteStore) ListInboxItems(status string, limit int) ([]InboxItem, err
 // GetInboxItem returns a single inbox item by ID.
 func (s *SQLiteStore) GetInboxItem(id int64) (*InboxItem, error) {
 	row := s.db.QueryRow(
-		`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at, triage_count, last_triaged_at
 		FROM agent_inbox WHERE id = ?`, id)
 
 	var item InboxItem
 	var resolution sql.NullString
-	var resolvedAt sql.NullTime
+	var resolvedAt, lastTriagedAt sql.NullTime
 	if err := row.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
-		&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+		&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt,
+		&item.TriageCount, &lastTriagedAt); err != nil {
 		return nil, err
 	}
 	if resolution.Valid {
@@ -2232,6 +2263,9 @@ func (s *SQLiteStore) GetInboxItem(id int64) (*InboxItem, error) {
 	}
 	if resolvedAt.Valid {
 		item.ResolvedAt = &resolvedAt.Time
+	}
+	if lastTriagedAt.Valid {
+		item.LastTriagedAt = &lastTriagedAt.Time
 	}
 	return &item, nil
 }
@@ -2261,6 +2295,58 @@ func (s *SQLiteStore) DeleteResolvedInboxItems() (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// TriageInboxItems is the cost-control backstop for the orchestrator's
+// inbox loop. Each id that is currently pending gets its triage_count
+// incremented and last_triaged_at stamped; anything whose post-increment
+// count reaches `threshold` is auto-resolved with a synthetic
+// resolution. Returns the ids that flipped to resolved on this call.
+//
+// Implementation is intentionally a few small queries rather than one
+// CTE — sqlite + postgres both run this, and we want it to behave
+// identically. Volume per call is bounded by the orchestrator's
+// list_inbox page (≤ 50), so the cost is negligible.
+func (s *SQLiteStore) TriageInboxItems(ids []int64, threshold int) ([]int64, error) {
+	if len(ids) == 0 || threshold <= 0 {
+		return nil, nil
+	}
+	aged := make([]int64, 0)
+	for _, id := range ids {
+		// Only touch pending rows. UPDATE returns rows-affected so we
+		// know whether to read back.
+		res, err := s.db.Exec(
+			`UPDATE agent_inbox
+			   SET triage_count = triage_count + 1, last_triaged_at = CURRENT_TIMESTAMP
+			 WHERE id = ? AND status = 'pending'`, id)
+		if err != nil {
+			return aged, err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			continue
+		}
+		var count int
+		if err := s.db.QueryRow(`SELECT triage_count FROM agent_inbox WHERE id = ?`, id).Scan(&count); err != nil {
+			return aged, err
+		}
+		if count >= threshold {
+			resolution := fmt.Sprintf(
+				"auto-aged: triaged %d times without an orchestrator decision — see channel posts for context",
+				count,
+			)
+			if _, err := s.db.Exec(
+				`UPDATE agent_inbox
+				   SET status = 'resolved', resolution = ?, resolved_at = CURRENT_TIMESTAMP
+				 WHERE id = ? AND status = 'pending'`,
+				resolution, id,
+			); err != nil {
+				return aged, err
+			}
+			aged = append(aged, id)
+		}
+	}
+	return aged, nil
 }
 
 // DeleteInboxItem removes a single inbox item (and any replies) by id.

@@ -12,25 +12,36 @@ import (
 
 // InboxItem represents a message posted to Iris's inbox by another agent.
 type InboxItem struct {
-	ID         int64     `json:"id"`
-	FromAgent  string    `json:"from_agent"`
-	Subject    string    `json:"subject"`
-	Body       string    `json:"body,omitempty"`
-	Priority   string    `json:"priority"`
-	Status     string    `json:"status"`
-	Resolution string    `json:"resolution,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	ID            int64      `json:"id"`
+	FromAgent     string     `json:"from_agent"`
+	Subject       string     `json:"subject"`
+	Body          string     `json:"body,omitempty"`
+	Priority      string     `json:"priority"`
+	Status        string     `json:"status"`
+	Resolution    string     `json:"resolution,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
+	TriageCount   int        `json:"triage_count"`
+	LastTriagedAt *time.Time `json:"last_triaged_at,omitempty"`
 }
 
 // InboxBackend is the interface that the store implements for inbox operations.
 // Defined here so dsl/ does not import serve/.
 type InboxBackend interface {
 	InsertInboxItem(fromAgent, subject, body, priority string) (int64, error)
+	InsertResolvedInboxItem(fromAgent, subject, body, resolution string) (int64, error)
 	ListInboxItems(status string, limit int) ([]InboxItem, error)
 	ResolveInboxItem(id int64, resolution string) error
 	DeleteInboxItem(id int64) error
+	TriageInboxItems(ids []int64, threshold int) ([]int64, error)
 }
+
+// DispatchTriageThreshold is the auto-age cutoff used by list_inbox.
+// After this many reads without an orchestrator-driven resolution, the
+// item gets a synthetic "auto-aged" resolution and disappears from the
+// pending queue. Tuned conservatively (3) so a temporary stall during
+// the orchestrator's reasoning doesn't drop a real action item.
+const DispatchTriageThreshold = 3
 
 // RegisterInboxTools registers the inbox tools on the interpreter.
 //
@@ -104,7 +115,7 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 	})
 
 	t.Register("list_inbox", tools.ToolDef{
-		Description: "List inbox items. Use this to check for pending questions from agents.",
+		Description: "List inbox items. Use this to check for pending questions from agents. The inbox is your decision queue: every item you read MUST exit your turn either resolved (via resolve_inbox) or explicitly deferred. After DispatchTriageThreshold reads without a resolution, items auto-age out so they stop costing tokens.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
 			status, _ := params["status"].(string)
 			if status == "" {
@@ -119,11 +130,41 @@ func RegisterInboxTools(interp *Interpreter, backend InboxBackend) {
 			if err != nil {
 				return "", fmt.Errorf("list inbox: %w", err)
 			}
+
+			// Triage backstop: bump triage_count + auto-age any item
+			// that hits the threshold. Only applies when the caller is
+			// reading the pending queue — listing resolved or all is
+			// passive inspection.
+			var agedNote string
+			if status == "pending" && len(items) > 0 {
+				ids := make([]int64, 0, len(items))
+				for _, it := range items {
+					ids = append(ids, it.ID)
+				}
+				aged, terr := backend.TriageInboxItems(ids, DispatchTriageThreshold)
+				if terr == nil && len(aged) > 0 {
+					// Filter aged items out of the returned list — they
+					// flipped to resolved on this call.
+					agedSet := make(map[int64]struct{}, len(aged))
+					for _, id := range aged {
+						agedSet[id] = struct{}{}
+					}
+					kept := items[:0]
+					for _, it := range items {
+						if _, ok := agedSet[it.ID]; !ok {
+							kept = append(kept, it)
+						}
+					}
+					items = kept
+					agedNote = fmt.Sprintf("\n\nNote: %d item(s) auto-aged out (id(s): %v) — they were read %d times without resolution and have been resolved with a synthetic note.", len(aged), aged, DispatchTriageThreshold)
+				}
+			}
+
 			if len(items) == 0 {
-				return "Inbox is empty. No pending items.", nil
+				return "Inbox is empty. No pending items." + agedNote, nil
 			}
 			out, _ := json.MarshalIndent(items, "", "  ")
-			return string(out), nil
+			return string(out) + agedNote, nil
 		}),
 		Params: map[string]tools.ParamDef{
 			"status": {

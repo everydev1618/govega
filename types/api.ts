@@ -2239,6 +2239,10 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             resolved_at?: string;
+            /** @description Number of times the orchestrator's list_inbox tool has seen this item; auto-ages at threshold. */
+            triage_count?: number;
+            /** Format: date-time */
+            last_triaged_at?: string;
         };
         Task: {
             id: string;

@@ -142,6 +142,33 @@ func insertDispatchOutcome(backend InboxBackend, fromAgent, subject, body, prior
 	return id, true, nil
 }
 
+// recordDispatchOutcome is the routing layer DispatchToAgent uses to
+// file an auto-classified outcome. It splits two cases:
+//
+//   - Success ("Task completed by X"): insert directly as resolved so the
+//     orchestrator never reads it. The Result body + the channel post
+//     are the user-facing artifacts; making the orchestrator scan
+//     "completed" entries every heartbeat burned thousands of input
+//     tokens for no decision value.
+//   - Everything else (may-be-incomplete / failed / empty): insert as
+//     pending with dedupe so identical re-dispatches collapse.
+//
+// Returns the inbox id (existing or new); callers don't currently need
+// the "inserted vs deduped" signal for the success path, hence the
+// simpler return shape.
+func recordDispatchOutcome(backend InboxBackend, fromAgent, subject, body, priority string) (int64, error) {
+	if strings.HasPrefix(subject, "Task completed by ") {
+		return backend.InsertResolvedInboxItem(
+			fromAgent,
+			subject,
+			body,
+			"auto-resolved: classifier flagged the dispatch as successful — see channel post for context",
+		)
+	}
+	id, _, err := insertDispatchOutcome(backend, fromAgent, subject, body, priority)
+	return id, err
+}
+
 // responseTail returns the last `max` characters of s, or all of s if
 // shorter. Used to focus the classifier on the agent's closing summary
 // rather than the full tool-call narrative.

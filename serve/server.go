@@ -1737,6 +1737,10 @@ func (a *inboxAdapter) InsertInboxItem(fromAgent, subject, body, priority string
 	return a.store.InsertInboxItem(fromAgent, subject, body, priority)
 }
 
+func (a *inboxAdapter) InsertResolvedInboxItem(fromAgent, subject, body, resolution string) (int64, error) {
+	return a.store.InsertResolvedInboxItem(fromAgent, subject, body, resolution)
+}
+
 func (a *inboxAdapter) ListInboxItems(status string, limit int) ([]dsl.InboxItem, error) {
 	items, err := a.store.ListInboxItems(status, limit)
 	if err != nil {
@@ -1745,15 +1749,17 @@ func (a *inboxAdapter) ListInboxItems(status string, limit int) ([]dsl.InboxItem
 	result := make([]dsl.InboxItem, len(items))
 	for i, item := range items {
 		result[i] = dsl.InboxItem{
-			ID:         item.ID,
-			FromAgent:  item.FromAgent,
-			Subject:    item.Subject,
-			Body:       item.Body,
-			Priority:   item.Priority,
-			Status:     item.Status,
-			Resolution: item.Resolution,
-			CreatedAt:  item.CreatedAt,
-			ResolvedAt: item.ResolvedAt,
+			ID:            item.ID,
+			FromAgent:     item.FromAgent,
+			Subject:       item.Subject,
+			Body:          item.Body,
+			Priority:      item.Priority,
+			Status:        item.Status,
+			Resolution:    item.Resolution,
+			CreatedAt:     item.CreatedAt,
+			ResolvedAt:    item.ResolvedAt,
+			TriageCount:   item.TriageCount,
+			LastTriagedAt: item.LastTriagedAt,
 		}
 	}
 	return result, nil
@@ -1765,6 +1771,10 @@ func (a *inboxAdapter) ResolveInboxItem(id int64, resolution string) error {
 
 func (a *inboxAdapter) DeleteInboxItem(id int64) error {
 	return a.store.DeleteInboxItem(id)
+}
+
+func (a *inboxAdapter) TriageInboxItems(ids []int64, threshold int) ([]int64, error) {
+	return a.store.TriageInboxItems(ids, threshold)
 }
 
 // taskAdapter bridges serve.Store to dsl.TaskBackend by translating

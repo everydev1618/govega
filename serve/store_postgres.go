@@ -1607,11 +1607,11 @@ func (s *PostgresStore) ListInboxItems(status string, limit int) ([]InboxItem, e
 	var err error
 	if status == "all" || status == "" {
 		rows, err = s.db.Query(
-			`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+			`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at, triage_count, last_triaged_at
 			 FROM agent_inbox ORDER BY created_at DESC LIMIT $1`, limit)
 	} else {
 		rows, err = s.db.Query(
-			`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+			`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at, triage_count, last_triaged_at
 			 FROM agent_inbox WHERE status = $1 ORDER BY created_at DESC LIMIT $2`, status, limit)
 	}
 	if err != nil {
@@ -1622,9 +1622,10 @@ func (s *PostgresStore) ListInboxItems(status string, limit int) ([]InboxItem, e
 	for rows.Next() {
 		var item InboxItem
 		var resolution sql.NullString
-		var resolvedAt sql.NullTime
+		var resolvedAt, lastTriagedAt sql.NullTime
 		if err := rows.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
-			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+			&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt,
+			&item.TriageCount, &lastTriagedAt); err != nil {
 			return nil, err
 		}
 		if resolution.Valid {
@@ -1633,6 +1634,9 @@ func (s *PostgresStore) ListInboxItems(status string, limit int) ([]InboxItem, e
 		if resolvedAt.Valid {
 			item.ResolvedAt = &resolvedAt.Time
 		}
+		if lastTriagedAt.Valid {
+			item.LastTriagedAt = &lastTriagedAt.Time
+		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -1640,13 +1644,14 @@ func (s *PostgresStore) ListInboxItems(status string, limit int) ([]InboxItem, e
 
 func (s *PostgresStore) GetInboxItem(id int64) (*InboxItem, error) {
 	row := s.db.QueryRow(
-		`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at
+		`SELECT id, from_agent, subject, body, priority, status, resolution, created_at, resolved_at, triage_count, last_triaged_at
 		 FROM agent_inbox WHERE id = $1`, id)
 	var item InboxItem
 	var resolution sql.NullString
-	var resolvedAt sql.NullTime
+	var resolvedAt, lastTriagedAt sql.NullTime
 	if err := row.Scan(&item.ID, &item.FromAgent, &item.Subject, &item.Body,
-		&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt); err != nil {
+		&item.Priority, &item.Status, &resolution, &item.CreatedAt, &resolvedAt,
+		&item.TriageCount, &lastTriagedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -1658,7 +1663,23 @@ func (s *PostgresStore) GetInboxItem(id int64) (*InboxItem, error) {
 	if resolvedAt.Valid {
 		item.ResolvedAt = &resolvedAt.Time
 	}
+	if lastTriagedAt.Valid {
+		item.LastTriagedAt = &lastTriagedAt.Time
+	}
 	return &item, nil
+}
+
+// InsertResolvedInboxItem inserts an item already marked resolved.
+// Used for auto-success dispatch outcomes that don't need orchestrator
+// triage. Mirrors the sqlite implementation.
+func (s *PostgresStore) InsertResolvedInboxItem(fromAgent, subject, body, resolution string) (int64, error) {
+	var id int64
+	err := s.db.QueryRow(
+		`INSERT INTO agent_inbox (from_agent, subject, body, priority, status, resolution, resolved_at)
+		 VALUES ($1, $2, $3, 'normal', 'resolved', $4, CURRENT_TIMESTAMP) RETURNING id`,
+		fromAgent, subject, body, resolution,
+	).Scan(&id)
+	return id, err
 }
 
 func (s *PostgresStore) ResolveInboxItem(id int64, resolution string) error {
@@ -1683,6 +1704,48 @@ func (s *PostgresStore) DeleteResolvedInboxItems() (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// TriageInboxItems mirrors the sqlite implementation: increment-on-read
+// for pending items, auto-resolve on threshold. See store_sqlite.go for
+// the rationale.
+func (s *PostgresStore) TriageInboxItems(ids []int64, threshold int) ([]int64, error) {
+	if len(ids) == 0 || threshold <= 0 {
+		return nil, nil
+	}
+	aged := make([]int64, 0)
+	for _, id := range ids {
+		var count int
+		// Increment + read back in one round-trip using RETURNING.
+		err := s.db.QueryRow(
+			`UPDATE agent_inbox
+			    SET triage_count = triage_count + 1, last_triaged_at = CURRENT_TIMESTAMP
+			  WHERE id = $1 AND status = 'pending'
+			  RETURNING triage_count`, id,
+		).Scan(&count)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return aged, err
+		}
+		if count >= threshold {
+			resolution := fmt.Sprintf(
+				"auto-aged: triaged %d times without an orchestrator decision — see channel posts for context",
+				count,
+			)
+			if _, err := s.db.Exec(
+				`UPDATE agent_inbox
+				    SET status = 'resolved', resolution = $1, resolved_at = CURRENT_TIMESTAMP
+				  WHERE id = $2 AND status = 'pending'`,
+				resolution, id,
+			); err != nil {
+				return aged, err
+			}
+			aged = append(aged, id)
+		}
+	}
+	return aged, nil
 }
 
 // DeleteInboxItem removes a single inbox item by id. Cascading FK on

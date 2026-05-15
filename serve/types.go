@@ -363,15 +363,17 @@ type ChannelEvent struct {
 
 // InboxItem is a message posted to Iris's inbox by an agent.
 type InboxItem struct {
-	ID         int64      `json:"id"`
-	FromAgent  string     `json:"from_agent"`
-	Subject    string     `json:"subject"`
-	Body       string     `json:"body,omitempty"`
-	Priority   string     `json:"priority"`
-	Status     string     `json:"status"`
-	Resolution string     `json:"resolution,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	ID            int64      `json:"id"`
+	FromAgent     string     `json:"from_agent"`
+	Subject       string     `json:"subject"`
+	Body          string     `json:"body,omitempty"`
+	Priority      string     `json:"priority"`
+	Status        string     `json:"status"`
+	Resolution    string     `json:"resolution,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
+	TriageCount   int        `json:"triage_count"`
+	LastTriagedAt *time.Time `json:"last_triaged_at,omitempty"`
 }
 
 // ErrorResponse is returned on API errors.
