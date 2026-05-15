@@ -42,10 +42,10 @@ type activeStream struct {
 	startedAt time.Time
 
 	mu          sync.Mutex
-	history     []vega.ChatEvent    // all events received, for replay
-	subscribers []*streamSubscriber // active SSE subscribers
-	response    string              // set after done
-	err         error               // set after done
+	history     []vega.ChatEvent       // all events received, for replay
+	subscribers []*streamSubscriber    // active SSE subscribers
+	response    string                 // set after done
+	err         error                  // set after done
 	metrics     *vega.ChatEventMetrics // set after done
 }
 
@@ -120,8 +120,8 @@ const (
 
 // Config holds server configuration.
 type Config struct {
-	Addr          string
-	DBPath        string
+	Addr   string
+	DBPath string
 	// DBKind picks the persistence backend. Defaults to SQLite when empty.
 	DBKind DBKind
 	// DBURL is the Postgres connection URL when DBKind == "postgres"
@@ -134,7 +134,7 @@ type Config struct {
 	// relational DB — preserving the zero-config default. Set this on
 	// hosted Postgres deployments so brain content stays out of the
 	// DB and on the filesystem (or, future, an S3-compatible store).
-	BlobDir string
+	BlobDir       string
 	TelegramToken string       // TELEGRAM_BOT_TOKEN; leave empty to disable
 	TelegramAgent string       // TELEGRAM_AGENT; defaults to first agent if empty
 	Company       *dsl.Company // optional company identity (env var overrides)
@@ -197,9 +197,9 @@ type ExtraSystemProvider func(ctx context.Context, agentName, baseAgent, userID 
 
 // Server is the HTTP server for the Vega dashboard and REST API.
 type Server struct {
-	interp    *dsl.Interpreter
-	broker    *EventBroker
-	store     Store
+	interp *dsl.Interpreter
+	broker *EventBroker
+	store  Store
 	// Peering subsystem (orchestrator-to-orchestrator federation over AIRE).
 	// Nil when VEGA_PEERING_ADDR is unset. See peering_boot.go.
 	peeringNode   *peering.Node
@@ -1601,16 +1601,28 @@ func (s *Server) injectHera() {
 
 // injectIris adds the orchestrator (default: Iris) to the interpreter.
 func (s *Server) injectIris() {
-	extras := []string{"remember", "recall", "forget",
-		"list_inbox", "resolve_inbox",
-		"list_unassigned_tasks", "list_my_tasks", "assign_task",
-		"create_task", "update_task_status", "comment_on_task"}
-	if s.peeringEnabled() {
-		extras = append(extras, peeringToolNames...)
-	}
-	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, extras...); err != nil {
+	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, irisExtras(s.peeringEnabled())...); err != nil {
 		slog.Warn("failed to inject Iris agent", "error", err)
 	}
+}
+
+// irisExtras returns the extra tool names piped into Iris on injection.
+// Cutover (govega#71 follow-up): wiki memory tools replace the legacy
+// remember/recall/forget surface so Iris's writes land in memory_pages
+// (visible in /memory) instead of memory_items (invisible). Peering tools
+// gated on the federation toggle.
+func irisExtras(peeringEnabled bool) []string {
+	extras := []string{
+		"memory_read", "memory_list", "memory_search",
+		"memory_write", "memory_append", "memory_edit",
+		"list_inbox", "resolve_inbox",
+		"list_unassigned_tasks", "list_my_tasks", "assign_task",
+		"create_task", "update_task_status", "comment_on_task",
+	}
+	if peeringEnabled {
+		extras = append(extras, peeringToolNames...)
+	}
+	return extras
 }
 
 // buildChannelCallbacks returns the SSE-publish and reactive-fanout
