@@ -702,6 +702,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents/{name}/tools/{tool}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Enable or disable one tool for an agent
+         * @description Single-tool granularity so the FE can flip one toggle without a
+         *     read-modify-write of the full tools array racing against a
+         *     sibling toggle. Idempotent — toggling to the current state
+         *     returns 200 with the unchanged tool list.
+         */
+        patch: operations["toggleAgentTool"];
+        trace?: never;
+    };
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Searchable activity log
+         * @description Queryable view over the persisted `events` table. The /events
+         *     SSE stream is unfiltered and live-only; this endpoint is for
+         *     retracing history when something goes wrong — full-text search
+         *     across event type, agent name, data, result, error; time range
+         *     + per-agent + per-type filters; pagination; CSV export for
+         *     audit (`format=csv`).
+         */
+        get: operations["searchActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{name}/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the agent's budget cap + current-period spend
+         * @description Composes the persisted cap, threshold, and enabled state with a
+         *     fresh observed_spend rollup over the current calendar-month UTC
+         *     period. Returns a default-shaped record (no cap, threshold 0.8,
+         *     disabled) for agents without a row.
+         */
+        get: operations["getAgentBudget"];
+        /**
+         * Set / clear the agent's budget cap
+         * @description Partial — omitted fields stay. Send `budget_cap: 0` to clear
+         *     the cap (FE convention; null pointer can't be distinguished
+         *     from omission in JSON). `enabled` is the master switch — when
+         *     false, the hard cutoff doesn't fire even if the cap is set.
+         *     `soft_alert_threshold` must be between 0 and 1 (fraction of
+         *     cap).
+         *
+         *     When `observed_spend >= budget_cap AND enabled AND cap != null`,
+         *     the chat handlers refuse subsequent turns with a canned
+         *     "spending limit reached" assistant message. In-flight turns
+         *     aren't interrupted.
+         */
+        put: operations["updateAgentBudget"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{name}/spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Observed spend rollup for one agent
+         * @description Server-aggregated cost_usd across the latest snapshot of every
+         *     process for the agent. Lets the FE render the observed_spend
+         *     column without fanning out /api/v1/processes per agent
+         *     (O(processes) per pageview).
+         *
+         *     `period=current` (default) is the current calendar month UTC.
+         *     `period=all` returns lifetime spend.
+         */
+        get: operations["getAgentSpend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{name}/brain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List brain files attached to an agent */
+        get: operations["listAgentBrain"];
+        put?: never;
+        /**
+         * Upload a brain file to an agent
+         * @description Multipart upload (field name `file`). 10 MB per-file limit, 100 MB
+         *     per-agent total. Mime type is taken from the multipart header
+         *     when present, otherwise sniffed from the bytes.
+         */
+        post: operations["uploadAgentBrain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{name}/brain/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a brain file */
+        get: operations["getAgentBrainFile"];
+        put?: never;
+        post?: never;
+        /** Delete a brain file */
+        delete: operations["deleteAgentBrainFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{agent}/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List routines for one agent */
+        get: operations["listAgentRoutines"];
+        put?: never;
+        /** Create a routine for an agent */
+        post: operations["createAgentRoutine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{agent}/schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one routine */
+        get: operations["getAgentRoutine"];
+        put?: never;
+        post?: never;
+        /** Delete a routine */
+        delete: operations["deleteAgentRoutine"];
+        options?: never;
+        head?: never;
+        /** Partially update a routine */
+        patch: operations["updateAgentRoutine"];
+        trace?: never;
+    };
     "/api/v1/inbox": {
         parameters: {
             query?: never;
@@ -932,6 +1121,21 @@ export interface paths {
          * @description Server-Sent Events stream for real-time orchestration updates.
          *     Events include process lifecycle, agent status, workflow completions, etc.
          *     Sends a heartbeat comment every 30 seconds.
+         *
+         *     Notable event types:
+         *       * `agent.created` — agent persisted and ready (terminal).
+         *       * `agent.deleted` — agent removed.
+         *       * `agent.provisioning` — fired during create_agent so FEs can
+         *         render placeholder cards (refs govega#56). `data.phase` is
+         *         one of:
+         *           - `started` — earliest signal, only `agent` is known.
+         *           - `field_set` — `data` carries the full agent snapshot
+         *             (display_name, title, description, avatar, icon,
+         *             avatar_gradient, model, team).
+         *           - `ready` — process spawned; persistence may not have
+         *             landed yet (use `agent.created` for terminal state).
+         *           - `failed` — provisioning aborted; `data.error` carries
+         *             the message. FEs should clear the placeholder.
          */
         get: operations["sseEvents"];
         put?: never;
@@ -952,6 +1156,42 @@ export interface paths {
         /** Get orchestrator/builder identities + product name */
         get: operations["getIdentity"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get unified tenant config (orchestrator identity + branding)
+         * @description Single shape for the customer's runtime-editable identity. Reads
+         *     the live orchestrator slug/display/title (already overridden at
+         *     boot from the settings table per govega#58) plus branding fields
+         *     (accent_color, logo_url) directly from settings. Refs govega#32
+         *     item B.
+         */
+        get: operations["getTenantConfig"];
+        /**
+         * Update tenant config (partial)
+         * @description Omitted fields stay. Orchestrator identity changes flow through
+         *     the same rename machinery as
+         *     PUT /api/v1/agents/{name} on the orchestrator slug — settings
+         *     written, cfg mutated in-place, Iris re-injected under the new
+         *     identity. Branding changes just persist as settings. Either
+         *     side fires a `tenant.config_changed` SSE event so the SPA
+         *     refetches identity. Refs govega#32 item B.
+         *
+         *     Will become admin-only when auth lands (#32 item A); open for now.
+         */
+        put: operations["updateTenantConfig"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1549,6 +1789,14 @@ export interface components {
             existing_settings?: {
                 [key: string]: string;
             };
+            /** @description Lucide icon name for the FE integrations grid (refs govega#44). */
+            icon?: string;
+            /**
+             * @description Integration grouping. Taxonomy: communication, dev_tools, crm,
+             *     project_mgmt, cloud, data, productivity, web. Empty for
+             *     uncategorized.
+             */
+            category?: string;
         };
         ConnectMCPRequest: {
             name: string;
@@ -1806,6 +2054,144 @@ export interface components {
             /** Format: date-time */
             created_at?: string;
         };
+        ActivityLogResponse: {
+            events: components["schemas"]["StoreEvent"][];
+            /** @description Match count across the unpaginated filter — for FE pagination UI. */
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        StoreEvent: {
+            /** Format: int64 */
+            id: number;
+            type: string;
+            process_id?: string;
+            agent_name?: string;
+            /** Format: date-time */
+            timestamp: string;
+            data?: string;
+            result?: string;
+            error?: string;
+        };
+        AgentBudgetResponse: {
+            agent: string;
+            /**
+             * Format: double
+             * @description USD cap for the current period. null means no cap configured.
+             */
+            budget_cap?: number | null;
+            /**
+             * Format: double
+             * @description Fraction of cap (0..1) that fires the soft-alert band on the FE.
+             */
+            soft_alert_threshold: number;
+            /** @description Master switch — when false, the hard cutoff doesn't fire even if a cap is set. */
+            enabled: boolean;
+            /**
+             * Format: double
+             * @description Sum of cost_usd across the latest snapshot of every process for the agent in the current period.
+             */
+            observed_spend: number;
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+        };
+        /**
+         * @description Partial — omitted fields stay. Send `budget_cap: 0` to clear
+         *     the cap. `soft_alert_threshold` must be in [0, 1].
+         */
+        UpdateAgentBudgetRequest: {
+            /** Format: double */
+            budget_cap?: number;
+            /** Format: double */
+            soft_alert_threshold?: number;
+            enabled?: boolean;
+        };
+        AgentSpend: {
+            agent: string;
+            /**
+             * Format: double
+             * @description Sum of cost_usd across the latest snapshot of every process for the agent in the period.
+             */
+            observed_spend: number;
+            /** @enum {string} */
+            period: "current" | "all";
+            /**
+             * Format: date-time
+             * @description Zero value when period=all.
+             */
+            period_start: string;
+            /**
+             * Format: date-time
+             * @description Zero value when period=all.
+             */
+            period_end: string;
+        };
+        BrainFile: {
+            /** @description Server-generated stable id (`brain_<hex>`). */
+            id: string;
+            /** @description Agent slug this file is attached to. */
+            agent_id: string;
+            /** @description Original filename (path components stripped). */
+            name: string;
+            /** @description From the upload header, or sniffed from content. */
+            mime_type?: string;
+            /** Format: int64 */
+            size_bytes: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        RoutineSchedule: {
+            /** @enum {string} */
+            frequency: "daily" | "weekdays" | "weekly" | "biweekly" | "monthly" | "custom";
+            /** @description HH:mm (24h) */
+            time?: string;
+            /** @description IANA timezone, e.g. America/New_York */
+            timezone?: string;
+            /** @description 0=Sun … 6=Sat (weekly/biweekly) */
+            days_of_week?: number[];
+            day_of_month?: number | null;
+            /**
+             * @description When `frequency=custom`, the raw cron expression supplied by
+             *     the caller. Always returned on read as the derived expression
+             *     for debugging.
+             */
+            cron?: string;
+        };
+        AgentRoutine: {
+            /** @description Server-generated stable id. For legacy DSL-created jobs falls back to `name`. */
+            id: string;
+            agent: string;
+            title: string;
+            /** @description Message sent to the agent on each fire. */
+            instructions: string;
+            schedule: components["schemas"]["RoutineSchedule"];
+            /** @description Derived cron expression (CRON_TZ-prefixed for non-custom frequencies). */
+            cron: string;
+            enabled: boolean;
+            /** Format: date-time */
+            last_run_at?: string | null;
+            /** Format: date-time */
+            next_run_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateRoutineRequest: {
+            title: string;
+            instructions: string;
+            schedule: components["schemas"]["RoutineSchedule"];
+            /** @description Defaults to true. */
+            enabled?: boolean;
+        };
+        UpdateRoutineRequest: {
+            title?: string;
+            instructions?: string;
+            schedule?: components["schemas"]["RoutineSchedule"];
+            enabled?: boolean;
+        };
         InboxItem: {
             /** Format: int64 */
             id?: number;
@@ -1932,6 +2318,30 @@ export interface components {
             orchestrator: components["schemas"]["AgentIdentity"];
             builder: components["schemas"]["AgentIdentity"];
             product_name: string;
+        };
+        TenantConfigResponse: {
+            /** @description Lowercase slug used for routing. */
+            orchestrator_name: string;
+            /** @description Capitalized display name shown in the UI. */
+            orchestrator_display: string;
+            /** @description Role label (e.g. "Orchestrator", "Chief of Staff"). */
+            orchestrator_title: string;
+            /** @description Product / universe name (e.g. "Apex", "Vega"). */
+            product_name?: string;
+            /** @description Hex color (e.g. "#3B82F6") for the FE accent. */
+            accent_color?: string;
+            logo_url?: string;
+        };
+        /**
+         * @description Partial — omitted fields stay. Pointer-typed in Go; in JSON,
+         *     omitting a key leaves it unchanged.
+         */
+        UpdateTenantConfigRequest: {
+            orchestrator_name?: string;
+            orchestrator_display?: string;
+            orchestrator_title?: string;
+            accent_color?: string;
+            logo_url?: string;
         };
         ConfigAgentInfo: {
             name: string;
@@ -3441,6 +3851,388 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    toggleAgentTool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                tool: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated tool list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        name: string;
+                        tools: string[];
+                    };
+                };
+            };
+            /** @description Builder meta-agent — tools cannot be mutated. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    searchActivity: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring against type/agent/data/result/error. */
+                q?: string;
+                /** @description Exact event-type filter (e.g. `process.failed`). */
+                type?: string;
+                /** @description Exact agent-name filter. */
+                agent?: string;
+                /** @description RFC 3339 inclusive lower bound on timestamp. */
+                from?: string;
+                /** @description RFC 3339 exclusive upper bound on timestamp. */
+                to?: string;
+                limit?: number;
+                offset?: number;
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of matching events (JSON) or CSV download. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityLogResponse"];
+                    "text/csv": string;
+                };
+            };
+        };
+    };
+    getAgentBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Budget state + observed spend */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBudgetResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAgentBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated budget */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBudgetResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAgentSpend: {
+        parameters: {
+            query?: {
+                period?: "current" | "all";
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Spend rollup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSpend"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAgentBrain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of BrainFile metadata (no content) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainFile"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadAgentBrain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainFile"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description File or per-agent total exceeds the storage cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAgentBrainFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File contents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAgentBrainFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAgentRoutines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of routines scoped to the agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRoutine"][];
+                };
+            };
+        };
+    };
+    createAgentRoutine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoutineRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRoutine"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getAgentRoutine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Routine */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRoutine"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAgentRoutine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAgentRoutine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRoutineRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRoutine"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     listInbox: {
         parameters: {
             query?: {
@@ -3874,6 +4666,57 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IdentityResponse"];
                 };
+            };
+        };
+    };
+    getTenantConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant config */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantConfigResponse"];
+                };
+            };
+        };
+    };
+    updateTenantConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTenantConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated tenant config */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantConfigResponse"];
+                };
+            };
+            /** @description Orchestrator slug conflicts with builder. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
