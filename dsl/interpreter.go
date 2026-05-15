@@ -430,12 +430,20 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		//     the sandbox surface shipped silently fall back to
 		//     `start_service` + `python -m http.server`, handing the user a
 		//     localhost URL instead of a public *.fly.dev URL.
-		sandbox := make(map[string]bool, 4)
+		//   - wiki memory tools (memory_read/list/search/write/append/edit).
+		//     Every agent shares the user wiki — gating these behind a
+		//     per-agent allow-list left custom personas read-only-by-prompt:
+		//     they'd see the injected MEMORY.md but couldn't drill into
+		//     linked pages or write back. Memory is first-class for all.
+		always := make(map[string]bool, 16)
 		for _, n := range tools.SandboxToolNames() {
-			sandbox[n] = true
+			always[n] = true
+		}
+		for _, n := range tools.WikiMemoryToolNames() {
+			always[n] = true
 		}
 		for _, schema := range i.tools.Schema() {
-			if strings.Contains(schema.Name, "__") || sandbox[schema.Name] {
+			if strings.Contains(schema.Name, "__") || always[schema.Name] {
 				toolNames = append(toolNames, schema.Name)
 			}
 		}
