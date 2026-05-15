@@ -168,6 +168,15 @@ export function MemoryGraphView() {
         }
       }
     }
+    w.onerror = (event) => {
+      // Without this the previous bug was invisible: a d3 umbrella
+      // import touched `document` in the worker and killed it silently.
+      // Surface worker errors in the toolbar instead.
+      const msg = event.message || 'worker error'
+      // eslint-disable-next-line no-console
+      console.error('[MemoryGraph worker]', event)
+      setError(msg)
+    }
     return () => {
       w.postMessage({ type: 'stop' })
       w.terminate()

@@ -10,6 +10,11 @@
 //   worker → main: { type: 'tick', positions: [{id,x,y}], alpha }
 //   worker → main: { type: 'end' }
 
+// Import only from d3-force — pulling from the 'd3' umbrella drags in
+// d3-selection / d3-zoom, which touch `document` and `window` at module
+// init time. That throws inside a Web Worker (no DOM globals), causing
+// silent worker death and an empty canvas. Direct submodule import has
+// no DOM dependencies.
 import {
   forceSimulation,
   forceManyBody,
@@ -19,7 +24,7 @@ import {
   type Simulation,
   type SimulationNodeDatum,
   type SimulationLinkDatum,
-} from 'd3'
+} from 'd3-force'
 
 interface SimNode extends SimulationNodeDatum {
   id: string
