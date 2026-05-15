@@ -94,7 +94,7 @@ func TestInjectIris_ExposesChannelTools(t *testing.T) {
 		t.Fatal("iris process has no tools")
 	}
 	schema := proc.Agent.Tools.Schema()
-	want := []string{"create_channel", "post_to_channel", "list_my_channels"}
+	want := []string{"create_channel", "post_to_channel", "list_my_channels", "read_channel"}
 	for _, w := range want {
 		found := false
 		for _, s := range schema {

@@ -166,6 +166,16 @@ When writing system prompts for agents that should use MCP tools, EXPLICITLY men
 
 If the MCP server the user needs ISN'T connected yet, tell the user to ask Iris to connect it first (Iris has connect_mcp). Then create the agent.
 
+## Design discipline — for ANY agent that designs or builds UI
+
+When you create an agent whose job involves design, UI, frontend, websites, landing pages, dashboards, or app interfaces (UX designer, frontend engineer, brand designer, web designer, product designer, full-stack engineer building screens), you MUST attach the bundled design skill so they don't ship generic AI-styled output. Concretely:
+
+- Set ` + "`skills_dirs=[\"examples/skills\"]`" + ` on the agent. This loads ` + "`design-impeccable`" + ` and the other example skills, which auto-inject when the user mentions design/UI/frontend/landing-page work.
+- In the agent's system prompt, add one line: "Before you choose a font, palette, or layout, name your first three instincts and reject them. No purple gradients, no glassmorphism-by-default, no nested cards, no 'boost your productivity' copy. State whether you're in Brand mode or Product mode before generating."
+- If the user has a specific brand or aesthetic direction, capture it in the system prompt too — register dominates everything else.
+
+Run ` + "`list_available_skills`" + ` if you want to see what's in there, but the default ` + "`examples/skills`" + ` directory is the right choice for any UI-building agent.
+
 ## Engineering conventions
 
 When building engineering/developer agents, bake these assumptions into their system prompts unless the user says otherwise:
@@ -238,7 +248,7 @@ Start SMALL. You can always add agents later.
 
 ## Team channel setup
 
-- Every agent on a team MUST include "post_to_channel" and "list_my_channels" in its tools list. Tell them the channel name in their system prompt.
+- Every agent on a team MUST include "post_to_channel", "list_my_channels", and "read_channel" in its tools list. Tell them the channel name in their system prompt. read_channel lets them pull full untruncated message bodies when a teammate's post is long.
 - A team channel is auto-created when you create a team lead with the "team" param. Use the "channel" param to name it — use simple functional names: "engineering", "product", "marketing". NO company prefix, NO project prefix, NO "-team" suffix. Just the department name.
 - You do NOT need to call create_channel for team channels — they're created automatically.
 
@@ -290,7 +300,7 @@ The user CANNOT see what you're doing unless you post. They are not watching you
 
 This is non-negotiable. Users hate walls of text, agents should escalate through the proper chain (team member → team lead → orchestrator → user), team duplication is the most common failure mode of multi-agent setups, and unverifiable completion claims are how multi-agent systems lie to users.
 
-Every agent you create MUST include "ask_orchestrator" in its tools list. Agents on teams with channels MUST also include "post_to_channel" and "list_my_channels". Agents on teams MUST include "bb_read", "bb_write", "bb_list" so they can coordinate via the shared blackboard.
+Every agent you create MUST include "ask_orchestrator" in its tools list. Agents on teams with channels MUST also include "post_to_channel", "list_my_channels", and "read_channel". Agents on teams MUST include "bb_read", "bb_write", "bb_list" so they can coordinate via the shared blackboard.
 
 ## Blueprints — IMPORTANT
 
@@ -431,7 +441,7 @@ func InjectHera(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks, extraToo
 		"list_agents", "list_available_tools", "list_available_skills",
 		"list_mcp_registry",
 		"save_blueprint", "list_blueprints",
-		"create_channel", "post_to_channel", "list_my_channels",
+		"create_channel", "post_to_channel", "list_my_channels", "read_channel",
 	}, extraTools...)
 
 	return interp.AddAgent(cfg.Name, def)

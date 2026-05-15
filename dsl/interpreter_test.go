@@ -114,6 +114,94 @@ func TestEvictIdle_PreservesDocAgents(t *testing.T) {
 	}
 }
 
+// TestAddAgent_AugmentsReadChannelForChannelMembers pins the auto-augmentation
+// added when read_channel was introduced: any agent whose persisted tools list
+// already mentions post_to_channel or list_my_channels should also get
+// read_channel. Without this, existing DB-stored agents (from before the new
+// tool existed) can only see truncated previews of teammate posts via
+// check_status and have no way to fetch the full body.
+func TestAddAgent_AugmentsReadChannelForChannelMembers(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	def := &Agent{
+		Name:   "scout",
+		Model:  "test-model",
+		System: "You are scout.",
+		Tools:  []string{"post_to_channel", "list_my_channels", "read_file"},
+	}
+	if err := interp.AddAgent("scout", def); err != nil {
+		t.Fatalf("AddAgent: %v", err)
+	}
+
+	stored := interp.Document().Agents["scout"]
+	if stored == nil {
+		t.Fatal("scout missing from doc.Agents after AddAgent")
+	}
+	has := func(name string) bool {
+		for _, t := range stored.Tools {
+			if t == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("read_channel") {
+		t.Errorf("expected read_channel auto-added to channel-using agent, got tools: %v", stored.Tools)
+	}
+	if !has("post_to_channel") {
+		t.Errorf("auto-augmentation should not drop existing tools, got: %v", stored.Tools)
+	}
+}
+
+func TestAddAgent_LeavesNonChannelAgentsAlone(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	def := &Agent{
+		Name:   "loner",
+		Model:  "test-model",
+		System: "You are a solo agent.",
+		Tools:  []string{"read_file", "exec"},
+	}
+	if err := interp.AddAgent("loner", def); err != nil {
+		t.Fatalf("AddAgent: %v", err)
+	}
+
+	stored := interp.Document().Agents["loner"]
+	for _, name := range stored.Tools {
+		if name == "read_channel" {
+			t.Errorf("read_channel should not be added to agents without channel tools, got: %v", stored.Tools)
+		}
+	}
+}
+
+func TestAddAgent_DoesNotDuplicateReadChannel(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	def := &Agent{
+		Name:   "remy",
+		Model:  "test-model",
+		System: "You are remy.",
+		Tools:  []string{"post_to_channel", "list_my_channels", "read_channel"},
+	}
+	if err := interp.AddAgent("remy", def); err != nil {
+		t.Fatalf("AddAgent: %v", err)
+	}
+
+	stored := interp.Document().Agents["remy"]
+	count := 0
+	for _, name := range stored.Tools {
+		if name == "read_channel" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected read_channel exactly once, got %d in: %v", count, stored.Tools)
+	}
+}
+
 func TestExecutionContext(t *testing.T) {
 	ctx := &ExecutionContext{
 		Inputs:    map[string]any{"task": "test"},

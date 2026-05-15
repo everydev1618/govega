@@ -1404,6 +1404,30 @@ func (i *Interpreter) HasAgent(name string) bool {
 	return ok
 }
 
+// augmentReadChannel ensures agents that can post to channels can also read
+// them in full. If def.Tools contains post_to_channel or list_my_channels but
+// not read_channel, read_channel is appended. No-op for agents without
+// channel tools and for agents that already have read_channel.
+func augmentReadChannel(def *Agent) {
+	if def == nil || len(def.Tools) == 0 {
+		return
+	}
+	hasPost, hasList, hasRead := false, false, false
+	for _, t := range def.Tools {
+		switch t {
+		case "post_to_channel":
+			hasPost = true
+		case "list_my_channels":
+			hasList = true
+		case "read_channel":
+			hasRead = true
+		}
+	}
+	if (hasPost || hasList) && !hasRead {
+		def.Tools = append(def.Tools, "read_channel")
+	}
+}
+
 // AddAgent adds and spawns a new agent at runtime.
 func (i *Interpreter) AddAgent(name string, def *Agent) error {
 	i.mu.RLock()
@@ -1412,6 +1436,13 @@ func (i *Interpreter) AddAgent(name string, def *Agent) error {
 	if exists {
 		return fmt.Errorf("agent '%s' already exists", name)
 	}
+
+	// Channel-aware augmentation: read_channel was introduced after many
+	// agents were already persisted with just post_to_channel /
+	// list_my_channels. Without this, existing agents can only see the
+	// truncated check_status preview of teammate posts and have no way to
+	// fetch the full body. Idempotent — safe for new agents too.
+	augmentReadChannel(def)
 
 	// Register in document so it's visible to list APIs.
 	i.mu.Lock()
