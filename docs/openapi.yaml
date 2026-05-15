@@ -1649,6 +1649,66 @@ paths:
                     type: integer
                     format: int64
 
+  /api/v1/inbox/{id}/resolve:
+    post:
+      tags: [Inbox]
+      summary: Resolve a single inbox item
+      operationId: resolveInboxItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolution:
+                  type: string
+                  description: How the item was handled (free text, optional)
+      responses:
+        "200":
+          description: Item resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  status:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/inbox/{id}:
+    delete:
+      tags: [Inbox]
+      summary: Delete a single inbox item
+      operationId: deleteInboxItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Item deleted (no content)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── Tasks (kanban work tracking) ─────────────────────────────────────
   /api/v1/tasks:
     get:

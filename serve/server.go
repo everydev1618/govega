@@ -1105,6 +1105,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Inbox
 	mux.HandleFunc("GET /api/v1/inbox", s.handleListInbox)
 	mux.HandleFunc("DELETE /api/v1/inbox/resolved", s.handleClearResolvedInbox)
+	mux.HandleFunc("POST /api/v1/inbox/{id}/resolve", s.handleResolveInboxItem)
+	mux.HandleFunc("DELETE /api/v1/inbox/{id}", s.handleDeleteInboxItem)
 
 	// Tasks (kanban-style work tracking — independent of Process lifecycle)
 	mux.HandleFunc("GET /api/v1/tasks", s.handleListTasks)
@@ -1759,6 +1761,10 @@ func (a *inboxAdapter) ListInboxItems(status string, limit int) ([]dsl.InboxItem
 
 func (a *inboxAdapter) ResolveInboxItem(id int64, resolution string) error {
 	return a.store.ResolveInboxItem(id, resolution)
+}
+
+func (a *inboxAdapter) DeleteInboxItem(id int64) error {
+	return a.store.DeleteInboxItem(id)
 }
 
 // taskAdapter bridges serve.Store to dsl.TaskBackend by translating

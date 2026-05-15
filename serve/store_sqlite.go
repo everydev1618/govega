@@ -2263,6 +2263,22 @@ func (s *SQLiteStore) DeleteResolvedInboxItems() (int64, error) {
 	return result.RowsAffected()
 }
 
+// DeleteInboxItem removes a single inbox item (and any replies) by id.
+// Returns sql.ErrNoRows if nothing was deleted so HTTP handlers can map
+// to 404.
+func (s *SQLiteStore) DeleteInboxItem(id int64) error {
+	s.db.Exec(`DELETE FROM inbox_replies WHERE inbox_id = ?`, id)
+	result, err := s.db.Exec(`DELETE FROM agent_inbox WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // --- Prompt History Methods ---
 
 // InsertPromptHistory records an original user prompt to iris.

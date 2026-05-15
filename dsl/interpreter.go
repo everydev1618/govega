@@ -1766,9 +1766,14 @@ func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, mes
 		// outright errors, empty responses, completed work, and
 		// trail-off-mid-thought responses that previously masqueraded as
 		// successes (see dispatch_outcome.go).
+		//
+		// insertDispatchOutcome dedupes against existing pending items
+		// with the same (from_agent, subject); re-dispatching an agent
+		// that keeps producing the same outcome no longer buries the
+		// orchestrator under identical urgent cards.
 		if i.inboxBackend != nil {
 			subject, body, priority := classifyDispatchOutcome(agentName, message, resp, err)
-			i.inboxBackend.InsertInboxItem(agentName, subject, body, priority)
+			insertDispatchOutcome(i.inboxBackend, agentName, subject, body, priority)
 		}
 
 		// Post a summary to the agent's team channel for user visibility.

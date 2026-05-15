@@ -29,6 +29,7 @@ type InboxBackend interface {
 	InsertInboxItem(fromAgent, subject, body, priority string) (int64, error)
 	ListInboxItems(status string, limit int) ([]InboxItem, error)
 	ResolveInboxItem(id int64, resolution string) error
+	DeleteInboxItem(id int64) error
 }
 
 // RegisterInboxTools registers the inbox tools on the interpreter.

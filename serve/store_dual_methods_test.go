@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -511,6 +512,38 @@ func TestDualStore_Inbox(t *testing.T) {
 		n, _ := store.DeleteResolvedInboxItems()
 		if n != 1 {
 			t.Errorf("DeleteResolvedInboxItems n = %d, want 1", n)
+		}
+	})
+}
+
+// TestDualStore_DeleteInboxItem covers the human-driven dismiss path:
+// the user wants a single inbox item gone, regardless of status. The
+// row-not-found case must surface as sql.ErrNoRows so HTTP handlers
+// can map it to a 404 instead of silently 200ing.
+func TestDualStore_DeleteInboxItem(t *testing.T) {
+	forEachStore(t, func(t *testing.T, store Store) {
+		// Pending item is deletable.
+		id, err := store.InsertInboxItem("riley", "noise from heartbeat", "ignore", "normal")
+		if err != nil {
+			t.Fatalf("InsertInboxItem: %v", err)
+		}
+		if err := store.DeleteInboxItem(id); err != nil {
+			t.Fatalf("DeleteInboxItem(pending): %v", err)
+		}
+		if got, _ := store.GetInboxItem(id); got != nil {
+			t.Errorf("after delete, expected nil, got %+v", got)
+		}
+
+		// Resolved item is also deletable (no status gate).
+		id2, _ := store.InsertInboxItem("riley", "already handled", "body", "normal")
+		_ = store.ResolveInboxItem(id2, "done")
+		if err := store.DeleteInboxItem(id2); err != nil {
+			t.Errorf("DeleteInboxItem(resolved): %v", err)
+		}
+
+		// Non-existent id reports sql.ErrNoRows.
+		if err := store.DeleteInboxItem(99999); err != sql.ErrNoRows {
+			t.Errorf("DeleteInboxItem(missing): got %v, want sql.ErrNoRows", err)
 		}
 	})
 }

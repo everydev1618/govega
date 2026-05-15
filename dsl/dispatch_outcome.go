@@ -108,6 +108,40 @@ var dispatchSuccessMarkers = []string{
 	"live at http",
 }
 
+// insertDispatchOutcome posts an auto-classified dispatch outcome to the
+// inbox, deduping against existing pending items with the same
+// (from_agent, subject). The classifier produces a small set of
+// deterministic subjects ("Task completed by X", "Task may be incomplete
+// from X", "Task failed for X", "Task incomplete from X") — when an
+// agent is re-dispatched and keeps reproducing the same outcome,
+// without this guard the orchestrator's inbox piles up with identical
+// urgent cards (observed: synkedup-cto-assistant trailing off
+// mid-thought 3+ times in a row).
+//
+// Returns the inbox id (existing or new) and whether a new row was
+// written. Lookup failures are swallowed in favor of inserting — losing
+// a completion notification is worse than allowing a dup.
+//
+// Only DispatchToAgent should call this; agent-driven posts via
+// ask_orchestrator/post_to_inbox stay on InsertInboxItem directly so
+// agents can repeat themselves intentionally.
+func insertDispatchOutcome(backend InboxBackend, fromAgent, subject, body, priority string) (int64, bool, error) {
+	const dedupeScanLimit = 200
+	existing, err := backend.ListInboxItems("pending", dedupeScanLimit)
+	if err == nil {
+		for _, it := range existing {
+			if it.FromAgent == fromAgent && it.Subject == subject {
+				return it.ID, false, nil
+			}
+		}
+	}
+	id, err := backend.InsertInboxItem(fromAgent, subject, body, priority)
+	if err != nil {
+		return 0, false, err
+	}
+	return id, true, nil
+}
+
 // responseTail returns the last `max` characters of s, or all of s if
 // shorter. Used to focus the classifier on the agent's closing summary
 // rather than the full tool-call narrative.

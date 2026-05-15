@@ -2,8 +2,10 @@ package serve
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -2418,6 +2420,59 @@ func (s *Server) handleClearResolvedInbox(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int64{"deleted": count})
+}
+
+// handleResolveInboxItem flips a single inbox item to status=resolved.
+// Body is optional — an empty/missing resolution string is allowed
+// because the UI's "Resolve" button is a single click and the user has
+// no obvious thing to type. Returns 404 when the id doesn't exist.
+func (s *Server) handleResolveInboxItem(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
+		return
+	}
+	var body struct {
+		Resolution string `json:"resolution"`
+	}
+	// Empty bodies are fine — ignore decode errors and proceed with
+	// resolution="". Reject only on a real bad-JSON payload.
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid json body"})
+			return
+		}
+	}
+	if err := s.store.ResolveInboxItem(id, body.Resolution); err != nil {
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "inbox item not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "resolved"})
+}
+
+// handleDeleteInboxItem hard-deletes a single inbox item. Returns 204
+// on success, 404 when the id doesn't exist. By design there is no
+// confirm step or undo — the UI surfaces a destructive button and the
+// user can re-trigger work by talking to the orchestrator.
+func (s *Server) handleDeleteInboxItem(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
+		return
+	}
+	if err := s.store.DeleteInboxItem(id); err != nil {
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "inbox item not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- Helpers ---

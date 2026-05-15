@@ -1685,6 +1685,21 @@ func (s *PostgresStore) DeleteResolvedInboxItems() (int64, error) {
 	return res.RowsAffected()
 }
 
+// DeleteInboxItem removes a single inbox item by id. Cascading FK on
+// inbox_replies handles reply cleanup. Returns sql.ErrNoRows when no
+// row matched.
+func (s *PostgresStore) DeleteInboxItem(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM agent_inbox WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // --- Prompt history ---
 
 func (s *PostgresStore) InsertPromptHistory(prompt string) (int64, error) {

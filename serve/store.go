@@ -257,6 +257,10 @@ type Store interface {
 	// DeleteResolvedInboxItems removes all resolved inbox items and their replies.
 	DeleteResolvedInboxItems() (int64, error)
 
+	// DeleteInboxItem removes a single inbox item (and its replies) by id,
+	// regardless of status. Returns sql.ErrNoRows if no item matches.
+	DeleteInboxItem(id int64) error
+
 	// InsertChannelMessage inserts a message into a channel.
 	InsertChannelMessage(channelID, agent, role, content string, threadID *int64, metadata, sender string, activities []vega.ToolActivity) (int64, error)
 
