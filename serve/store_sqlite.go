@@ -1023,6 +1023,30 @@ func (s *SQLiteStore) ListMemoryLinks(scope MemoryScope, scopeID, userID string)
 	return out, rows.Err()
 }
 
+// ListMemoryScopeIDs returns every distinct scope_id under (scope, userID),
+// ordered alphabetically. Used to enumerate agent wikis for a user.
+func (s *SQLiteStore) ListMemoryScopeIDs(scope MemoryScope, userID string) ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT DISTINCT scope_id FROM memory_pages
+		 WHERE scope = ? AND user_id = ?
+		 ORDER BY scope_id ASC`,
+		string(scope), userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // UpsertScheduledJob creates or replaces a scheduled job. The Name field
 // is the legacy primary key (cron runner + DSL lookup); ID defaults to
 // Name for backwards compatibility when callers don't supply it.

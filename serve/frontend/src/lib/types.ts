@@ -463,6 +463,7 @@ export type MemoryCluster =
   | 'topics'
   | 'people'
   | 'legacy'
+  | 'ghost'
   | 'other'
 
 export interface MemoryPageMetadata {
@@ -485,12 +486,19 @@ export interface MemoryPage {
   updated_at: string
 }
 
+// MemoryGraphScope is the value of `scope` on a graph node.
+// "user" for the shared wiki, "agent:<name>" for per-agent wikis.
+export type MemoryGraphScope = 'user' | `agent:${string}`
+
 export interface MemoryGraphNode {
+  id: string
   path: string
   title: string
   bytes: number
   updated_at: string
   cluster: MemoryCluster
+  scope: MemoryGraphScope
+  ghost?: boolean
 }
 
 export interface MemoryGraphEdge {
@@ -503,6 +511,13 @@ export interface MemoryGraph {
   nodes: MemoryGraphNode[]
   edges: MemoryGraphEdge[]
   generated_at: string
+}
+
+// Graph-endpoint query params. scope=all unions user wiki and every
+// agent wiki; scope=agent requires the agent name.
+export interface MemoryGraphParams {
+  scope?: 'user' | 'agent' | 'all'
+  agent?: string
 }
 
 // --- Peering (federation over AIRE) ---

@@ -160,8 +160,16 @@ export const api = {
   deleteSetting: (key: string) =>
     fetchAPI<{ status: string }>(`/settings/${key}`, { method: 'DELETE' }),
 
-  // Wiki memory (govega#71)
-  getMemoryGraph: () => fetchAPI<import('./types').MemoryGraph>('/memory/graph'),
+  // Wiki memory (govega#71). Default scope is the shared user wiki to
+  // preserve the existing call site. scope=all unions user + every agent
+  // wiki; scope=agent requires the agent name.
+  getMemoryGraph: (params?: import('./types').MemoryGraphParams) => {
+    const q = new URLSearchParams()
+    if (params?.scope) q.set('scope', params.scope)
+    if (params?.agent) q.set('agent', params.agent)
+    const qs = q.toString()
+    return fetchAPI<import('./types').MemoryGraph>(`/memory/graph${qs ? `?${qs}` : ''}`)
+  },
   listMemoryPages: () =>
     fetchAPI<import('./types').MemoryPageMetadata[] | null>('/memory/pages')
       .then((res) => res ?? []),

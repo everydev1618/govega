@@ -99,6 +99,11 @@ type Store interface {
 	// ListMemoryLinks returns every link under (scope, scopeID, userID).
 	ListMemoryLinks(scope MemoryScope, scopeID, userID string) ([]MemoryLink, error)
 
+	// ListMemoryScopeIDs returns every distinct scope_id that has at least
+	// one page under (scope, userID). Used by the graph endpoint to
+	// enumerate per-agent wikis when scope=all.
+	ListMemoryScopeIDs(scope MemoryScope, userID string) ([]string, error)
+
 	// UpsertUserMemory creates or updates a memory layer for a user+agent.
 	UpsertUserMemory(userID, agent, layer, content string) error
 

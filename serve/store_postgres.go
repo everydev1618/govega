@@ -695,6 +695,28 @@ func (s *PostgresStore) ListMemoryLinks(scope MemoryScope, scopeID, userID strin
 	return out, rows.Err()
 }
 
+func (s *PostgresStore) ListMemoryScopeIDs(scope MemoryScope, userID string) ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT DISTINCT scope_id FROM memory_pages
+		 WHERE scope = $1 AND user_id = $2
+		 ORDER BY scope_id ASC`,
+		string(scope), userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // --- Scheduled jobs ---
 
 func (s *PostgresStore) UpsertScheduledJob(job ScheduledJob) error {

@@ -11,6 +11,9 @@ import type {
   MemoryPage,
   MemoryPageMetadata,
 } from '../lib/types'
+import { MemoryGraphView } from '../components/MemoryGraph'
+
+type MemoryTab = 'list' | 'graph'
 
 const REFRESH_MS = 3000
 
@@ -43,6 +46,7 @@ function formatRelative(iso: string): string {
 }
 
 export function Memory() {
+  const [tab, setTab] = useState<MemoryTab>('list')
   const [pages, setPages] = useState<MemoryPageMetadata[] | null>(null)
   const [graph, setGraph] = useState<MemoryGraph | null>(null)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
@@ -126,6 +130,23 @@ export function Memory() {
           </p>
         </div>
         <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
+          <div className="flex items-center gap-1 rounded-md bg-muted/40 p-0.5">
+            <button
+              type="button"
+              onClick={() => setTab('list')}
+              className={`rounded px-2 py-0.5 ${tab === 'list' ? 'bg-background shadow-sm text-foreground' : 'hover:bg-accent/40'}`}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('graph')}
+              className={`rounded px-2 py-0.5 ${tab === 'graph' ? 'bg-background shadow-sm text-foreground' : 'hover:bg-accent/40'}`}
+            >
+              Graph
+            </button>
+          </div>
+          <span>·</span>
           <span>{pages?.length ?? 0} pages</span>
           <span>·</span>
           <span>{formatBytes(totalBytes)}</span>
@@ -152,6 +173,9 @@ export function Memory() {
         </div>
       )}
 
+      {tab === 'graph' ? (
+        <MemoryGraphView />
+      ) : (
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-border bg-muted/20">
           {pages === null ? (
@@ -228,6 +252,7 @@ export function Memory() {
           )}
         </main>
       </div>
+      )}
     </div>
   )
 }

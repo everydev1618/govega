@@ -193,3 +193,199 @@ func mustReplaceLinks(t *testing.T, store Store, fromPath string, toPaths ...str
 		t.Fatalf("ReplaceMemoryLinks: %v", err)
 	}
 }
+
+func mustReplaceScopedLinks(t *testing.T, store Store, scope MemoryScope, scopeID, fromPath string, toPaths ...string) {
+	t.Helper()
+	if err := store.ReplaceMemoryLinks(scope, scopeID, "et", fromPath, toPaths); err != nil {
+		t.Fatalf("ReplaceMemoryLinks(%s/%s): %v", scope, scopeID, err)
+	}
+}
+
+// TestHandleMemoryGraph_DefaultScopeUserBackCompat asserts that the
+// default (no query params) request still returns just the user wiki —
+// existing frontend callers must keep working.
+func TestHandleMemoryGraph_DefaultScopeUserBackCompat(t *testing.T) {
+	s := memoryHTTPHarness(t)
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeUser, ScopeID: "et", UserID: "et", Path: "MEMORY.md", Content: "user idx"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeAgent, ScopeID: "tony", UserID: "et", Path: "private.md", Content: "agent idx"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/graph", nil)
+	req.Header.Set("X-Auth-User", "et")
+	w := httptest.NewRecorder()
+	s.handleMemoryGraph(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var got memoryGraphResponse
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if len(got.Nodes) != 1 || got.Nodes[0].Path != "MEMORY.md" {
+		t.Errorf("default scope must be user only; got %+v", got.Nodes)
+	}
+	// Single-scope IDs should equal Path so existing callers don't break.
+	if got.Nodes[0].ID != "MEMORY.md" {
+		t.Errorf("single-scope ID = %q, want %q", got.Nodes[0].ID, "MEMORY.md")
+	}
+	if got.Nodes[0].Scope != "user" {
+		t.Errorf("scope field = %q, want \"user\"", got.Nodes[0].Scope)
+	}
+}
+
+// TestHandleMemoryGraph_ScopeAgentRequiresAgentParam asserts that
+// scope=agent without ?agent= is a 400.
+func TestHandleMemoryGraph_ScopeAgentRequiresAgentParam(t *testing.T) {
+	s := memoryHTTPHarness(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/graph?scope=agent", nil)
+	req.Header.Set("X-Auth-User", "et")
+	w := httptest.NewRecorder()
+	s.handleMemoryGraph(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// TestHandleMemoryGraph_ScopeAgentReturnsOnlyThatAgent asserts that
+// ?scope=agent&agent=tony returns only tony's pages.
+func TestHandleMemoryGraph_ScopeAgentReturnsOnlyThatAgent(t *testing.T) {
+	s := memoryHTTPHarness(t)
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeUser, ScopeID: "et", UserID: "et", Path: "MEMORY.md", Content: "user idx"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeAgent, ScopeID: "tony", UserID: "et", Path: "notes.md", Content: "tony notes"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeAgent, ScopeID: "mira", UserID: "et", Path: "notes.md", Content: "mira notes"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/graph?scope=agent&agent=tony", nil)
+	req.Header.Set("X-Auth-User", "et")
+	w := httptest.NewRecorder()
+	s.handleMemoryGraph(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var got memoryGraphResponse
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if len(got.Nodes) != 1 {
+		t.Fatalf("len(nodes) = %d, want 1 (only tony's notes.md)", len(got.Nodes))
+	}
+	if got.Nodes[0].Scope != "agent:tony" {
+		t.Errorf("scope = %q, want \"agent:tony\"", got.Nodes[0].Scope)
+	}
+	if got.Nodes[0].Path != "notes.md" {
+		t.Errorf("path = %q, want notes.md", got.Nodes[0].Path)
+	}
+}
+
+// TestHandleMemoryGraph_ScopeAllUnionsEverything asserts that
+// scope=all merges user + every agent wiki, with unique IDs.
+func TestHandleMemoryGraph_ScopeAllUnionsEverything(t *testing.T) {
+	s := memoryHTTPHarness(t)
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeUser, ScopeID: "et", UserID: "et", Path: "MEMORY.md", Content: "shared"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeAgent, ScopeID: "tony", UserID: "et", Path: "MEMORY.md", Content: "tony idx"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeAgent, ScopeID: "mira", UserID: "et", Path: "MEMORY.md", Content: "mira idx"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/graph?scope=all", nil)
+	req.Header.Set("X-Auth-User", "et")
+	w := httptest.NewRecorder()
+	s.handleMemoryGraph(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var got memoryGraphResponse
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if len(got.Nodes) != 3 {
+		t.Fatalf("len(nodes) = %d, want 3", len(got.Nodes))
+	}
+	// Three nodes with the same path "MEMORY.md" must end up with distinct IDs.
+	idSet := map[string]bool{}
+	scopes := map[string]bool{}
+	for _, n := range got.Nodes {
+		if idSet[n.ID] {
+			t.Errorf("duplicate node ID %q", n.ID)
+		}
+		idSet[n.ID] = true
+		scopes[n.Scope] = true
+		if n.Path != "MEMORY.md" {
+			t.Errorf("node path = %q, want MEMORY.md", n.Path)
+		}
+	}
+	for _, want := range []string{"user", "agent:tony", "agent:mira"} {
+		if !scopes[want] {
+			t.Errorf("missing scope %q in response", want)
+		}
+	}
+}
+
+// TestHandleMemoryGraph_GhostNodesForDanglingEdges asserts that an
+// edge pointing to a non-existent page yields a ghost node so the
+// frontend doesn't have to synthesize one.
+func TestHandleMemoryGraph_GhostNodesForDanglingEdges(t *testing.T) {
+	s := memoryHTTPHarness(t)
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeUser, ScopeID: "et", UserID: "et", Path: "MEMORY.md", Content: "see [[topics/missing.md]]"})
+	mustReplaceLinks(t, s.store, "MEMORY.md", "topics/missing.md")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/graph", nil)
+	req.Header.Set("X-Auth-User", "et")
+	w := httptest.NewRecorder()
+	s.handleMemoryGraph(w, req)
+	var got memoryGraphResponse
+	_ = json.NewDecoder(w.Body).Decode(&got)
+
+	var ghost *memoryGraphNode
+	for i := range got.Nodes {
+		if got.Nodes[i].Path == "topics/missing.md" {
+			ghost = &got.Nodes[i]
+			break
+		}
+	}
+	if ghost == nil {
+		t.Fatalf("expected ghost node for topics/missing.md; got nodes = %+v", got.Nodes)
+	}
+	if !ghost.Ghost {
+		t.Errorf("ghost.Ghost = false, want true")
+	}
+	if ghost.Cluster != "ghost" {
+		t.Errorf("ghost.Cluster = %q, want \"ghost\"", ghost.Cluster)
+	}
+	if ghost.Bytes != 0 {
+		t.Errorf("ghost.Bytes = %d, want 0", ghost.Bytes)
+	}
+	if len(got.Edges) != 1 {
+		t.Errorf("edges len = %d, want 1", len(got.Edges))
+	}
+	if got.Edges[0].To != ghost.ID {
+		t.Errorf("edge.To = %q, want ghost.ID %q", got.Edges[0].To, ghost.ID)
+	}
+}
+
+// TestHandleMemoryGraph_ScopeAllEdgesUseScopedIDs asserts that under
+// scope=all, edges reference the prefixed node IDs, not raw paths.
+func TestHandleMemoryGraph_ScopeAllEdgesUseScopedIDs(t *testing.T) {
+	s := memoryHTTPHarness(t)
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeUser, ScopeID: "et", UserID: "et", Path: "MEMORY.md", Content: "see [[a.md]]"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeUser, ScopeID: "et", UserID: "et", Path: "a.md", Content: "a"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeAgent, ScopeID: "tony", UserID: "et", Path: "MEMORY.md", Content: "see [[a.md]]"})
+	mustUpsertPage(t, s.store, MemoryPage{Scope: MemoryScopeAgent, ScopeID: "tony", UserID: "et", Path: "a.md", Content: "a"})
+	mustReplaceLinks(t, s.store, "MEMORY.md", "a.md")
+	mustReplaceScopedLinks(t, s.store, MemoryScopeAgent, "tony", "MEMORY.md", "a.md")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/graph?scope=all", nil)
+	req.Header.Set("X-Auth-User", "et")
+	w := httptest.NewRecorder()
+	s.handleMemoryGraph(w, req)
+	var got memoryGraphResponse
+	_ = json.NewDecoder(w.Body).Decode(&got)
+
+	// Build set of node IDs we expect to see referenced by edges.
+	ids := map[string]bool{}
+	for _, n := range got.Nodes {
+		ids[n.ID] = true
+	}
+	if len(got.Edges) != 2 {
+		t.Fatalf("edges len = %d, want 2", len(got.Edges))
+	}
+	for _, e := range got.Edges {
+		if !ids[e.From] {
+			t.Errorf("edge.from %q is not a known node ID", e.From)
+		}
+		if !ids[e.To] {
+			t.Errorf("edge.to %q is not a known node ID", e.To)
+		}
+	}
+}
