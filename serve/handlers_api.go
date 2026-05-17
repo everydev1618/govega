@@ -458,6 +458,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Hydrate conversation history from SQLite if this is a fresh process.
 	s.hydrateAgent(proc, name)
 
+	// Distill old turns into a wiki session note before they bloat the
+	// prompt (refs govega#100). No-op below the threshold.
+	s.maybeCompactToWiki(r.Context(), proc, userID, baseAgent)
+
 	// Load and inject memory + project context into the process before sending.
 	// Wiki memory (govega#71) replaces the typed user_memory injection. Legacy
 	// extraction still writes to user_memory in the background until step-2
@@ -539,6 +543,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.hydrateAgent(proc, name)
+
+	// Distill old turns into a wiki session note before the prompt
+	// balloons (refs govega#100). No-op below the threshold.
+	s.maybeCompactToWiki(r.Context(), proc, userID, baseAgent)
 
 	// Load and inject memory + project context into the process before sending.
 	// Wiki memory (govega#71) — see chat (non-stream) call site above.
