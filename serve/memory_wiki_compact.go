@@ -51,6 +51,9 @@ func (s *Server) maybeCompactToWiki(ctx context.Context, proc *vega.Process, use
 // wikiCompactionSink returns a CompactionSink that writes the
 // summary as a new wiki page in the agent's private scope and
 // appends a link to MEMORY.md so it surfaces via auto-injection.
+// The new note is flagged `active: true` so its body is auto-
+// injected on the next turn (refs govega#100); the previously-
+// active session note is demoted to keep prompt size bounded.
 func (s *Server) wikiCompactionSink(userID, agentName string) vega.CompactionSink {
 	return func(ctx context.Context, summary string, meta vega.CompactionMeta) error {
 		ts := meta.DroppedAt
@@ -59,8 +62,17 @@ func (s *Server) wikiCompactionSink(userID, agentName string) vega.CompactionSin
 		}
 		path := fmt.Sprintf("sessions/%s.md", ts.UTC().Format("2006-01-02-150405"))
 
+		// Demote any older session notes still flagged active before
+		// writing the new one — bounds the cost of injection and keeps
+		// recall focused on the most recent compaction.
+		if err := s.demotePriorActiveSessions(userID, agentName); err != nil {
+			// Best-effort: log and continue. Even with stale flags the
+			// active-body cap keeps prompt size under control.
+			slog.Warn("failed to demote prior active session notes", "agent", agentName, "error", err)
+		}
+
 		frontmatter := fmt.Sprintf(
-			"source: auto-compaction (govega#100)\nprocess: %s\nagent: %s\ndropped: %d messages\nat: %s",
+			"active: true\nsource: auto-compaction (govega#100)\nprocess: %s\nagent: %s\ndropped: %d messages\nat: %s",
 			meta.ProcessID, meta.AgentName, meta.DroppedCount, ts.UTC().Format(time.RFC3339),
 		)
 
@@ -80,6 +92,62 @@ func (s *Server) wikiCompactionSink(userID, agentName string) vega.CompactionSin
 		}
 		return nil
 	}
+}
+
+// demotePriorActiveSessions flips `active: true` to `active: false`
+// on every existing sessions/* page for this agent. Only the freshest
+// compaction stays active so the next turn's injection focuses on
+// the most recent distilled context. Other frontmatter keys are
+// preserved.
+func (s *Server) demotePriorActiveSessions(userID, agentName string) error {
+	pages, err := s.store.ListMemoryPages(MemoryScopeAgent, agentName, userID, "sessions/")
+	if err != nil {
+		return fmt.Errorf("list session notes: %w", err)
+	}
+	for _, p := range pages {
+		if !isActiveFrontmatter(p.Frontmatter) {
+			continue
+		}
+		demoted := setFrontmatterActive(p.Frontmatter, false)
+		if err := s.store.UpsertMemoryPage(MemoryPage{
+			Scope: p.Scope, ScopeID: p.ScopeID, UserID: p.UserID,
+			Path: p.Path, Content: p.Content, Frontmatter: demoted,
+		}); err != nil {
+			return fmt.Errorf("demote %s: %w", p.Path, err)
+		}
+	}
+	return nil
+}
+
+// setFrontmatterActive rewrites the `active:` line in a frontmatter
+// block to the given value, inserting a new line if none exists.
+// Preserves every other line verbatim so unrelated metadata
+// (provenance, timestamps, agent-set tags) survives the update.
+func setFrontmatterActive(fm string, active bool) string {
+	value := "false"
+	if active {
+		value = "true"
+	}
+	if fm == "" {
+		return "active: " + value
+	}
+	lines := strings.Split(fm, "\n")
+	found := false
+	for i, line := range lines {
+		key, _, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(strings.ToLower(key)) == "active" {
+			lines[i] = "active: " + value
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append([]string{"active: " + value}, lines...)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // linkSessionInIndex prepends a `[[sessions/...]]` reference under a
