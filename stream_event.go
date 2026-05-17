@@ -20,7 +20,38 @@ const (
 	// frontends use one SSE code path for both "live stream" and "nothing
 	// to resume" cases without a content-type heuristic.
 	ChatEventNoActiveStream ChatEventType = "no_active_stream"
+	// ChatEventRecalled carries the list of memory pages that backed
+	// the just-finished turn — both bodies auto-injected via
+	// `active: true` and pages explicitly read by the agent through
+	// memory_read. Sent immediately before the `done` event so the FE
+	// can attach "remembered from X" pills to the assistant message.
+	// Refs govega#100.
+	ChatEventRecalled ChatEventType = "recalled"
 )
+
+// ChatRecallSource discriminates how a memory page entered the
+// agent's context for the current turn. "active" means it was
+// auto-injected via the `active: true` frontmatter flag; "read"
+// means the agent called memory_read explicitly. Both map to the
+// same "remembered from" UI surface — the user shouldn't have to
+// care about the mechanism. Refs govega#100.
+type ChatRecallSource string
+
+const (
+	ChatRecallSourceActive ChatRecallSource = "active"
+	ChatRecallSourceRead   ChatRecallSource = "read"
+)
+
+// ChatRecallEntry is the wire shape of a single recall event in a
+// turn's ledger. Scope is a plain string ("user" or "agent") rather
+// than a typed enum to keep this package free of any dependency on
+// the serve layer's MemoryScope type. Refs govega#100.
+type ChatRecallEntry struct {
+	Scope  string           `json:"scope"`
+	Path   string           `json:"path"`
+	Source ChatRecallSource `json:"source"`
+	At     time.Time        `json:"at"`
+}
 
 // ChatEventCode is a stable string discriminator carried on chat error
 // events. Lets callers switch on the cause (rate limit vs auth vs
@@ -88,6 +119,9 @@ type ChatEvent struct {
 	Code        ChatEventCode     `json:"code,omitempty"`
 	NestedAgent string            `json:"nested_agent,omitempty"`
 	Metrics     *ChatEventMetrics `json:"metrics,omitempty"`
+	// Recalled is the list of memory pages that backed this turn —
+	// only set on Type=="recalled" events. Refs govega#100.
+	Recalled []ChatRecallEntry `json:"recalled,omitempty"`
 }
 
 // ToolActivity is a completed tool call captured from a streaming

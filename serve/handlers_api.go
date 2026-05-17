@@ -462,11 +462,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// prompt (refs govega#100). No-op below the threshold.
 	s.maybeCompactToWiki(r.Context(), proc, userID, baseAgent)
 
+	// Per-turn recall ledger: records which wiki pages backed this
+	// reply (active injection + explicit memory_read), surfaced as
+	// `recalled` in the JSON response so the FE can render
+	// "remembered from X" pills (refs govega#100).
+	ledger := NewRecallLedger()
+	recallCtx := ContextWithRecall(r.Context(), ledger)
+
 	// Load and inject memory + project context into the process before sending.
 	// Wiki memory (govega#71) replaces the typed user_memory injection. Legacy
 	// extraction still writes to user_memory in the background until step-2
 	// migration; that data becomes visible again once migrated into the wiki.
-	memText := formatWikiMemoryForInjection(s.store, userID, baseAgent)
+	memText := formatWikiMemoryForInjectionWithCtx(recallCtx, s.store, userID, baseAgent)
 	projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtx := buildCompanyContext(s.company)
 	if extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memText, projectCtx, companyCtx); extra != "" {
@@ -488,6 +495,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 	defer cancel()
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
+	ctx = ContextWithRecall(ctx, ledger)
 
 	response, err := s.interp.SendToAgent(ctx, name, req.Message)
 	if err != nil {
@@ -506,7 +514,21 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// curation. Detached context inherits the per-tenant BYOK key etc.
 	go s.curateMemory(carryRequestValues(r.Context(), context.Background()), userID, baseAgent, req.Message, response)
 
-	writeJSON(w, http.StatusOK, map[string]string{"response": response})
+	writeJSON(w, http.StatusOK, chatResponseWithRecall(response, ledger))
+}
+
+// chatResponseWithRecall returns the JSON-shaped payload for a chat
+// turn: always carries `response`; carries `recalled` only when the
+// ledger collected entries so existing FE clients that don't know
+// about recall keep working. The shape mirrors the streaming
+// `recalled` event so FE rendering code can use one type either
+// way. Refs govega#100.
+func chatResponseWithRecall(response string, ledger *RecallLedger) map[string]any {
+	out := map[string]any{"response": response}
+	if entries := ledger.Entries(); len(entries) > 0 {
+		out["recalled"] = toWireRecall(entries)
+	}
+	return out
 }
 
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
@@ -548,9 +570,15 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	// balloons (refs govega#100). No-op below the threshold.
 	s.maybeCompactToWiki(r.Context(), proc, userID, baseAgent)
 
+	// Per-turn recall ledger. Same role as in handleChat — emitted
+	// to the client at the end of the SSE stream as a `recalled`
+	// event so the FE can render "remembered from X" pills.
+	ledger := NewRecallLedger()
+	recallCtx := ContextWithRecall(r.Context(), ledger)
+
 	// Load and inject memory + project context into the process before sending.
 	// Wiki memory (govega#71) — see chat (non-stream) call site above.
-	memTextStream := formatWikiMemoryForInjection(s.store, userID, baseAgent)
+	memTextStream := formatWikiMemoryForInjectionWithCtx(recallCtx, s.store, userID, baseAgent)
 	projectCtxStream := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtxStream := buildCompanyContext(s.company)
 	extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memTextStream, projectCtxStream, companyCtxStream)
@@ -585,6 +613,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	// the LLM client instead of falling back to the (empty) static key.
 	ctx = carryRequestValues(r.Context(), ctx)
 	ctx = ContextWithMemory(ctx, s.store, userID, baseAgent)
+	ctx = ContextWithRecall(ctx, ledger)
 
 	// Snapshot baseline metrics before the stream so we can compute per-response delta.
 	baseMetrics := proc.Metrics()
@@ -635,6 +664,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		as.response = response
 		as.err = streamErr
 		as.metrics = delta
+		as.recalled = ledger.Entries()
 		as.mu.Unlock()
 		close(as.done)
 		as.finish() // close all subscriber channels
@@ -798,6 +828,7 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 			})
 			fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
 		}
+		writeRecalledSSE(w, as)
 		doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone, Metrics: doneMetrics})
 		fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
 		flusher.Flush()
@@ -827,6 +858,7 @@ func (s *Server) relayStreamSSE(w http.ResponseWriter, r *http.Request, as *acti
 					flusher.Flush()
 				}
 
+				writeRecalledSSE(w, as)
 				doneData, _ := json.Marshal(vega.ChatEvent{Type: vega.ChatEventDone, Metrics: doneMetrics})
 				fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
 				flusher.Flush()

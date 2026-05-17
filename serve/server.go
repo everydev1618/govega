@@ -47,6 +47,12 @@ type activeStream struct {
 	response    string                 // set after done
 	err         error                  // set after done
 	metrics     *vega.ChatEventMetrics // set after done
+	// recalled is the per-turn ledger of memory pages that backed
+	// this stream's reply (active injection + memory_read tool
+	// calls). Snapshotted at stream completion and emitted as a
+	// `recalled` SSE event so the FE can render "remembered from X"
+	// pills (refs govega#100).
+	recalled []RecallEntry
 }
 
 // activeStreamMaxAge is the upper bound for treating an entry in

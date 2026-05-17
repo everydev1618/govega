@@ -25,33 +25,17 @@ func RegisterWikiMemoryTools(interp *dsl.Interpreter) {
 	t.Register("memory_read", tools.ToolDef{
 		Description: "Read one wiki memory page by path. Defaults to the shared user wiki (scope=user); pass scope=agent for your private working notes.",
 		Fn: tools.ToolFunc(func(ctx context.Context, params map[string]any) (string, error) {
-			store, userID, agent, err := memoryFromContext(ctx)
-			if err != nil {
-				return "", err
-			}
 			path, _ := params["page"].(string)
 			if path == "" {
 				return "", fmt.Errorf("path is required")
 			}
-			scope, scopeID, err := resolveScope(stringParam(params, "scope"), userID, agent)
-			if err != nil {
-				return "", err
-			}
-			p, err := store.GetMemoryPage(scope, scopeID, userID, path)
-			if err != nil {
-				return "", fmt.Errorf("read memory page: %w", err)
-			}
-			if p == nil {
-				return fmt.Sprintf("(no page at %q in %s wiki)", path, scope), nil
-			}
-			out := p.Content
-			if p.Frontmatter != "" {
-				out = "---\n" + p.Frontmatter + "---\n" + out
-			}
-			return out, nil
+			// readMemoryPageForRecall handles store lookup, scope
+			// resolution, and recall-ledger bookkeeping — same return
+			// shape as the previous inline version (refs govega#100).
+			return readMemoryPageForRecall(ctx, path, stringParam(params, "scope"))
 		}),
 		Params: map[string]tools.ParamDef{
-			"page": {Type: "string", Description: "Page path, e.g. 'MEMORY.md' or 'topics/sushi.md'", Required: true},
+			"page":  {Type: "string", Description: "Page path, e.g. 'MEMORY.md' or 'topics/sushi.md'", Required: true},
 			"scope": wikiScopeParam,
 		},
 	})
