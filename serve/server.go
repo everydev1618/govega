@@ -624,6 +624,13 @@ func (s *Server) Start(ctx context.Context) error {
 	if rec, ok := s.store.(scheduleRunRecorder); ok {
 		s.scheduler.recorder = rec
 	}
+	// Drop any pre-govega#101 orchestrator-heartbeat rows. The current
+	// orchestrator's heartbeat is added below as an InMemoryOnly job, so
+	// any persisted "<agent>-heartbeat" row is a leftover from before this
+	// fix (typically from an orchestrator rename). Self-applying migration.
+	if _, err := pruneStaleOrchestratorHeartbeats(s.store); err != nil {
+		slog.Warn("scheduler: prune legacy heartbeats failed", "error", err)
+	}
 	if storedJobs, err := s.store.ListScheduledJobs(); err != nil {
 		slog.Warn("scheduler: failed to load persisted jobs", "error", err)
 	} else {
@@ -874,13 +881,16 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	})
 
-	// Add the orchestrator heartbeat schedule if not already persisted.
+	// Add the orchestrator heartbeat schedule. InMemoryOnly so it's re-
+	// derived from config every boot instead of strand­ing stale rows in
+	// scheduled_jobs after an orchestrator rename (govega#101).
 	s.scheduler.AddJob(dsl.ScheduledJob{
-		Name:      s.cfg.Orchestrator.Name + "-heartbeat",
-		Cron:      "*/15 * * * *",
-		AgentName: s.cfg.Orchestrator.Name,
-		Message:   "Heartbeat: (1) Check list_inbox for pending agent questions and triage. (2) Check list_unassigned_tasks for the kanban routing queue and assign_task each one to the right agent. Resolve what you can; escalate only if a human decision is required.",
-		Enabled:   true,
+		Name:         s.cfg.Orchestrator.Name + "-heartbeat",
+		Cron:         "*/15 * * * *",
+		AgentName:    s.cfg.Orchestrator.Name,
+		Message:      "Heartbeat: (1) Check list_inbox for pending agent questions and triage. (2) Check list_unassigned_tasks for the kanban routing queue and assign_task each one to the right agent. Resolve what you can; escalate only if a human decision is required.",
+		Enabled:      true,
+		InMemoryOnly: true,
 	})
 
 	go s.scheduler.Start(ctx)

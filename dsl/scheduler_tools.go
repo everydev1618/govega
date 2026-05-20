@@ -19,10 +19,15 @@ type SchedulerBackend interface {
 // ScheduledJob describes a recurring agent trigger.
 type ScheduledJob struct {
 	Name      string `json:"name"`
-	Cron      string `json:"cron"`      // standard 5-field cron expression
-	AgentName string `json:"agent"`     // agent to message on schedule
-	Message   string `json:"message"`   // message to send
+	Cron      string `json:"cron"`    // standard 5-field cron expression
+	AgentName string `json:"agent"`   // agent to message on schedule
+	Message   string `json:"message"` // message to send
 	Enabled   bool   `json:"enabled"`
+	// InMemoryOnly skips the persist callback on AddJob. Used for jobs that
+	// are derived from server config (e.g. the orchestrator heartbeat) and
+	// must be re-created from config each boot — persisting them strands
+	// stale rows after a rename (govega#101).
+	InMemoryOnly bool `json:"-"`
 }
 
 // RegisterSchedulerTools registers the four schedule-management tools on

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,7 +81,7 @@ func (s *Scheduler) AddJob(job dsl.ScheduledJob) error {
 	if !job.Enabled {
 		// Still persist the disabled job so it can be restored later.
 		s.jobs = append(s.jobs, job)
-		if s.persist != nil {
+		if s.persist != nil && !job.InMemoryOnly {
 			if err := s.persist(job); err != nil {
 				slog.Warn("scheduler: persist job failed", "name", job.Name, "error", err)
 			}
@@ -96,7 +97,7 @@ func (s *Scheduler) AddJob(job dsl.ScheduledJob) error {
 	s.entries[job.Name] = entryID
 	s.jobs = append(s.jobs, job)
 
-	if s.persist != nil {
+	if s.persist != nil && !job.InMemoryOnly {
 		if err := s.persist(job); err != nil {
 			slog.Warn("scheduler: persist job failed", "name", job.Name, "error", err)
 		}
@@ -154,8 +155,10 @@ func (s *Scheduler) ListJobs() []dsl.ScheduledJob {
 func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 	return func() {
 		// For heartbeat jobs, skip the LLM call entirely if the inbox
-		// is empty — saves tokens when the system is idle.
-		if s.inbox != nil && job.Name == "iris-heartbeat" {
+		// is empty — saves tokens when the system is idle. Matches any
+		// "*-heartbeat" so tenants with renamed orchestrators (knox,
+		// wilfred, …) keep the optimization (govega#101).
+		if s.inbox != nil && strings.HasSuffix(job.Name, "-heartbeat") {
 			count, err := s.inbox.PendingInboxCount()
 			if err == nil && count == 0 {
 				slog.Debug("scheduler: skipping heartbeat — inbox empty", "name", job.Name)
@@ -190,4 +193,44 @@ func removeJobByName(jobs []dsl.ScheduledJob, name string) []dsl.ScheduledJob {
 		}
 	}
 	return out
+}
+
+// heartbeatStore is the narrow slice of the store the prune step needs.
+// Kept as an interface so the helper is trivially unit-testable.
+type heartbeatStore interface {
+	ListScheduledJobs() ([]ScheduledJob, error)
+	DeleteScheduledJob(name string) error
+}
+
+// pruneStaleOrchestratorHeartbeats deletes any persisted job whose name
+// matches the auto-generated "<agent>-heartbeat" pattern (i.e. Name ==
+// AgentName+"-heartbeat"). The orchestrator heartbeat is now added as an
+// InMemoryOnly job on each boot, so any such row in the store is by
+// definition a leftover from before govega#101 (typically from a tenant
+// orchestrator rename). User-created routines don't follow that exact
+// pattern and are preserved.
+//
+// Returns the number of rows pruned. Errors on individual deletes are
+// logged and counted as failures (the prune continues on the rest).
+func pruneStaleOrchestratorHeartbeats(store heartbeatStore) (int, error) {
+	jobs, err := store.ListScheduledJobs()
+	if err != nil {
+		return 0, err
+	}
+	pruned := 0
+	for _, j := range jobs {
+		if !strings.HasSuffix(j.Name, "-heartbeat") {
+			continue
+		}
+		if j.AgentName+"-heartbeat" != j.Name {
+			continue
+		}
+		if err := store.DeleteScheduledJob(j.Name); err != nil {
+			slog.Warn("scheduler: prune legacy heartbeat failed", "name", j.Name, "error", err)
+			continue
+		}
+		slog.Info("scheduler: pruned legacy orchestrator heartbeat", "name", j.Name)
+		pruned++
+	}
+	return pruned, nil
 }
