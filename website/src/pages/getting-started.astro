@@ -2,6 +2,7 @@
 import '../styles/global.css'
 
 const BASE = import.meta.env.BASE_URL
+const version = '0.7.0'
 ---
 
 <!DOCTYPE html>
@@ -9,210 +10,357 @@ const BASE = import.meta.env.BASE_URL
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Building on Vega</title>
-  <meta name="description" content="From brew install to your first API call in 60 seconds. Build a frontend, integration, or product on top of Vega's HTTP + SSE API." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9733;</text></svg>" />
+  <title>Getting started · vega</title>
+  <meta name="description" content="From brew install to your first supervised process in 60 seconds." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='30' y='30' width='40' height='40' fill='%238B2A1A'/%3E%3C/svg%3E" />
 </head>
 
-<body class="antialiased">
+<body>
 
-  <!-- Nav -->
-  <header class="sticky top-0 z-50 border-b border-zinc-800/50 bg-[#09090b]/80 backdrop-blur-md">
-    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-      <a href={BASE} class="flex items-center gap-2.5">
-        <span class="text-amber-400 text-lg">&#9733;</span>
-        <span class="font-mono font-semibold text-sm gradient-text">Vega</span>
+  <header class="frame">
+    <div class="header-row">
+      <a href={BASE} class="wordmark">
+        <span class="wordmark-name">vega</span>
+        <span class="wordmark-sep">·</span>
+        <span class="wordmark-version tnum">{version}</span>
       </a>
-      <nav class="hidden md:flex items-center gap-8 text-sm text-zinc-400">
-        <a href={BASE} class="hover:text-white transition-colors">Home</a>
-        <span class="text-white">Building on Vega</span>
+      <nav class="header-nav">
+        <a href={BASE}>home</a>
+        <a href={`${BASE}#model`}>supervision model</a>
+        <a href={`${BASE}#api`}>api</a>
+        <a href="https://github.com/everydev1618/govega" target="_blank" rel="noreferrer" class="header-nav-ext">github ↗</a>
       </nav>
     </div>
+    <hr class="rule" />
   </header>
 
-  <!-- Header -->
-  <section class="max-w-3xl mx-auto px-6 pt-24 pb-12 text-center">
-    <p class="section-label">Guide</p>
-    <h1 class="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-      Building <span class="gradient-text">on Vega</span>
-    </h1>
-    <p class="text-lg text-zinc-400 max-w-xl mx-auto">
-      From <code class="text-base bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">brew install</code> to your first API call in about 60 seconds.
+  <!-- Page header -->
+  <section class="frame page-head">
+    <p class="anno">guide · v0.7</p>
+    <h1 class="display display-hero">Getting started.</h1>
+    <p class="lede" style="margin-top: 1.5rem; max-width: 50ch;">
+      From <span class="mono">brew install</span> to your first supervised
+      process in about sixty seconds.
     </p>
   </section>
 
-  <!-- Quick start -->
-  <section id="quick-start" class="max-w-3xl mx-auto px-6 pb-12">
-    <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6">
-      <p class="text-sm text-amber-400 font-medium mb-2">Step 0 &middot; Install &amp; run</p>
-      <p class="text-sm text-zinc-300 leading-relaxed mb-4">
-        Install the binary, run <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">vega serve</code>, and you've got a Vega runtime listening on <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">localhost:8080</code> with the dashboard, REST API, and SSE event stream — no auth wiring required.
+  <hr class="rule" />
+
+  <!-- §0 Install -->
+  <section class="frame section">
+    <div class="section-num">
+      §0 &nbsp; install
+      <p class="sidenote">
+        Single Go binary. SQLite ships with it. The dashboard is embedded
+        in the binary, so the only thing you need to add is an LLM key.
       </p>
-      <div class="code-block mb-4">
-        <p><span class="syn-comment">$</span> <span class="syn-str">brew install</span> everydev1618/tap/vega</p>
-        <p class="mt-1"><span class="syn-comment">$</span> <span class="syn-str">vega serve</span></p>
-        <p class="text-zinc-500 mt-1">&#x25B6; Dashboard ready at http://localhost:8080</p>
+    </div>
+    <div class="section-body">
+      <h2 class="display display-section">Install and run.</h2>
+      <p class="lede" style="margin-top: 1.25rem;">
+        Two commands. After the second one you have a Vega runtime
+        listening on <span class="mono">localhost:8080</span> with the
+        dashboard, REST API, and event stream live.
+      </p>
+
+      <div class="code" style="margin-top: 1.75rem;">
+        <p><span class="c-com">$</span> brew install <span class="c-tag">everydev1618/tap/vega</span></p>
+        <p><span class="c-com">$</span> export <span class="c-key">ANTHROPIC_API_KEY</span>=<span class="c-str">sk-ant-...</span></p>
+        <p><span class="c-com">$</span> vega serve</p>
+        <p style="color: var(--ink-faint);">▸ orchestrator listening on :8080</p>
+        <p style="color: var(--ink-faint);">▸ dashboard ready at http://localhost:8080</p>
+        <p style="color: var(--ink-faint);">▸ sse stream at /api/v1/events</p>
       </div>
-      <p class="text-xs text-zinc-500 leading-relaxed">
-        Talk to <span class="text-violet-400 font-mono">Iris</span> in the dashboard &mdash; she's your chief of staff. Tell her what you need; <span class="text-amber-400 font-mono">Hera</span> builds agents on the fly, and <span class="text-cyan-400 font-mono">Mira</span> curates everyone's memory into a shared wiki.
+
+      <p style="margin-top: 1.5rem; color: var(--ink-soft); font-size: 0.92rem;">
+        Open the dashboard. Talk to <span class="mono" style="color: var(--brand);">Iris</span>, your chief of staff.
+        Tell her what you need; <span class="mono" style="color: var(--brand);">Hera</span> will build the agents
+        on the fly, and <span class="mono" style="color: var(--brand);">Mira</span> will curate everyone's memory
+        into a shared wiki as you go.
       </p>
     </div>
   </section>
 
-  <!-- Prerequisites -->
-  <section class="max-w-3xl mx-auto px-6 pb-12">
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-      <p class="text-sm text-zinc-300 font-medium mb-2">Prerequisites for the rest of this guide</p>
-      <ul class="text-sm text-zinc-400 space-y-1">
-        <li>An <a href="https://console.anthropic.com/" target="_blank" class="text-indigo-400 hover:text-indigo-300 transition-colors">Anthropic API key</a> &middot; <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">export ANTHROPIC_API_KEY=sk-ant-...</code> before <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">vega serve</code></li>
-        <li><code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">vega serve</code> running on <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">localhost:8080</code> (from Step 0)</li>
-      </ul>
-    </div>
-  </section>
+  <hr class="rule" />
 
-  <!-- Step 1 -->
-  <section class="max-w-3xl mx-auto px-6 pb-16">
-    <div class="flex items-center gap-4 mb-5">
-      <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">1</span>
-      <h2 class="text-xl font-semibold text-white">Make your first API call</h2>
-    </div>
+  <!-- §1 First API call -->
+  <section class="frame section">
+    <div class="section-num">§1 &nbsp; first call</div>
+    <div class="section-body">
+      <h2 class="display display-section">Make your first API call.</h2>
+      <p class="lede" style="margin-top: 1.25rem;">
+        The identity endpoint is a safe round trip. It returns the
+        orchestrator and builder display names and confirms the runtime
+        is alive.
+      </p>
 
-    <div class="code-block text-sm leading-relaxed mb-5">
-      <p><span class="syn-key">const</span> <span class="syn-type">res</span> = <span class="syn-key">await</span> <span class="syn-fn">fetch</span>(<span class="syn-str">'http://localhost:8080/api/v1/identity'</span>)</p>
-      <p><span class="syn-key">const</span> <span class="syn-type">identity</span> = <span class="syn-key">await</span> <span class="syn-type">res</span>.<span class="syn-fn">json</span>()</p>
-      <p class="text-zinc-500 mt-1"><span class="syn-comment">// &#123; orchestrator: ..., builder: ..., product_name: ... &#125;</span></p>
-    </div>
+      <div class="code" style="margin-top: 1.75rem;">
+        <p><span class="c-key">const</span> res = <span class="c-key">await</span> <span class="c-fn">fetch</span>(<span class="c-str">'http://localhost:8080/api/v1/identity'</span>)</p>
+        <p><span class="c-key">const</span> identity = <span class="c-key">await</span> res.<span class="c-fn">json</span>()</p>
+        <p class="c-com">// &#123; orchestrator: ..., builder: ..., product_name: ... &#125;</p>
+      </div>
 
-    <p class="text-sm text-zinc-400 mb-4">Other endpoints worth poking at first:</p>
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm overflow-x-auto">
-      <table class="w-full text-zinc-400">
-        <tbody class="divide-y divide-zinc-800">
-          <tr>
-            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/identity</td>
-            <td class="py-2">Orchestrator + builder display names</td>
-          </tr>
-          <tr>
-            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/agents</td>
-            <td class="py-2">All agents in this runtime</td>
-          </tr>
-          <tr>
-            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/processes</td>
-            <td class="py-2">Running + recent processes</td>
-          </tr>
-          <tr>
-            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/channels</td>
-            <td class="py-2">Channels (group conversations)</td>
-          </tr>
-          <tr>
-            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">GET /api/v1/inbox</td>
-            <td class="py-2">Inbox items waiting for review</td>
-          </tr>
-          <tr>
-            <td class="py-2 pr-4 font-mono text-xs text-zinc-300 whitespace-nowrap">POST /api/v1/agents/&lcub;name&rcub;/chat</td>
-            <td class="py-2">DM an agent &mdash; returns the response</td>
-          </tr>
+      <p class="anno" style="margin-top: 2rem; margin-bottom: 0.6rem;">other endpoints worth poking at first</p>
+      <table class="api-table">
+        <tbody>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/agents</td><td>All agents in this runtime</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/processes</td><td>Running + recently terminated processes</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/channels</td><td>Multi-agent channels</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/inbox</td><td>Items waiting for review</td></tr>
+          <tr><td class="mono">POST</td><td class="mono">/api/v1/agents/&#123;name&#125;/chat</td><td>DM an agent · returns the response</td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
-  <!-- Step 2 -->
-  <section class="max-w-3xl mx-auto px-6 pb-16">
-    <div class="flex items-center gap-4 mb-5">
-      <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">2</span>
-      <h2 class="text-xl font-semibold text-white">Subscribe to live events</h2>
-    </div>
-    <p class="text-sm text-zinc-400 mb-4 leading-relaxed">
-      <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">EventSource</code> opens a persistent stream &mdash; agents push activity in real time.
-    </p>
-    <div class="code-block text-sm leading-relaxed mb-5">
-      <p><span class="syn-key">const</span> <span class="syn-type">es</span> = <span class="syn-key">new</span> <span class="syn-fn">EventSource</span>(<span class="syn-str">'http://localhost:8080/api/v1/events'</span>)</p>
-      <p class="mt-2"><span class="syn-type">es</span>.<span class="syn-fn">addEventListener</span>(<span class="syn-str">'process.completed'</span>, (e) =&gt; &#123;</p>
-      <p class="pl-4"><span class="syn-key">const</span> ev = <span class="syn-type">JSON</span>.<span class="syn-fn">parse</span>(e.data)</p>
-      <p class="pl-4"><span class="syn-comment">// dispatch to your store / queries</span></p>
-      <p>&#125;)</p>
-    </div>
-    <p class="text-sm text-zinc-400 mb-2">Event types:</p>
-    <p class="text-xs text-zinc-500 font-mono leading-relaxed">
-      process.started &middot; process.completed &middot; process.failed<br/>
-      workflow.completed &middot; workflow.failed<br/>
-      agent.created &middot; agent.deleted<br/>
-      chat.update &middot; chat.event<br/>
-      channel.message &middot; channel.thread_reply
-    </p>
-    <p class="text-xs text-zinc-500 mt-4 leading-relaxed">
-      Per-agent live progress (token deltas, tool calls) lives on a separate stream:
-      <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">GET/POST /api/v1/agents/&lcub;name&rcub;/chat/stream</code>.
-      Channels have an analogous pair.
-    </p>
-  </section>
+  <hr class="rule" />
 
-  <!-- Step 3 -->
-  <section class="max-w-3xl mx-auto px-6 pb-16">
-    <div class="flex items-center gap-4 mb-5">
-      <span class="flex-none w-8 h-8 rounded-full bg-indigo-600 text-white font-mono text-sm flex items-center justify-center font-semibold">3</span>
-      <h2 class="text-xl font-semibold text-white">Type-safe with @vega/api-types</h2>
+  <!-- §2 Subscribe to events -->
+  <section class="frame section">
+    <div class="section-num">
+      §2 &nbsp; events
+      <p class="sidenote">
+        SSE keeps the wire open and pushes JSON frames. No websocket
+        handshake, no auth dance for the local case, no polling.
+      </p>
     </div>
-    <p class="text-sm text-zinc-400 mb-4 leading-relaxed">
-      Generated from the OpenAPI spec. Pair with <a href="https://openapi-ts.dev/openapi-fetch/" target="_blank" class="text-indigo-400 hover:text-indigo-300 transition-colors">openapi-fetch</a> for fully type-inferred client calls:
-    </p>
-    <div class="code-block text-sm leading-relaxed">
-      <p><span class="syn-key">import</span> <span class="syn-fn">createClient</span> <span class="syn-key">from</span> <span class="syn-str">'openapi-fetch'</span></p>
-      <p><span class="syn-key">import type</span> &#123; paths &#125; <span class="syn-key">from</span> <span class="syn-str">'@vega/api-types'</span></p>
-      <p class="mt-2"><span class="syn-key">const</span> <span class="syn-type">client</span> = <span class="syn-fn">createClient</span>&lt;paths&gt;(&#123;</p>
-      <p class="pl-4">baseUrl: <span class="syn-str">'http://localhost:8080'</span>,</p>
-      <p>&#125;)</p>
-      <p class="mt-2"><span class="syn-key">const</span> &#123; data, error &#125; = <span class="syn-key">await</span> <span class="syn-type">client</span>.<span class="syn-fn">GET</span>(<span class="syn-str">'/api/v1/identity'</span>)</p>
-      <p class="text-zinc-500 mt-1"><span class="syn-comment">// data is fully typed; error too</span></p>
-    </div>
-    <p class="text-xs text-zinc-500 mt-3 leading-relaxed">
-      Until <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300">@vega/api-types</code> is published to npm, vendor or path-import.
-    </p>
-  </section>
+    <div class="section-body">
+      <h2 class="display display-section">Subscribe to live events.</h2>
+      <p class="lede" style="margin-top: 1.25rem;">
+        <span class="mono">EventSource</span> opens a persistent stream.
+        Agents push every state change to it as they happen.
+      </p>
 
-  <!-- Production -->
-  <section class="max-w-3xl mx-auto px-6 pb-16">
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-      <p class="text-sm text-zinc-300 font-medium mb-2">Going to production</p>
-      <p class="text-sm text-zinc-400 leading-relaxed">
-        For multi-user or multi-tenant deployments, layer JWT auth on top of <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">vega serve</code>. govega ships a <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">cmd/control-plane</code> that issues RS256 tokens (JWKS endpoint included). Your runtime validates them locally; clients send <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">Authorization: Bearer &lt;token&gt;</code> on fetch and <code class="text-xs bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">?access_token=&lt;token&gt;</code> on SSE. Production-grade login plugs into WorkOS or your IdP of choice.
+      <div class="code" style="margin-top: 1.75rem;">
+        <p><span class="c-key">const</span> es = <span class="c-key">new</span> <span class="c-fn">EventSource</span>(<span class="c-str">'http://localhost:8080/api/v1/events'</span>)</p>
+        <p>&nbsp;</p>
+        <p>es.<span class="c-fn">addEventListener</span>(<span class="c-str">'process.completed'</span>, (e) =&gt; &#123;</p>
+        <p>&nbsp;&nbsp;<span class="c-key">const</span> ev = <span class="c-fn">JSON.parse</span>(e.data)</p>
+        <p>&nbsp;&nbsp;<span class="c-com">// dispatch to your store / queries</span></p>
+        <p>&#125;)</p>
+      </div>
+
+      <p class="anno" style="margin-top: 2rem; margin-bottom: 0.6rem;">event types</p>
+      <p class="mono" style="color: var(--ink-soft); font-size: 0.82rem; line-height: 1.75;">
+        process.started · process.completed · process.failed<br/>
+        workflow.completed · workflow.failed<br/>
+        agent.created · agent.deleted<br/>
+        chat.update · chat.event<br/>
+        channel.message · channel.thread_reply<br/>
+        supervisor.restart · supervisor.give_up
+      </p>
+
+      <p style="margin-top: 1.5rem; color: var(--ink-soft); font-size: 0.92rem;">
+        Per-agent live progress (token deltas, tool calls) lives on a
+        separate stream:
+        <span class="mono">GET /api/v1/agents/&#123;name&#125;/chat/stream</span>.
+        Channels have an analogous pair.
       </p>
     </div>
   </section>
 
-  <!-- What's next -->
-  <section class="max-w-3xl mx-auto px-6 pb-24">
-    <h2 class="text-xl font-semibold text-white mb-6">What's next</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <a href={`${BASE}#features`} class="feature-card group block">
-        <h3 class="font-semibold text-white mb-1 group-hover:text-indigo-300 transition-colors">Features</h3>
-        <p class="text-sm text-zinc-400">Supervision, integrations, teams, streaming</p>
-      </a>
-      <a href={`${BASE}#how-it-works`} class="feature-card group block">
-        <h3 class="font-semibold text-white mb-1 group-hover:text-indigo-300 transition-colors">How it works</h3>
-        <p class="text-sm text-zinc-400">Iris, Hera, Mira, and the supervision model in four steps</p>
-      </a>
-      <a href={`${BASE}#build`} class="feature-card group block">
-        <h3 class="font-semibold text-white mb-1 group-hover:text-indigo-300 transition-colors">Build on Vega</h3>
-        <p class="text-sm text-zinc-400">REST, SSE, and type-safe client snippets at a glance</p>
-      </a>
+  <hr class="rule" />
+
+  <!-- §3 Type-safe client -->
+  <section class="frame section">
+    <div class="section-num">§3 &nbsp; type-safe</div>
+    <div class="section-body">
+      <h2 class="display display-section">Type-safe with @vega/api-types.</h2>
+      <p class="lede" style="margin-top: 1.25rem;">
+        Generated from the OpenAPI spec the runtime serves. Pair with
+        <a href="https://openapi-ts.dev/openapi-fetch/" target="_blank" rel="noreferrer" class="action-link">openapi-fetch</a>
+        for fully type-inferred client calls.
+      </p>
+
+      <div class="code" style="margin-top: 1.75rem;">
+        <p><span class="c-key">import</span> <span class="c-fn">createClient</span> <span class="c-key">from</span> <span class="c-str">'openapi-fetch'</span></p>
+        <p><span class="c-key">import type</span> &#123; paths &#125; <span class="c-key">from</span> <span class="c-str">'@vega/api-types'</span></p>
+        <p>&nbsp;</p>
+        <p><span class="c-key">const</span> client = <span class="c-fn">createClient</span>(&#123;</p>
+        <p>&nbsp;&nbsp;baseUrl: <span class="c-str">'http://localhost:8080'</span>,</p>
+        <p>&#125;)</p>
+        <p>&nbsp;</p>
+        <p><span class="c-key">const</span> &#123; data, error &#125; = <span class="c-key">await</span> client.<span class="c-fn">GET</span>(<span class="c-str">'/api/v1/identity'</span>)</p>
+        <p class="c-com">// data is fully typed; error too</p>
+      </div>
+
+      <p style="margin-top: 1.5rem; color: var(--ink-faint); font-size: 0.82rem;">
+        Until <span class="mono">@vega/api-types</span> is published to npm, vendor or path-import.
+      </p>
     </div>
   </section>
 
-  <!-- Footer -->
-  <footer class="border-t border-zinc-800/50 py-8">
-    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
-      <div class="flex items-center gap-2 font-mono">
-        <span class="text-amber-400">&#9733;</span>
-        <span class="gradient-text font-semibold">Vega</span>
+  <hr class="rule" />
+
+  <!-- §4 Production -->
+  <section class="frame section">
+    <div class="section-num">
+      §4 &nbsp; production
+      <p class="sidenote">
+        Local <span class="mono">vega serve</span> skips auth entirely.
+        Multi-tenant deployments need it.
+      </p>
+    </div>
+    <div class="section-body">
+      <h2 class="display display-section">Going multi-tenant.</h2>
+      <p class="lede" style="margin-top: 1.25rem;">
+        Layer JWT auth on top of <span class="mono">vega serve</span>.
+        govega ships a <span class="mono">cmd/control-plane</span> that
+        issues RS256 tokens with a JWKS endpoint. Your runtime
+        validates them locally.
+      </p>
+      <p style="margin-top: 1.5rem; color: var(--ink-soft);">
+        Clients send <span class="mono">Authorization: Bearer &lt;token&gt;</span>
+        on fetch and <span class="mono">?access_token=&lt;token&gt;</span>
+        on SSE. Production-grade login plugs into WorkOS or your IdP of
+        choice.
+      </p>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- §5 What's next -->
+  <section class="frame section">
+    <div class="section-num">§5 &nbsp; next</div>
+    <div class="section-body">
+      <h2 class="display display-section">What's next.</h2>
+      <div class="next-grid">
+        <a href={`${BASE}#model`} class="next">
+          <span class="anno">→ §2 supervision</span>
+          <p>OneForOne, OneForAll, RestForOne. Error classification.</p>
+        </a>
+        <a href={`${BASE}#surfaces`} class="next">
+          <span class="anno">→ §3 surfaces</span>
+          <p>Chat, YAML, and Go all drive the same runtime.</p>
+        </a>
+        <a href={`${BASE}#api`} class="next">
+          <span class="anno">→ §5 api</span>
+          <p>Every agent, channel, process, and workflow is addressable.</p>
+        </a>
       </div>
-      <nav class="flex items-center gap-6">
-        <a href={BASE} class="hover:text-white transition-colors">Home</a>
-        <a href={`${BASE}#build`} class="hover:text-white transition-colors">Build</a>
-        <a href={`${BASE}#features`} class="hover:text-white transition-colors">Features</a>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <footer class="frame footer">
+    <div class="footer-row">
+      <span class="wordmark">
+        <span class="wordmark-name">vega</span>
+        <span class="wordmark-sep">·</span>
+        <span class="wordmark-version tnum">{version}</span>
+      </span>
+      <nav class="footer-nav">
+        <a href={BASE}>home</a>
+        <a href={`${BASE}#model`}>supervision</a>
+        <a href={`${BASE}#api`}>api</a>
+        <a href="https://github.com/everydev1618/govega" target="_blank" rel="noreferrer">github</a>
       </nav>
     </div>
+    <p class="footer-fine anno">v3ga.dev · supervised since 2025</p>
   </footer>
 
 </body>
 </html>
+
+<style>
+  /* Header (shared shape with index) */
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    gap: 2rem;
+  }
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-family: 'Geist Mono', monospace;
+    color: var(--ink);
+  }
+  .wordmark-name { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; }
+  .wordmark-sep { color: var(--ink-faint); }
+  .wordmark-version { font-size: 0.78rem; color: var(--ink-faint); font-weight: 400; }
+  .header-nav {
+    display: none;
+    gap: 1.75rem;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+  .header-nav a:hover { color: var(--brand); }
+  .header-nav-ext { color: var(--ink-faint); }
+  @media (min-width: 760px) { .header-nav { display: flex; } }
+
+  /* Page head */
+  .page-head { padding-block: clamp(3rem, 7vw, 5rem); max-width: 64rem; }
+  .page-head .anno { display: block; margin-bottom: 1.25rem; }
+
+  .section-body { max-width: 68ch; min-width: 0; }
+
+  /* API table (shared with index) */
+  .api-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.88rem;
+  }
+  .api-table td {
+    padding: 0.7rem 0.75rem;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-soft);
+    vertical-align: top;
+  }
+  .api-table td:first-child { width: 4.5rem; color: var(--brand); }
+  .api-table td:nth-child(2) { width: 22rem; color: var(--ink); white-space: nowrap; overflow-x: auto; max-width: 100%; }
+  .api-table tr:last-child td { border-bottom: 0; }
+  @media (max-width: 720px) {
+    .api-table td:nth-child(2) { width: auto; white-space: normal; word-break: break-word; }
+    .api-table td { font-size: 0.78rem; padding: 0.55rem 0.45rem; }
+  }
+
+  /* §5 next */
+  .next-grid {
+    margin-top: 2rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  @media (min-width: 720px) {
+    .next-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  .next {
+    display: block;
+    padding: 1.25rem;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    border-radius: 2px;
+    color: var(--ink);
+    transition: border-color 200ms, background 200ms;
+  }
+  .next:hover { border-color: var(--brand); background: var(--paper-deep); }
+  .next .anno { display: block; margin-bottom: 0.5rem; }
+  .next p { margin: 0; color: var(--ink-soft); font-size: 0.92rem; line-height: 1.5; }
+
+  /* Footer */
+  .footer { padding-block: 2.5rem; }
+  .footer-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .footer-nav {
+    display: flex;
+    gap: 1.5rem;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+  .footer-nav a:hover { color: var(--brand); }
+  .footer-fine { margin-top: 0.75rem; color: var(--ink-faint); }
+</style>

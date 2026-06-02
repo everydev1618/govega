@@ -1,75 +1,9 @@
 ---
 import '../styles/global.css'
+import SupervisionTree from '../components/SupervisionTree.astro'
 
 const BASE = import.meta.env.BASE_URL
-
-const features = [
-  {
-    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" /></svg>`,
-    title: 'Chat to build',
-    desc: 'Tell Iris what you need. She delegates to Hera, who builds agents, teams, and channels on the fly. No code required.',
-    color: 'text-violet-400',
-  },
-  {
-    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>`,
-    title: '850+ integrations',
-    desc: 'Connect Composio, Slack, GitHub, Gmail, and more via MCP. Add new services at runtime through chat.',
-    color: 'text-cyan-400',
-  },
-  {
-    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" /></svg>`,
-    title: 'Fault-tolerant',
-    desc: 'Erlang-style supervision trees. Processes restart automatically. Errors are classified and retried with backoff.',
-    color: 'text-emerald-400',
-  },
-  {
-    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" /></svg>`,
-    title: 'Teams & channels',
-    desc: 'Agents organize into teams with leads and members. Team channels provide transparent collaboration the user can watch.',
-    color: 'text-amber-400',
-  },
-  {
-    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>`,
-    title: 'YAML DSL',
-    desc: 'Define multi-agent workflows in YAML with if/else, for-each, parallel, and try/catch. No programming required.',
-    color: 'text-rose-400',
-  },
-  {
-    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>`,
-    title: 'Real-time streaming',
-    desc: 'Token-by-token SSE streaming with live tool call indicators. Built-in REST API and web dashboard.',
-    color: 'text-indigo-400',
-  },
-  {
-    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0 0c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>`,
-    title: 'Orchestrator federation',
-    desc: 'Talk to other Vega orchestrators over AIRE (QUIC-native). Trusted peers, per-agent grants, full audit trail. Opt-in via VEGA_PEERING_ADDR.',
-    color: 'text-fuchsia-400',
-  },
-]
-
-const howItWorks = [
-  {
-    step: '01',
-    title: 'You talk to Iris',
-    desc: 'Iris is your chief of staff. Tell her what you need done. She understands your goals and figures out who should do the work.',
-  },
-  {
-    step: '02',
-    title: 'Hera builds the team',
-    desc: 'Need a new capability? Hera creates agents on the fly with the right tools, personality, and team structure. No restart needed.',
-  },
-  {
-    step: '03',
-    title: 'Agents collaborate',
-    desc: 'Team leads delegate to members. Agents post updates to channels. You watch it happen in real time through the dashboard.',
-  },
-  {
-    step: '04',
-    title: 'Mira remembers',
-    desc: 'A dedicated memory curator distills every conversation into a wiki. Agents pull only what they need, so context stays sharp as the org grows.',
-  },
-]
+const version = '0.7.0'
 ---
 
 <!DOCTYPE html>
@@ -77,393 +11,672 @@ const howItWorks = [
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vega - AI agent orchestration framework</title>
-  <meta name="description" content="Build reliable AI agent teams with fault-tolerant orchestration, 850+ integrations, and a Slack-like dashboard. Go library + YAML DSL." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9733;</text></svg>" />
-  <meta property="og:title" content="Vega - AI agent orchestration framework" />
-  <meta property="og:description" content="Build reliable AI agent teams with fault-tolerant orchestration, 850+ integrations, and a Slack-like dashboard." />
+  <title>Vega — a supervised runtime for AI agents</title>
+  <meta name="description" content="Vega applies Erlang's supervision model to AI agents. Processes are restarted on failure, errors are classified, and the rest of the org keeps running." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='30' y='30' width='40' height='40' fill='%238B2A1A'/%3E%3C/svg%3E" />
+  <meta property="og:title" content="Vega — a supervised runtime for AI agents" />
+  <meta property="og:description" content="Erlang-style supervision for autonomous AI agents. Restart on failure, classify errors, isolate blast radius." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://v3ga.dev" />
 </head>
 
-<body class="antialiased">
+<body>
 
-  <!-- Nav -->
-  <header class="sticky top-0 z-50 border-b border-zinc-800/50 bg-[#09090b]/80 backdrop-blur-md">
-    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-      <a href={BASE} class="flex items-center gap-2.5">
-        <span class="text-amber-400 text-lg">&#9733;</span>
-        <span class="font-mono font-semibold text-sm gradient-text">Vega</span>
-        <span class="text-[10px] font-mono text-zinc-500 border border-zinc-800 rounded px-1.5 py-0.5">v0.7</span>
+  <!-- Header -->
+  <header class="frame">
+    <div class="header-row">
+      <a href={BASE} class="wordmark">
+        <span class="wordmark-name">vega</span>
+        <span class="wordmark-sep">·</span>
+        <span class="wordmark-version tnum">{version}</span>
       </a>
-      <nav class="hidden md:flex items-center gap-8 text-sm text-zinc-400">
-        <a href="#features" class="hover:text-white transition-colors">Features</a>
-        <a href="#how-it-works" class="hover:text-white transition-colors">How it works</a>
-        <a href="#build" class="hover:text-white transition-colors">Build on Vega</a>
-        <a href={`${BASE}getting-started`} class="hover:text-white transition-colors">Docs</a>
+      <nav class="header-nav">
+        <a href="#model">supervision model</a>
+        <a href="#surfaces">surfaces</a>
+        <a href="#api">api</a>
+        <a href={`${BASE}getting-started`}>get started</a>
+        <a href="https://github.com/everydev1618/govega" target="_blank" rel="noreferrer" class="header-nav-ext">github ↗</a>
       </nav>
-      <div class="flex items-center gap-3">
-        <a href={`${BASE}getting-started`} class="btn-primary text-xs px-4 py-2">Get started</a>
-      </div>
     </div>
+    <hr class="rule" />
   </header>
 
-  <!-- Hero -->
-  <section class="relative overflow-hidden grid-bg">
-    <div class="hero-glow"></div>
-    <div class="max-w-6xl mx-auto px-6 pt-28 pb-24 relative">
-      <div class="max-w-3xl mx-auto text-center">
-        <p class="inline-block text-xs font-mono text-indigo-400 border border-indigo-500/30 rounded-full px-4 py-1.5 mb-8 bg-indigo-500/5">
-          HTTP API &middot; Go library &middot; YAML DSL &middot; MCP-native
-        </p>
-
-        <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-[1.1]">
-          Build AI agent teams<br/>
-          <span class="gradient-text">that actually work</span>
+  <!-- §0 Hero -->
+  <section class="frame hero">
+    <div class="hero-grid">
+      <div class="hero-text">
+        <p class="anno">v3ga.dev · an orchestration runtime</p>
+        <h1 class="display display-hero">
+          Agents that<br/>don't die quietly.
         </h1>
-
-        <p class="text-lg md:text-xl text-zinc-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-          Vega is a fault-tolerant orchestration runtime for AI agents.
-          Erlang-style supervision, 850+ integrations via MCP, and a
-          typed HTTP + SSE API any frontend can drive.
+        <p class="lede">
+          Vega applies Erlang's supervision model to autonomous AI agents.
+          When a process fails, and it will, the runtime restarts it,
+          classifies the error, and keeps the rest of the system running.
         </p>
 
-        <div class="flex items-center justify-center gap-4 flex-wrap mb-16">
-          <a href={`${BASE}getting-started`} class="btn-primary">
-            Get started
-          </a>
+        <div class="hero-actions">
+          <div class="install-line code" aria-label="Install command">
+            <span class="c-com">$</span>&nbsp;brew install <span class="c-tag">everydev1618/tap/vega</span>
+          </div>
+          <a href={`${BASE}getting-started`} class="action-link">read the docs</a>
         </div>
+      </div>
 
-        <!-- Install snippet -->
-        <div class="max-w-lg mx-auto">
-          <div class="code-block text-left text-sm glow-sm">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-zinc-500 text-xs font-mono">Install</span>
-              <div class="flex gap-1.5">
-                <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
-                <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
-                <span class="w-2.5 h-2.5 rounded-full bg-zinc-700"></span>
-              </div>
+      <aside class="hero-figure">
+        <SupervisionTree />
+      </aside>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- §1 What it is -->
+  <section class="frame section">
+    <div class="section-num">§1 &nbsp; runtime</div>
+    <div class="section-body">
+      <h2 class="display display-section">A process supervisor. With LLMs attached.</h2>
+      <p class="lede" style="margin-top: 1.5rem;">
+        Vega is a Go runtime that treats each AI agent as a supervised
+        process. Spawn them by chat, by YAML, or directly from Go. They
+        get an inbox, a budget, a retry policy, and a place in a
+        supervision tree. The orchestrator owns their lifecycle: it
+        starts them, watches them, restarts the ones that fail, and
+        tells you when something is going wrong.
+      </p>
+
+      <div class="run-block">
+        <div class="code">
+          <p><span class="c-com">$</span> brew install <span class="c-tag">everydev1618/tap/vega</span></p>
+          <p><span class="c-com">$</span> export <span class="c-key">ANTHROPIC_API_KEY</span>=<span class="c-str">sk-ant-...</span></p>
+          <p><span class="c-com">$</span> vega serve</p>
+          <p class="run-out">▸ orchestrator listening on :8080</p>
+          <p class="run-out">▸ dashboard ready at http://localhost:8080</p>
+          <p class="run-out">▸ sse stream at /api/v1/events</p>
+        </div>
+        <p class="sidenote" style="margin-top: 0.75rem;">
+          SQLite persistence. Anthropic by default; pluggable LLM backend.
+          Telegram bot and cron scheduler ship in the same binary.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- §2 Supervision model -->
+  <section id="model" class="frame section">
+    <div class="section-num">
+      §2 &nbsp; supervision
+      <p class="sidenote">
+        Borrowed wholesale from Erlang/OTP, where it has kept telephone
+        switches running with five-nines uptime for forty years. The
+        claim is not that AI agents are like phone calls. The claim is
+        that anything that can crash benefits from a thing that
+        restarts it.
+      </p>
+    </div>
+    <div class="section-body">
+      <h2 class="display display-section">Three restart strategies. Choose deliberately.</h2>
+      <p class="lede" style="margin-top: 1.5rem;">
+        Every supervisor in Vega carries one strategy. It decides what
+        happens to a process group when any one process dies.
+      </p>
+
+      <div class="strategy-grid">
+        <article class="strategy">
+          <div class="strategy-head">
+            <span class="anno">2.1</span>
+            <h3>OneForOne</h3>
+          </div>
+          <svg viewBox="0 0 200 130" class="strategy-svg" role="img" aria-label="OneForOne: only the failed child restarts">
+            <rect x="80" y="8" width="40" height="22" fill="none" stroke="currentColor"/>
+            <text x="100" y="22" text-anchor="middle" font-family="Geist Mono, monospace" font-size="9" fill="currentColor">sup</text>
+            <path d="M100 30 L100 50 M30 50 L170 50 M30 50 L30 70 M100 50 L100 70 M170 50 L170 70" stroke="currentColor" fill="none"/>
+            <rect x="10" y="70" width="40" height="22" fill="none" stroke="currentColor"/>
+            <rect x="80" y="70" width="40" height="22" fill="none" stroke="var(--signal)" stroke-width="1.5" fill="oklch(96% 0.05 30)"/>
+            <rect x="150" y="70" width="40" height="22" fill="none" stroke="currentColor"/>
+            <text x="100" y="115" text-anchor="middle" font-family="Geist Mono, monospace" font-size="9" fill="var(--signal)">↻ restart</text>
+          </svg>
+          <p>Only the failed process restarts. Siblings keep running. The default; use when processes are independent.</p>
+        </article>
+
+        <article class="strategy">
+          <div class="strategy-head">
+            <span class="anno">2.2</span>
+            <h3>OneForAll</h3>
+          </div>
+          <svg viewBox="0 0 200 130" class="strategy-svg" role="img" aria-label="OneForAll: all children restart together">
+            <rect x="80" y="8" width="40" height="22" fill="none" stroke="currentColor"/>
+            <text x="100" y="22" text-anchor="middle" font-family="Geist Mono, monospace" font-size="9" fill="currentColor">sup</text>
+            <path d="M100 30 L100 50 M30 50 L170 50 M30 50 L30 70 M100 50 L100 70 M170 50 L170 70" stroke="currentColor" fill="none"/>
+            <rect x="10" y="70" width="40" height="22" fill="none" stroke="var(--brand)" stroke-width="1.5" fill="oklch(95% 0.04 35)"/>
+            <rect x="80" y="70" width="40" height="22" fill="none" stroke="var(--signal)" stroke-width="1.5" fill="oklch(96% 0.05 30)"/>
+            <rect x="150" y="70" width="40" height="22" fill="none" stroke="var(--brand)" stroke-width="1.5" fill="oklch(95% 0.04 35)"/>
+            <text x="100" y="115" text-anchor="middle" font-family="Geist Mono, monospace" font-size="9" fill="var(--brand)">↻ all restart</text>
+          </svg>
+          <p>When one fails, the whole group restarts. Use when processes share state and must be brought up together.</p>
+        </article>
+
+        <article class="strategy">
+          <div class="strategy-head">
+            <span class="anno">2.3</span>
+            <h3>RestForOne</h3>
+          </div>
+          <svg viewBox="0 0 200 130" class="strategy-svg" role="img" aria-label="RestForOne: the failed process and those after it restart">
+            <rect x="80" y="8" width="40" height="22" fill="none" stroke="currentColor"/>
+            <text x="100" y="22" text-anchor="middle" font-family="Geist Mono, monospace" font-size="9" fill="currentColor">sup</text>
+            <path d="M100 30 L100 50 M30 50 L170 50 M30 50 L30 70 M100 50 L100 70 M170 50 L170 70" stroke="currentColor" fill="none"/>
+            <rect x="10" y="70" width="40" height="22" fill="none" stroke="currentColor"/>
+            <rect x="80" y="70" width="40" height="22" fill="none" stroke="var(--signal)" stroke-width="1.5" fill="oklch(96% 0.05 30)"/>
+            <rect x="150" y="70" width="40" height="22" fill="none" stroke="var(--brand)" stroke-width="1.5" fill="oklch(95% 0.04 35)"/>
+            <text x="100" y="115" text-anchor="middle" font-family="Geist Mono, monospace" font-size="9" fill="var(--brand)">↻ failed + after</text>
+          </svg>
+          <p>The failed process and every process started after it restart, in order. Use for pipelines where downstream depends on upstream state.</p>
+        </article>
+      </div>
+
+      <div class="errors">
+        <p class="anno">2.4 · error classification</p>
+        <p>Failures are sorted into seven categories. Four retry with backoff. Three give up.</p>
+        <table class="errors-table">
+          <tbody>
+            <tr><td><span class="mono c-tag">RateLimit</span></td><td>retry · exponential backoff</td></tr>
+            <tr><td><span class="mono c-tag">Overloaded</span></td><td>retry · exponential backoff</td></tr>
+            <tr><td><span class="mono c-tag">Timeout</span></td><td>retry · linear backoff</td></tr>
+            <tr><td><span class="mono c-tag">Temporary</span></td><td>retry · linear backoff</td></tr>
+            <tr><td><span class="mono" style="color: var(--signal);">Authentication</span></td><td>fail · operator intervention required</td></tr>
+            <tr><td><span class="mono" style="color: var(--signal);">InvalidRequest</span></td><td>fail · code or prompt error</td></tr>
+            <tr><td><span class="mono" style="color: var(--signal);">BudgetExceeded</span></td><td>fail · raise the budget or shrink the task</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- §3 Three surfaces -->
+  <section id="surfaces" class="frame section">
+    <div class="section-num">
+      §3 &nbsp; surfaces
+      <p class="sidenote">
+        Same runtime, three ways in. The dashboard, the YAML DSL, and
+        the Go library all drive the same orchestrator and write to the
+        same SQLite database.
+      </p>
+    </div>
+    <div class="section-body">
+      <h2 class="display display-section">Drive it from chat, YAML, or Go.</h2>
+
+      <div class="surfaces">
+
+        <!-- Chat surface -->
+        <article class="surface">
+          <header>
+            <span class="anno">3.1</span>
+            <h3>Chat with Iris</h3>
+          </header>
+          <div class="chat">
+            <div class="chat-msg from-you">
+              <span class="chat-who">you</span>
+              <p>I need a content team that can draft blog posts and ship them to our Slack.</p>
             </div>
-            <p><span class="syn-comment">$</span> <span class="syn-str">brew install</span> everydev1618/tap/vega</p>
-            <p class="mt-1"><span class="syn-comment">$</span> <span class="syn-str">vega serve</span></p>
-            <p class="text-zinc-500 mt-1">&#x25B6; Dashboard ready at http://localhost:8080</p>
+            <div class="chat-msg from-iris">
+              <span class="chat-who">iris</span>
+              <p>On it. I'll have Hera build the team. One writer, one editor, Slack tool wired in.</p>
+            </div>
+            <div class="chat-msg from-hera">
+              <span class="chat-who">hera</span>
+              <p>Done. Sofia (writer) and Marcus (editor). Channel <span class="mono">#content</span> is open; watch them work.</p>
+            </div>
           </div>
-        </div>
+          <p class="surface-foot">
+            Iris is your chief of staff. Hera builds agents on the fly from natural-language descriptions.
+          </p>
+        </article>
+
+        <!-- YAML surface -->
+        <article class="surface">
+          <header>
+            <span class="anno">3.2</span>
+            <h3>Declare in YAML</h3>
+          </header>
+          <div class="code yaml-block">
+            <p><span class="c-key">name</span>: ContentTeam</p>
+            <p><span class="c-key">settings</span>:</p>
+            <p>&nbsp;&nbsp;<span class="c-key">mcp.servers</span>:</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;- <span class="c-key">name</span>: <span class="c-str">composio</span></p>
+            <p>&nbsp;</p>
+            <p><span class="c-key">agents</span>:</p>
+            <p>&nbsp;&nbsp;<span class="c-fn">writer</span>:</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">model</span>: claude-sonnet-4-6</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">supervisor</span>:</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">strategy</span>: <span class="c-str">OneForOne</span></p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">max_restarts</span>: <span class="c-tag">3</span></p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">tools</span>:</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- composio__slack_send</p>
+          </div>
+          <p class="surface-foot">
+            Version-controlled, reproducible, and reloadable. The supervisor block is the part most agent frameworks don't have.
+          </p>
+        </article>
+
+        <!-- Go surface -->
+        <article class="surface">
+          <header>
+            <span class="anno">3.3</span>
+            <h3>Embed in Go</h3>
+          </header>
+          <div class="code go-block">
+            <p><span class="c-key">import</span> (</p>
+            <p>&nbsp;&nbsp;<span class="c-str">"github.com/everydev1618/govega"</span></p>
+            <p>&nbsp;&nbsp;<span class="c-str">"github.com/everydev1618/govega/llm"</span></p>
+            <p>)</p>
+            <p>&nbsp;</p>
+            <p>orch := vega.<span class="c-fn">NewOrchestrator</span>(</p>
+            <p>&nbsp;&nbsp;vega.<span class="c-fn">WithLLM</span>(llm.<span class="c-fn">NewAnthropic</span>()),</p>
+            <p>&nbsp;&nbsp;vega.<span class="c-fn">WithStrategy</span>(vega.OneForOne),</p>
+            <p>)</p>
+            <p>&nbsp;</p>
+            <p>proc, _ := orch.<span class="c-fn">Spawn</span>(vega.Agent&#123;</p>
+            <p>&nbsp;&nbsp;<span class="c-key">Name</span>:  <span class="c-str">"sofia"</span>,</p>
+            <p>&nbsp;&nbsp;<span class="c-key">Model</span>: <span class="c-str">"claude-sonnet-4-6"</span>,</p>
+            <p>&#125;)</p>
+            <p>&nbsp;</p>
+            <p>resp, _ := proc.<span class="c-fn">Send</span>(ctx, msg)</p>
+          </div>
+          <p class="surface-foot">
+            The Go library is the runtime itself. Anything the dashboard does is a public API call.
+          </p>
+        </article>
       </div>
     </div>
   </section>
 
-  <!-- Social proof / stats bar -->
-  <section class="border-y border-zinc-800/50 bg-zinc-900/30">
-    <div class="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-center gap-12 md:gap-20 text-center">
-      <div>
-        <p class="text-2xl font-bold text-white font-mono">850+</p>
-        <p class="text-xs text-zinc-500 mt-1">App integrations via Composio</p>
-      </div>
-      <div>
-        <p class="text-2xl font-bold text-white font-mono">Go + YAML</p>
-        <p class="text-xs text-zinc-500 mt-1">Library or no-code DSL</p>
-      </div>
-      <div>
-        <p class="text-2xl font-bold text-white font-mono">SQLite</p>
-        <p class="text-xs text-zinc-500 mt-1">Zero-config persistence</p>
-      </div>
-      <div>
-        <p class="text-2xl font-bold text-white font-mono">MCP</p>
-        <p class="text-xs text-zinc-500 mt-1">Model Context Protocol native</p>
-      </div>
-    </div>
-  </section>
+  <hr class="rule" />
 
-  <!-- Features -->
-  <section id="features" class="max-w-6xl mx-auto px-6 py-24">
-    <div class="text-center mb-16">
-      <p class="section-label">Features</p>
-      <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Everything you need to orchestrate agents</h2>
-      <p class="text-zinc-400 max-w-xl mx-auto">
-        From a single agent to a full company of AI workers. Vega handles fault tolerance, team coordination, integrations, and observability.
+  <!-- §4 Live trace -->
+  <section class="frame section">
+    <div class="section-num">
+      §4 &nbsp; observability
+      <p class="sidenote">
+        Every state change goes through one event bus. The dashboard
+        subscribes to it. So does any client that hits
+        <span class="mono">/api/v1/events</span>.
       </p>
     </div>
+    <div class="section-body">
+      <h2 class="display display-section">Watch the system think.</h2>
+      <p class="lede" style="margin-top: 1.5rem;">
+        Token-by-token streaming for the response. Process, workflow, and
+        channel events for the system. One SSE endpoint, JSON payloads,
+        no websocket plumbing.
+      </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-      {features.map(f => (
-        <div class="feature-card">
-          <div class={`mb-4 ${f.color}`} set:html={f.icon} />
-          <h3 class="font-semibold text-white text-lg mb-2">{f.title}</h3>
-          <p class="text-sm text-zinc-400 leading-relaxed">{f.desc}</p>
+      <div class="trace">
+        <div class="trace-head">
+          <span class="anno">tail -f</span>
+          <span class="mono">/api/v1/events</span>
+          <span class="chip chip-dot" style="margin-left: auto;">streaming</span>
         </div>
-      ))}
-    </div>
-  </section>
-
-  <!-- How it works -->
-  <section id="how-it-works" class="border-y border-zinc-800/50 bg-zinc-900/20">
-    <div class="max-w-6xl mx-auto px-6 py-24">
-      <div class="text-center mb-16">
-        <p class="section-label">How it works</p>
-        <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">From idea to AI workforce in minutes</h2>
-        <p class="text-zinc-400 max-w-xl mx-auto">
-          No YAML required. Just talk to Iris and she'll build what you need.
-        </p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {howItWorks.map(h => (
-          <div class="relative">
-            <span class="text-5xl font-bold font-mono text-zinc-800/80 mb-4 block">{h.step}</span>
-            <h3 class="font-semibold text-white text-lg mb-2">{h.title}</h3>
-            <p class="text-sm text-zinc-400 leading-relaxed">{h.desc}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <!-- Quick start examples -->
-  <section id="quickstart" class="max-w-6xl mx-auto px-6 py-24">
-    <div class="text-center mb-16">
-      <p class="section-label">Quick start</p>
-      <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Three ways to use Vega</h2>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-      <!-- Chat -->
-      <div class="gradient-border p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-violet-400">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
-          </span>
-          <h3 class="font-semibold text-white">Chat with Iris</h3>
-        </div>
-        <div class="code-block text-xs leading-relaxed">
-          <p class="syn-comment"># Just talk</p>
-          <p class="mt-2 text-zinc-300"><span class="text-violet-400">You:</span> I need a content team</p>
-          <p class="text-zinc-300 mt-1"><span class="text-violet-400">You:</span> that can write blog posts</p>
-          <p class="text-zinc-300 mt-1"><span class="text-violet-400">You:</span> and post to our Slack</p>
-          <p class="mt-3 text-zinc-300"><span class="text-indigo-400">Iris:</span> On it. I'll have Hera</p>
-          <p class="text-zinc-300">build that for you.</p>
-          <p class="mt-3 text-zinc-300"><span class="text-amber-400">Hera:</span> Done, love. Meet your</p>
-          <p class="text-zinc-300">team: Sofia (writer) and</p>
-          <p class="text-zinc-300">Marcus (editor). Check</p>
-          <p class="text-zinc-300">#content channel.</p>
-        </div>
-        <p class="text-xs text-zinc-500 mt-3">No code. No config files. Just describe what you need.</p>
-      </div>
-
-      <!-- YAML -->
-      <div class="gradient-border p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-rose-400">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-          </span>
-          <h3 class="font-semibold text-white">YAML DSL</h3>
-        </div>
-        <div class="code-block text-xs leading-relaxed">
-          <p><span class="syn-key">name</span>: ContentTeam</p>
-          <p class="mt-2"><span class="syn-key">settings</span>:</p>
-          <p class="pl-4"><span class="syn-key">mcp</span>:</p>
-          <p class="pl-6"><span class="syn-key">servers</span>:</p>
-          <p class="pl-8">- <span class="syn-key">name</span>: <span class="syn-str">composio</span></p>
-          <p class="mt-2"><span class="syn-key">agents</span>:</p>
-          <p class="pl-4"><span class="syn-type">writer</span>:</p>
-          <p class="pl-6"><span class="syn-key">model</span>: claude-sonnet-4-6</p>
-          <p class="pl-6"><span class="syn-key">system</span>: <span class="syn-str">|</span></p>
-          <p class="pl-8 syn-str">You write engaging blog posts.</p>
-          <p class="pl-6"><span class="syn-key">tools</span>:</p>
-          <p class="pl-8">- composio__slack_send</p>
-        </div>
-        <p class="text-xs text-zinc-500 mt-3">Declarative. Version-controlled. Reproducible.</p>
-      </div>
-
-      <!-- Go -->
-      <div class="gradient-border p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-cyan-400">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
-          </span>
-          <h3 class="font-semibold text-white">Go library</h3>
-        </div>
-        <div class="code-block text-xs leading-relaxed">
-          <p><span class="syn-key">import</span> (</p>
-          <p class="pl-4"><span class="syn-str">"github.com/everydev1618/govega"</span></p>
-          <p class="pl-4"><span class="syn-str">"github.com/everydev1618/govega/llm"</span></p>
-          <p>)</p>
-          <p class="mt-2"><span class="syn-type">orch</span> := vega.<span class="syn-fn">NewOrchestrator</span>(</p>
-          <p class="pl-4">vega.<span class="syn-fn">WithLLM</span>(llm.<span class="syn-fn">NewAnthropic</span>()),</p>
-          <p>)</p>
-          <p class="mt-2"><span class="syn-type">proc</span>, _ := orch.<span class="syn-fn">Spawn</span>(vega.Agent&#123;</p>
-          <p class="pl-4">Name:  <span class="syn-str">"writer"</span>,</p>
-          <p class="pl-4">Model: <span class="syn-str">"claude-sonnet-4-6"</span>,</p>
-          <p>&#125;)</p>
-          <p class="mt-2">resp, _ := proc.<span class="syn-fn">Send</span>(ctx, msg)</p>
-        </div>
-        <p class="text-xs text-zinc-500 mt-3">Full programmatic control. Embed in any Go app.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Architecture -->
-  <section class="border-y border-zinc-800/50 bg-zinc-900/20">
-    <div class="max-w-6xl mx-auto px-6 py-24">
-      <div class="text-center mb-16">
-        <p class="section-label">Architecture</p>
-        <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Built on proven patterns</h2>
-        <p class="text-zinc-400 max-w-xl mx-auto">
-          Vega applies Erlang's 40-year-old supervision model to AI agents.
-          The result: agents that recover from failures automatically.
-        </p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-        <div class="text-center p-6">
-          <div class="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto mb-4">
-            <span class="text-indigo-400 font-mono font-bold text-lg">A</span>
-          </div>
-          <h3 class="font-semibold text-white mb-2">Agent</h3>
-          <p class="text-sm text-zinc-400">Immutable blueprint. Model, system prompt, tools, budget, retry policy. One agent can spawn many processes.</p>
-        </div>
-        <div class="text-center p-6">
-          <div class="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-4">
-            <span class="text-violet-400 font-mono font-bold text-lg">P</span>
-          </div>
-          <h3 class="font-semibold text-white mb-2">Process</h3>
-          <p class="text-sm text-zinc-400">Running instance with state, messages, and metrics. Supervised by the orchestrator. Restarts on failure.</p>
-        </div>
-        <div class="text-center p-6">
-          <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-            <span class="text-emerald-400 font-mono font-bold text-lg">O</span>
-          </div>
-          <h3 class="font-semibold text-white mb-2">Orchestrator</h3>
-          <p class="text-sm text-zinc-400">Process registry and lifecycle manager. Handles supervision strategies: OneForOne, OneForAll, RestForOne.</p>
+        <div class="trace-body">
+          <p><span class="tnum c-com">14:02:11.044</span> &nbsp;<span class="c-key">process.started</span>&nbsp; sofia <span class="c-com">&lt;0.18.0&gt;</span></p>
+          <p><span class="tnum c-com">14:02:11.118</span> &nbsp;<span class="c-key">chat.update</span>&nbsp; sofia &nbsp; <span class="c-com">delta=64 tokens</span></p>
+          <p><span class="tnum c-com">14:02:11.412</span> &nbsp;<span class="c-key">tool.call</span>&nbsp; sofia → <span class="c-tag">composio__slack_send</span></p>
+          <p><span class="tnum c-com">14:02:12.901</span> &nbsp;<span class="c-key">tool.result</span>&nbsp; sofia ← <span class="c-tag">composio__slack_send</span> &nbsp;<span class="c-com">ok</span></p>
+          <p><span class="tnum c-com">14:02:13.118</span> &nbsp;<span style="color: var(--signal); font-weight: 500;">process.failed</span>&nbsp; sofia <span class="c-com">&lt;0.18.0&gt;</span> &nbsp;<span class="c-com">context_deadline_exceeded</span></p>
+          <p><span class="tnum c-com">14:02:13.119</span> &nbsp;<span class="c-key" style="color: var(--brand);">supervisor.restart</span>&nbsp; iris → sofia &nbsp;<span class="c-com">strategy=OneForOne, attempt=1/3</span></p>
+          <p><span class="tnum c-com">14:02:13.184</span> &nbsp;<span class="c-key">process.started</span>&nbsp; sofia <span class="c-com">&lt;0.18.1&gt;</span></p>
+          <p><span class="tnum c-com">14:02:14.022</span> &nbsp;<span class="c-key">process.completed</span>&nbsp; sofia <span class="c-com">&lt;0.18.1&gt;</span> &nbsp;<span class="c-com">tokens=1284 cost=$0.018</span></p>
+          <p><span class="tnum c-com">14:02:14.117</span> &nbsp;<span class="c-key">channel.message</span>&nbsp; <span class="c-tag">#content</span> &nbsp;sofia: "draft posted to #marketing for review"</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Build on Vega -->
-  <section id="build" class="max-w-6xl mx-auto px-6 py-24">
-    <div class="text-center mb-16">
-      <p class="section-label">Build on Vega</p>
-      <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">A platform you build on, not a library you fork</h2>
-      <p class="text-zinc-400 max-w-2xl mx-auto">
-        Drive Vega from any client. HTTP for actions, SSE for live state, generated TypeScript types so your code knows what's coming back.
+  <hr class="rule" />
+
+  <!-- §5 API surface -->
+  <section id="api" class="frame section">
+    <div class="section-num">
+      §5 &nbsp; api
+      <p class="sidenote">
+        Every agent, channel, process, and workflow is addressable.
+        OpenAPI spec ships in the binary. Generated TS types in
+        <span class="mono">@vega/api-types</span>.
       </p>
     </div>
+    <div class="section-body">
+      <h2 class="display display-section">A flat HTTP surface. SSE for live state.</h2>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- REST -->
-      <div class="gradient-border p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-emerald-400">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
-          </span>
-          <h3 class="font-semibold text-white">REST API</h3>
-        </div>
-        <div class="code-block text-xs leading-relaxed">
-          <p><span class="syn-comment">$</span> <span class="syn-str">curl</span> -X POST \</p>
-          <p class="pl-4">localhost:8080/api/v1/agents/sofia/chat \</p>
-          <p class="pl-4">-d <span class="syn-str">'&#123;"message": "draft a post"&#125;'</span></p>
-          <p class="mt-2 text-zinc-500">&#x25B6; &#123; <span class="syn-key">"response"</span>: <span class="syn-str">"..."</span> &#125;</p>
-        </div>
-        <p class="text-xs text-zinc-500 mt-3">Every agent, channel, and process — fully addressable. OpenAPI spec included.</p>
-      </div>
+      <table class="api-table">
+        <thead>
+          <tr><th>method</th><th>path</th><th>description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/identity</td><td>Orchestrator and builder display names</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/agents</td><td>Every agent registered in this runtime</td></tr>
+          <tr><td class="mono">POST</td><td class="mono">/api/v1/agents/&#123;name&#125;/chat</td><td>DM an agent · returns the full response</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/agents/&#123;name&#125;/chat/stream</td><td>Token-by-token SSE for one agent</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/processes</td><td>Running and recently terminated processes</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/channels</td><td>Multi-agent channels and threads</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/inbox</td><td>Items waiting for operator review</td></tr>
+          <tr><td class="mono">GET</td><td class="mono">/api/v1/events</td><td>SSE stream for the entire runtime</td></tr>
+        </tbody>
+      </table>
 
-      <!-- SSE -->
-      <div class="gradient-border p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-violet-400">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
-          </span>
-          <h3 class="font-semibold text-white">SSE event stream</h3>
-        </div>
-        <div class="code-block text-xs leading-relaxed">
-          <p><span class="syn-key">const</span> <span class="syn-type">es</span> = <span class="syn-key">new</span> <span class="syn-fn">EventSource</span>(</p>
-          <p class="pl-4"><span class="syn-str">'http://localhost:8080/api/v1/events'</span></p>
-          <p>)</p>
-          <p class="mt-2"><span class="syn-type">es</span>.<span class="syn-fn">addEventListener</span>(<span class="syn-str">'process.completed'</span>,</p>
-          <p class="pl-4">(e) =&gt; <span class="syn-fn">render</span>(<span class="syn-type">JSON</span>.<span class="syn-fn">parse</span>(e.data))</p>
-          <p>)</p>
-        </div>
-        <p class="text-xs text-zinc-500 mt-3">Live agent activity. No polling, no websockets to manage.</p>
-      </div>
-
-      <!-- Types -->
-      <div class="gradient-border p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-cyan-400">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
-          </span>
-          <h3 class="font-semibold text-white">Type-safe client</h3>
-        </div>
-        <div class="code-block text-xs leading-relaxed">
-          <p><span class="syn-key">import</span> <span class="syn-fn">createClient</span> <span class="syn-key">from</span> <span class="syn-str">'openapi-fetch'</span></p>
-          <p><span class="syn-key">import type</span> &#123; paths &#125; <span class="syn-key">from</span> <span class="syn-str">'@vega/api-types'</span></p>
-          <p class="mt-2"><span class="syn-key">const</span> <span class="syn-type">api</span> = <span class="syn-fn">createClient</span>&lt;paths&gt;(&#123;</p>
-          <p class="pl-4">baseUrl: <span class="syn-str">'http://localhost:8080'</span>,</p>
-          <p>&#125;)</p>
-          <p class="mt-2"><span class="syn-key">const</span> &#123; data &#125; = <span class="syn-key">await</span> <span class="syn-type">api</span>.<span class="syn-fn">GET</span>(<span class="syn-str">'/api/v1/agents'</span>)</p>
-        </div>
-        <p class="text-xs text-zinc-500 mt-3">Generated from OpenAPI. Your editor knows the schema.</p>
+      <div class="api-foot">
+        <p class="anno">peering · opt-in</p>
+        <p>
+          Set <span class="mono">VEGA_PEERING_ADDR</span> and your orchestrator
+          can talk to other Vega orchestrators over <a href="https://github.com/everydev1618/aire" target="_blank" rel="noreferrer" class="action-link">AIRE</a>
+          (QUIC-native, mTLS-authenticated). Trusted peers, per-agent grants, full audit trail.
+        </p>
       </div>
     </div>
   </section>
 
-  <!-- CTA -->
-  <section class="max-w-6xl mx-auto px-6 py-24">
-    <div class="gradient-border p-12 md:p-16 text-center glow-sm">
-      <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Start building on Vega</h2>
-      <p class="text-zinc-400 max-w-lg mx-auto mb-8">
-        Spin up the dev stack, mint a token, and ship your first API call in under 10 minutes.
+  <hr class="rule" />
+
+  <!-- §6 Colophon -->
+  <section class="frame section colophon">
+    <div class="section-num">§6 &nbsp; colophon</div>
+    <div class="section-body">
+      <h2 class="display display-section">Built by one person, on purpose.</h2>
+      <p class="lede" style="margin-top: 1.5rem;">
+        Vega is an experiment by <a class="action-link" href="https://github.com/everydev1618" target="_blank" rel="noreferrer">Etienne de Bruin</a>
+        in applying forty-year-old distributed systems patterns to a brand-new
+        problem. The short answer so far is that they work. The longer answer
+        is what this site is for.
       </p>
-      <div class="flex items-center justify-center gap-4 flex-wrap">
-        <a href={`${BASE}getting-started`} class="btn-primary">
-          Get started
-        </a>
-      </div>
+      <p class="colophon-meta">
+        <span class="mono">go 1.24</span> · <span class="mono">sqlite (pure go)</span> · <span class="mono">mcp</span> · <span class="mono">anthropic by default</span> · <span class="mono">MIT</span>
+      </p>
     </div>
   </section>
 
-  <!-- About -->
-  <section class="border-t border-zinc-800/50">
-    <div class="max-w-6xl mx-auto px-6 py-24">
-      <div class="max-w-2xl mx-auto text-center">
-        <img
-          src="https://avatars.githubusercontent.com/u/9138982?s=160&v=4"
-          alt="Etienne de Bruin"
-          class="w-16 h-16 rounded-full border-2 border-zinc-800 mx-auto mb-4"
-          loading="lazy"
-        />
-        <p class="font-semibold text-white text-lg mb-1">Built by Etienne de Bruin</p>
-        <p class="text-sm text-zinc-500 font-mono mb-6">
-          <a href="https://github.com/everydev1618" target="_blank" class="hover:text-zinc-300 transition-colors">@everydev1618</a>
-          &nbsp;&middot;&nbsp;
-          <a href="https://x.com/etdebruin" target="_blank" class="hover:text-zinc-300 transition-colors">@etdebruin</a>
-        </p>
-        <p class="text-sm text-zinc-400 leading-relaxed">
-          Vega applies Erlang's supervision model to AI agents. It started as an experiment
-          to see if 40-year-old distributed systems patterns could make AI agents more reliable.
-          The answer so far: yes, they can.
-        </p>
-      </div>
-    </div>
-  </section>
+  <hr class="rule" />
 
   <!-- Footer -->
-  <footer class="border-t border-zinc-800/50 py-8">
-    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
-      <div class="flex items-center gap-2 font-mono">
-        <span class="text-amber-400">&#9733;</span>
-        <span class="gradient-text font-semibold">Vega</span>
-      </div>
-      <nav class="flex items-center gap-6">
-        <a href={`${BASE}getting-started`} class="hover:text-white transition-colors">Docs</a>
-        <a href="#build" class="hover:text-white transition-colors">Build</a>
-        <a href="#features" class="hover:text-white transition-colors">Features</a>
+  <footer class="frame footer">
+    <div class="footer-row">
+      <span class="wordmark">
+        <span class="wordmark-name">vega</span>
+        <span class="wordmark-sep">·</span>
+        <span class="wordmark-version tnum">{version}</span>
+      </span>
+      <nav class="footer-nav">
+        <a href={`${BASE}getting-started`}>docs</a>
+        <a href="#model">supervision</a>
+        <a href="#api">api</a>
+        <a href="https://github.com/everydev1618/govega" target="_blank" rel="noreferrer">github</a>
+        <a href="https://x.com/etdebruin" target="_blank" rel="noreferrer">@etdebruin</a>
       </nav>
     </div>
+    <p class="footer-fine anno">v3ga.dev · supervised since 2025</p>
   </footer>
 
 </body>
 </html>
+
+<style>
+  /* Header */
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    gap: 2rem;
+  }
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-family: 'Geist Mono', monospace;
+    color: var(--ink);
+  }
+  .wordmark-name { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; }
+  .wordmark-sep { color: var(--ink-faint); }
+  .wordmark-version { font-size: 0.78rem; color: var(--ink-faint); font-weight: 400; }
+
+  .header-nav {
+    display: none;
+    gap: 1.75rem;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+  .header-nav a { transition: color 200ms; }
+  .header-nav a:hover { color: var(--brand); }
+  .header-nav-ext { color: var(--ink-faint); }
+  @media (min-width: 760px) { .header-nav { display: flex; } }
+
+  /* Hero */
+  .hero { padding-block: clamp(3rem, 8vw, 6rem); }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: clamp(2.5rem, 6vw, 4.5rem);
+    align-items: center;
+    min-width: 0;
+  }
+  .hero-text { min-width: 0; }
+  @media (min-width: 960px) {
+    .hero-grid { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); }
+  }
+
+  .hero-text .anno { display: block; margin-bottom: 1.5rem; }
+  .hero-text .display { margin: 0; }
+  .hero-text .lede { margin-top: 1.5rem; max-width: 38ch; }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 2.25rem;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .install-line {
+    padding: 0.7rem 1rem;
+    font-size: clamp(0.78rem, 2.6vw, 0.92rem);
+    max-width: 100%;
+    min-width: 0;
+    flex: 0 1 auto;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+  @media (max-width: 520px) {
+    .hero-actions { flex-direction: column; align-items: flex-start; gap: 1rem; }
+    .install-line { width: 100%; }
+  }
+
+  .hero-figure {
+    padding: 1rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper);
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* §-section body wrapper */
+  .section-body { max-width: 68ch; min-width: 0; }
+  .section-body > .display { margin: 0; }
+
+  /* Run block (§1) */
+  .run-block { margin-top: 2.5rem; }
+  .run-out { color: var(--ink-faint); }
+
+  /* §2 Strategy grid */
+  .strategy-grid {
+    margin-top: 2.5rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+    max-width: 56rem;
+  }
+  @media (min-width: 760px) {
+    .strategy-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; }
+  }
+  .strategy {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    padding: 1.25rem;
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    color: var(--ink-soft);
+  }
+  .strategy-head { display: flex; align-items: baseline; gap: 0.5rem; }
+  .strategy-head h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .strategy-svg { width: 100%; height: auto; color: var(--ink-soft); }
+  .strategy p { margin: 0; font-size: 0.92rem; line-height: 1.55; }
+
+  /* Error classification */
+  .errors { margin-top: 3rem; max-width: 44rem; }
+  .errors > p:first-child { margin-bottom: 0.4rem; }
+  .errors > p:nth-child(2) { color: var(--ink-soft); margin-bottom: 1rem; }
+  .errors-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.92rem;
+  }
+  .errors-table td {
+    padding: 0.65rem 0.5rem;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-soft);
+  }
+  .errors-table tr:last-child td { border-bottom: 0; }
+  .errors-table td:first-child { width: 12rem; padding-right: 1rem; }
+
+  /* §3 Surfaces */
+  .surfaces {
+    margin-top: 2.5rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+  @media (min-width: 880px) {
+    .surfaces { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+  }
+  .surface { display: flex; flex-direction: column; gap: 0.9rem; }
+  .surface header { display: flex; align-items: baseline; gap: 0.5rem; }
+  .surface h3 { margin: 0; font-size: 1rem; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+  .surface-foot { font-size: 0.82rem; color: var(--ink-faint); line-height: 1.55; margin: 0; }
+
+  .chat { background: var(--paper-deep); border: 1px solid var(--rule); border-radius: 2px; padding: 1rem; display: flex; flex-direction: column; gap: 0.85rem; }
+  .chat-msg { display: grid; grid-template-columns: 3.5rem 1fr; gap: 0.6rem; font-size: 0.85rem; line-height: 1.5; }
+  .chat-who { font-family: 'Geist Mono', monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--brand); padding-top: 0.2rem; }
+  .chat-msg p { margin: 0; color: var(--ink); }
+  .chat-msg.from-iris .chat-who, .chat-msg.from-hera .chat-who { color: var(--brand-deep); }
+  .chat-msg.from-iris p, .chat-msg.from-hera p { color: var(--ink-soft); }
+
+  .yaml-block, .go-block { font-size: 0.82rem; line-height: 1.55; min-height: 18rem; }
+  .yaml-block p, .go-block p, .chat p { margin: 0; }
+
+  /* §4 Live trace */
+  .trace {
+    margin-top: 2.5rem;
+    border: 1px solid var(--rule);
+    background: var(--paper-deep);
+    border-radius: 2px;
+    overflow: hidden;
+    max-width: 100%;
+  }
+  .trace-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem 1.1rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper);
+  }
+  .trace-head .mono { font-size: 0.8rem; color: var(--ink-soft); }
+  .trace-body {
+    padding: 1.1rem 1.25rem;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.7;
+    color: var(--ink);
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .trace-body p { margin: 0; white-space: nowrap; }
+  @media (max-width: 720px) {
+    .trace-body p { white-space: normal; }
+    .trace-body { font-size: 0.72rem; padding: 0.9rem 0.95rem; }
+  }
+
+  /* §5 API table */
+  .api-table {
+    width: 100%;
+    margin-top: 2.5rem;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.88rem;
+  }
+  .api-table th {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    font-weight: 500;
+    border-bottom: 1px solid var(--rule);
+  }
+  .api-table td {
+    padding: 0.7rem 0.75rem;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-soft);
+    vertical-align: top;
+  }
+  .api-table td:first-child { width: 4.5rem; color: var(--brand); }
+  .api-table td:nth-child(2) { width: 22rem; color: var(--ink); white-space: nowrap; overflow-x: auto; max-width: 100%; }
+  .api-table tr:last-child td { border-bottom: 0; }
+  @media (max-width: 720px) {
+    .api-table td:nth-child(2) { width: auto; white-space: normal; word-break: break-word; }
+    .api-table td { font-size: 0.78rem; padding: 0.55rem 0.45rem; }
+  }
+
+  .api-foot { margin-top: 2.5rem; max-width: 60ch; }
+  .api-foot p { color: var(--ink-soft); margin: 0; }
+  .api-foot .anno { margin-bottom: 0.4rem; display: block; }
+
+  /* §6 Colophon */
+  .colophon-meta { margin-top: 2rem; color: var(--ink-faint); font-size: 0.82rem; }
+
+  /* Footer */
+  .footer { padding-block: 2.5rem; }
+  .footer-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .footer-nav {
+    display: flex;
+    gap: 1.5rem;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+  .footer-nav a:hover { color: var(--brand); }
+  .footer-fine { margin-top: 0.75rem; color: var(--ink-faint); }
+</style>

@@ -1,0 +1,155 @@
+---
+/*
+  Hero supervision tree.
+  One fail-and-restart cycle on first paint, then static.
+  Real shape: orchestrator → (iris, hera, mira) → workers under iris.
+  Animation toggles data-phase on the root <svg>; CSS in global.css does the rest.
+*/
+---
+
+<figure class="tree-figure">
+  <svg
+    class="tree"
+    data-phase="ok"
+    viewBox="0 0 560 380"
+    style="width: 100%; height: auto; max-width: 100%; display: block;"
+    role="img"
+    aria-label="Supervision tree: an orchestrator supervises iris, hera, and mira. A worker fails and is restarted."
+    preserveAspectRatio="xMidYMid meet"
+  >
+    <!-- Trunk: orchestrator to the three supervisors -->
+    <path class="edge" d="M 280 68 L 280 104 M 130 104 L 430 104 M 130 104 L 130 140 M 280 104 L 280 140 M 430 104 L 430 140" />
+
+    <!-- Branch under iris: to sofia, marcus -->
+    <path class="edge" d="M 130 184 L 130 220 M 80 220 L 210 220 M 80 220 L 80 256 M 210 220 L 210 256" />
+
+    <!-- Restart edge: animated path from iris to sofia.
+         Drawn as a curve that bypasses the normal trunk to read as a restart action. -->
+    <path id="edge-restart" d="M 130 184 C 130 215, 100 230, 80 256" />
+
+    <!-- Orchestrator -->
+    <g id="node-orch">
+      <rect class="node-bg" x="220" y="24" width="120" height="44" rx="2" />
+      <text class="node-label" x="280" y="48" text-anchor="middle">orchestrator</text>
+      <text class="node-pid" x="280" y="62" text-anchor="middle">pid &lt;0.1.0&gt;</text>
+    </g>
+
+    <!-- Strategy annotation hanging off orchestrator -->
+    <g transform="translate(350, 38)">
+      <line x1="0" y1="8" x2="22" y2="8" stroke="currentColor" stroke-width="1" opacity="0.4" />
+      <text class="anno" x="28" y="6" style="font-size: 9px;">strategy</text>
+      <text class="node-label" x="28" y="20" style="font-size: 10px;">OneForOne</text>
+    </g>
+
+    <!-- Iris supervisor -->
+    <g id="node-iris">
+      <rect class="node-bg" x="70" y="140" width="120" height="44" rx="2" />
+      <text class="node-label" x="130" y="164" text-anchor="middle">iris</text>
+      <text class="node-pid" x="130" y="178" text-anchor="middle">pid &lt;0.4.2&gt;</text>
+      <circle class="status-dot" cx="180" cy="151" r="3" />
+    </g>
+
+    <!-- Hera -->
+    <g id="node-hera">
+      <rect class="node-bg" x="220" y="140" width="120" height="44" rx="2" />
+      <text class="node-label" x="280" y="164" text-anchor="middle">hera</text>
+      <text class="node-pid" x="280" y="178" text-anchor="middle">pid &lt;0.4.7&gt;</text>
+      <circle class="status-dot" cx="330" cy="151" r="3" />
+    </g>
+
+    <!-- Mira -->
+    <g id="node-mira">
+      <rect class="node-bg" x="370" y="140" width="120" height="44" rx="2" />
+      <text class="node-label" x="430" y="164" text-anchor="middle">mira</text>
+      <text class="node-pid" x="430" y="178" text-anchor="middle">pid &lt;0.4.11&gt;</text>
+      <circle class="status-dot" cx="480" cy="151" r="3" />
+    </g>
+
+    <!-- Sofia (worker, under iris) -->
+    <g id="node-sofia">
+      <rect class="node-bg" x="20" y="256" width="120" height="40" rx="2" />
+      <text class="node-label" x="80" y="278" text-anchor="middle">sofia</text>
+      <text class="node-pid" x="80" y="290" text-anchor="middle">writer · pid &lt;0.18.0&gt;</text>
+      <circle class="status-dot" cx="130" cy="266" r="3" />
+    </g>
+
+    <!-- Marcus (worker, under iris) -->
+    <g id="node-marcus">
+      <rect class="node-bg" x="150" y="256" width="120" height="40" rx="2" />
+      <text class="node-label" x="210" y="278" text-anchor="middle">marcus</text>
+      <text class="node-pid" x="210" y="290" text-anchor="middle">editor · pid &lt;0.18.4&gt;</text>
+      <circle class="status-dot" cx="260" cy="266" r="3" />
+    </g>
+
+    <!-- Event log strip -->
+    <g transform="translate(20, 332)">
+      <text class="node-pid" x="0" y="0" style="font-size: 10px; fill: var(--ink-faint);">event log</text>
+      <line x1="0" y1="8" x2="520" y2="8" stroke="currentColor" stroke-width="1" opacity="0.15" />
+
+      <text id="event-baseline" class="event-label" x="0" y="26" style="opacity: 1; fill: var(--ink-faint);">
+        14:02:11.044  ·  process.started  ·  sofia &lt;0.18.0&gt;
+      </text>
+      <text id="event-fail" class="event-label" x="0" y="26">
+        14:02:13.118  ·  process.failed  ·  sofia &lt;0.18.0&gt;  ·  context_deadline_exceeded
+      </text>
+      <text id="event-restart" class="event-label" x="0" y="26">
+        14:02:13.119  ·  supervisor.restart  ·  iris → sofia  ·  strategy=OneForOne
+      </text>
+    </g>
+  </svg>
+
+  <figcaption>
+    <span class="anno">fig. 1</span>
+    <span>A worker process fails. The supervisor restarts it. The other processes are not affected.</span>
+  </figcaption>
+</figure>
+
+<style>
+  .tree-figure {
+    margin: 0;
+    width: 100%;
+    min-width: 0;
+  }
+  .tree {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    max-height: 480px;
+    color: var(--ink-faint);
+    display: block;
+  }
+  figcaption {
+    margin-top: 1.25rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+    line-height: 1.5;
+    max-width: 52ch;
+  }
+
+  /* Hide baseline event when fail/restart are visible */
+  .tree[data-phase="fail"]    #event-baseline,
+  .tree[data-phase="restart"] #event-baseline { opacity: 0; }
+  .tree[data-phase="fail"]    #event-restart  { opacity: 0; }
+  .tree[data-phase="restart"] #event-fail     { opacity: 0; }
+</style>
+
+<script is:inline>
+  (() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const tree = document.querySelector('.tree');
+    if (!tree) return;
+    if (reduce) { tree.dataset.phase = 'ok'; return; }
+
+    const sequence = [
+      { delay: 1100, phase: 'fail' },
+      { delay: 1800, phase: 'restart' },
+      { delay: 3000, phase: 'ok' },
+    ];
+    sequence.forEach(({ delay, phase }) => {
+      setTimeout(() => { tree.dataset.phase = phase; }, delay);
+    });
+  })();
+</script>

@@ -1,100 +1,286 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+  v3ga.dev — palette
+  Committed strategy: oxblood on warm cream.
+  Reference: Programming Erlang book, Penguin Modern Classics, 1970s systems docs.
+  OKLCH-tuned, every neutral tinted toward the brand hue (low chroma).
+*/
+:root {
+  --paper:       oklch(96.4% 0.012 60);   /* warm cream */
+  --paper-deep:  oklch(93.2% 0.018 55);   /* darker cream for blocks */
+  --rule:        oklch(85.5% 0.022 50);   /* hairlines */
+  --ink:         oklch(22% 0.018 40);     /* charcoal, tinted toward brand */
+  --ink-soft:    oklch(45% 0.020 45);     /* secondary text */
+  --ink-faint:   oklch(60% 0.018 45);     /* tertiary, captions */
+  --brand:       oklch(40% 0.135 30);     /* oxblood */
+  --brand-deep:  oklch(32% 0.130 28);     /* hover / pressed */
+  --signal:      oklch(56% 0.190 30);     /* failure / restart indicator */
+  --signal-soft: oklch(72% 0.090 35);     /* warning glow without alarm */
+  --running:     oklch(48% 0.090 145);    /* muted forest, calm "running" */
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
+    background-color: var(--paper);
+    color: var(--ink);
+    max-width: 100vw;
+    overflow-x: hidden;
   }
   body {
-    background-color: #09090b;
-    color: #e4e4e7;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Switzer', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'ss01', 'cv11';
+    font-optical-sizing: auto;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
+  ::selection {
+    background: var(--brand);
+    color: var(--paper);
+  }
+  a { color: inherit; text-decoration: none; }
+  code, pre, .mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace; }
+
+  /* Hairline rules — used as structural device throughout */
+  hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 0; }
 }
 
 @layer components {
-  .code-block {
-    @apply bg-zinc-900 border border-zinc-800 rounded-xl p-5 font-mono text-sm overflow-x-auto;
+
+  /* Page frame: strict visible grid as voice.
+     12-column at desktop with a reserved left margin for §-numbers and sidenotes. */
+  .frame {
+    --gutter: clamp(1.25rem, 4vw, 3rem);
+    width: 100%;
+    max-width: 84rem;
+    margin: 0 auto;
+    padding-inline: var(--gutter);
+    box-sizing: border-box;
   }
 
-  .section-label {
-    @apply text-xs font-mono tracking-widest uppercase text-indigo-400 mb-3;
+  /* Section: numbered, asymmetric two-column.
+     Left column: § number + sidenote annotations.
+     Right column: content. */
+  .section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: clamp(2rem, 6vw, 4.5rem);
+    padding-block: clamp(4rem, 10vw, 8rem);
+  }
+  @media (min-width: 880px) {
+    .section { grid-template-columns: 12rem minmax(0, 1fr); }
   }
 
-  .feature-card {
-    @apply bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-zinc-700 transition-all duration-300;
+  .section-num {
+    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    color: var(--brand);
+    font-weight: 500;
+    padding-top: 0.4rem;
   }
 
-  .feature-card:hover {
-    box-shadow: 0 0 40px -10px rgba(99, 102, 241, 0.1);
+  .sidenote {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--ink-faint);
+    margin-top: 1.5rem;
+    padding-right: 1rem;
   }
 
-  .gradient-text {
-    @apply bg-gradient-to-r from-indigo-400 via-violet-400 to-purple-400 bg-clip-text text-transparent;
+  /* Display headlines: weight + size carry hierarchy, no second family. */
+  .display {
+    font-family: 'Switzer', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.02;
+    color: var(--ink);
   }
 
-  .gradient-border {
-    @apply border border-transparent;
-    background: linear-gradient(#09090b, #09090b) padding-box,
-                linear-gradient(135deg, rgba(99,102,241,0.4), rgba(168,85,247,0.4), rgba(99,102,241,0.1)) border-box;
-    border-radius: 1rem;
+  /* Hero: ~clamp 56–96px, fluid */
+  .display-hero { font-size: clamp(2.8rem, 6.5vw, 5.4rem); }
+  /* Section opener: ~clamp 32–48px */
+  .display-section { font-size: clamp(1.75rem, 3.5vw, 2.6rem); }
+
+  /* Lede: confident body paragraph; max ~62ch */
+  .lede {
+    font-size: clamp(1.05rem, 1.35vw, 1.18rem);
+    color: var(--ink-soft);
+    max-width: 60ch;
+    line-height: 1.6;
   }
 
-  .glow-sm {
-    box-shadow: 0 0 60px -15px rgba(99, 102, 241, 0.15);
+  /* System chip: small inline status / metadata indicator.
+     Looks like a label on a control panel, not a SaaS pill. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper);
+  }
+  .chip-dot::before {
+    content: '';
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--running);
+    display: inline-block;
   }
 
-  .btn-primary {
-    @apply px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-all duration-200;
-    box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.4);
+  /* Primary action: a confident solid block, not a glowing pill. */
+  .action {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.85rem 1.3rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-weight: 600;
+    font-size: 0.92rem;
+    letter-spacing: -0.005em;
+    border: 0;
+    border-radius: 2px;
+    transition: background 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .action:hover { background: var(--brand-deep); }
+  .action::after {
+    content: '↗';
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.85em;
+    transform: translateY(-0.05em);
   }
 
-  .btn-primary:hover {
-    box-shadow: 0 0 30px -5px rgba(99, 102, 241, 0.6);
+  .action-link {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    color: var(--brand);
+    font-weight: 500;
+    border-bottom: 1px solid var(--brand);
+    padding-bottom: 1px;
   }
+  .action-link:hover { color: var(--brand-deep); border-bottom-color: var(--brand-deep); }
 
-  .btn-secondary {
-    @apply px-6 py-3 rounded-xl border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium text-sm transition-all duration-200;
+  /* Code blocks: paper-deep background, no zinc, no rounded soft cards. */
+  .code {
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.86rem;
+    line-height: 1.62;
+    background: var(--paper-deep);
+    color: var(--ink);
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow-x: auto;
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
+  .code p { margin: 0; }
+  .code .c-com { color: var(--ink-faint); }
+  .code .c-key { color: var(--brand); font-weight: 500; }
+  .code .c-str { color: var(--running); }
+  .code .c-fn  { color: var(--ink); font-weight: 500; }
+  .code .c-tag { color: var(--brand-deep); }
 
-  /* Syntax highlighting in code blocks */
-  .syn-key { @apply text-violet-400; }
-  .syn-str { @apply text-emerald-400; }
-  .syn-val { @apply text-amber-300; }
-  .syn-comment { @apply text-zinc-500; }
-  .syn-fn { @apply text-indigo-400; }
-  .syn-type { @apply text-cyan-400; }
+  /* Tabular numerics for any numeric column or status indicator. */
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* Marginal-note pattern: used to annotate diagrams and key terms. */
+  .anno {
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--brand);
+  }
 }
 
-/* Subtle grid background */
-.grid-bg {
-  background-image:
-    linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
-  background-size: 60px 60px;
+/* ───────────────────────────────────────────────────────────────────
+   Supervision-tree hero animation.
+   One fail/restart cycle on first paint, then static.
+   ─────────────────────────────────────────────────────────────────── */
+
+.tree {
+  --node-stroke: var(--ink);
+  --edge: var(--ink-faint);
 }
 
-/* Hero glow */
-.hero-glow {
-  position: absolute;
-  width: 600px;
-  height: 600px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%);
-  pointer-events: none;
-  top: -200px;
-  left: 50%;
-  transform: translateX(-50%);
+.tree .edge { stroke: var(--edge); stroke-width: 1; fill: none; }
+
+.tree .node-bg {
+  fill: var(--paper);
+  stroke: var(--node-stroke);
+  stroke-width: 1;
+  transition: stroke 280ms cubic-bezier(0.22, 1, 0.36, 1),
+              fill   280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+.tree .node-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  fill: var(--ink);
 }
 
-.animate-float {
-  animation: float 6s ease-in-out infinite;
+.tree .node-pid {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  fill: var(--ink-faint);
+}
+
+.tree .status-dot {
+  fill: var(--running);
+  transition: fill 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tree[data-phase="fail"]  #node-sofia .node-bg   { stroke: var(--signal); fill: oklch(96% 0.05 30); }
+.tree[data-phase="fail"]  #node-sofia .status-dot { fill: var(--signal); }
+
+.tree[data-phase="restart"] #node-sofia .node-bg   { stroke: var(--brand); fill: oklch(95% 0.04 35); }
+.tree[data-phase="restart"] #node-sofia .status-dot { fill: var(--signal-soft); }
+.tree[data-phase="restart"] #edge-restart { stroke: var(--signal); stroke-width: 1.5; }
+
+.tree[data-phase="ok"] #node-sofia .node-bg { stroke: var(--node-stroke); fill: var(--paper); }
+.tree[data-phase="ok"] #node-sofia .status-dot { fill: var(--running); }
+
+.tree .event-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  fill: var(--ink-soft);
+  opacity: 0;
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tree[data-phase="fail"]    #event-fail    { opacity: 1; fill: var(--signal); }
+.tree[data-phase="restart"] #event-restart { opacity: 1; fill: var(--brand); }
+
+#edge-restart {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  transition: stroke-dashoffset 600ms cubic-bezier(0.22, 1, 0.36, 1),
+              stroke 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tree[data-phase="restart"] #edge-restart,
+.tree[data-phase="ok"] #edge-restart { stroke-dashoffset: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tree .node-bg, .tree .status-dot, .tree .event-label, #edge-restart {
+    transition: none !important;
+  }
 }
