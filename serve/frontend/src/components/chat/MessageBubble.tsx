@@ -30,11 +30,11 @@ function FileCard({ relPath, onClick }: { relPath: string; onClick: () => void }
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-2 my-1 px-3 py-2 rounded-lg border border-border bg-background/50 hover:border-indigo-500/50 hover:bg-accent/30 transition-all text-sm group"
+      className="inline-flex items-center gap-2 my-1 px-2.5 py-1.5 rounded-sm border border-rule bg-paper-deep hover:border-brand hover:text-brand transition-colors text-sm group"
     >
-      <span className="text-lg">{fileExtIcon(name)}</span>
-      <span className="font-medium text-foreground group-hover:text-indigo-400 transition-colors truncate max-w-xs">{name}</span>
-      <svg className="w-3.5 h-3.5 text-muted-foreground group-hover:text-indigo-400 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <span className="text-base">{fileExtIcon(name)}</span>
+      <span className="font-medium text-ink group-hover:text-brand transition-colors truncate max-w-xs">{name}</span>
+      <svg className="w-3.5 h-3.5 text-ink-faint group-hover:text-brand transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
       </svg>
     </button>
@@ -87,30 +87,27 @@ function processChildren(children: ReactNode, onFileClick: (relPath: string) => 
 }
 
 export function ErrorBanner({ error, errorType }: { error: string; errorType?: string }) {
-  const isAuth = errorType === 'auth'
   const isRateLimit = errorType === 'rate_limit'
+  const tint = isRateLimit
+    ? 'border-signal-soft bg-signal-soft/15 text-ink'
+    : 'border-signal bg-signal/10 text-ink'
+  const accent = isRateLimit ? 'text-signal-soft' : 'text-signal'
 
   return (
-    <div className={`mt-2 rounded-lg border px-3 py-2.5 text-sm ${
-      isAuth
-        ? 'border-red-400/50 bg-red-500/10 text-red-300'
-        : isRateLimit
-          ? 'border-yellow-400/50 bg-yellow-500/10 text-yellow-300'
-          : 'border-red-400/50 bg-red-500/10 text-red-300'
-    }`}>
+    <div className={`mt-2 rounded-sm border px-3 py-2.5 text-sm ${tint}`}>
       <div className="flex items-start gap-2">
-        <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className={`w-4 h-4 mt-0.5 flex-shrink-0 ${accent}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
         </svg>
         <div>
           <p className="font-medium">{error}</p>
-          {isAuth && (
-            <p className="mt-1 text-xs opacity-80">
-              Run <code className="px-1 py-0.5 rounded bg-black/20 font-mono">vega init</code> to configure your API key.
+          {errorType === 'auth' && (
+            <p className="mt-1 text-xs text-ink-soft">
+              Run <code className="px-1 py-0.5 rounded-sm bg-paper-deep font-mono text-ink">vega init</code> to configure your API key.
             </p>
           )}
           {isRateLimit && (
-            <p className="mt-1 text-xs opacity-80">
+            <p className="mt-1 text-xs text-ink-soft">
               Wait a moment, then try your message again.
             </p>
           )}
@@ -181,21 +178,21 @@ export function MessageBubble({
     <div className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {msg.role === 'assistant' && <AgentAvatar name={agentName} displayName={agentDisplayName} avatar={agentAvatar} />}
       {msg.role === 'user' ? (
-        <div className="max-w-[85%] md:max-w-[75%] rounded-2xl shadow-sm px-3 py-2 md:px-4 md:py-2.5 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
+        <div className="max-w-[85%] md:max-w-[75%] rounded-sm px-3 py-2 md:px-3.5 md:py-2 text-sm whitespace-pre-wrap bg-brand text-paper">
           {msg.content}
         </div>
       ) : (
-        <div className="max-w-[85%] md:max-w-[75%] rounded-2xl shadow-sm px-3 py-2 md:px-4 md:py-2.5 text-sm bg-card border border-border prose prose-invert prose-sm prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-background prose-pre:border prose-pre:border-border prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none max-w-none">
+        <div className="max-w-[85%] md:max-w-[75%] rounded-sm px-3 py-2 md:px-3.5 md:py-2.5 text-sm bg-paper border border-rule prose prose-sm prose-p:my-2 prose-headings:my-3 prose-headings:text-ink prose-strong:text-ink prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-paper-deep prose-pre:border prose-pre:border-rule prose-pre:text-ink prose-code:text-brand-deep prose-code:bg-paper-deep prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:before:content-none prose-code:after:content-none max-w-none text-ink">
           {showAgentLabel && msg.agent && (
-            <p className="text-xs font-semibold text-primary mb-1">{agentDisplayName || agentName}</p>
+            <p className="anno mb-1.5">{agentDisplayName || agentName}</p>
           )}
           {msg.streaming && !msg.content && !(msg.toolCalls?.length) && (
-            <p className="text-xs text-muted-foreground italic py-1">Thinking...</p>
+            <p className="text-xs text-ink-faint italic py-1">Thinking…</p>
           )}
           {msg.content && (
             <Markdown remarkPlugins={[remarkGfm]} components={{
               a({ href, children }) {
-                return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{children}</a>
+                return <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand underline decoration-rule hover:decoration-brand">{children}</a>
               },
               p({ children }) {
                 return <p>{processChildren(children, onFileClick)}</p>
@@ -210,7 +207,7 @@ export function MessageBubble({
                 if (text && agentNames?.has(text) && onSwitchAgent) {
                   return (
                     <strong
-                      className="cursor-pointer text-primary hover:underline decoration-primary/50"
+                      className="cursor-pointer text-brand hover:underline decoration-brand/50"
                       onClick={(e) => { e.stopPropagation(); onSwitchAgent(text) }}
                       title={`Switch to ${text}`}
                       role="button"
@@ -228,7 +225,7 @@ export function MessageBubble({
                   const relPath = fileLinks.get(text)!
                   return (
                     <code
-                      className="cursor-pointer !text-indigo-400 hover:underline decoration-indigo-400/50"
+                      className="cursor-pointer !text-brand hover:underline decoration-brand/50"
                       onClick={(e) => { e.stopPropagation(); onFileClick(relPath) }}
                       title="Click to preview file"
                       role="button"
@@ -242,7 +239,7 @@ export function MessageBubble({
             }}>{msg.content}</Markdown>
           )}
           {msg.streaming && msg.content && !(msg.toolCalls?.length) && (
-            <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+            <span className="inline-block w-1 h-3.5 bg-brand live-pulse ml-0.5 align-text-bottom rounded-sm" />
           )}
           {msg.toolCalls && msg.toolCalls.length > 0 && (
             <ToolCallBadges
@@ -253,7 +250,7 @@ export function MessageBubble({
           )}
           {msg.error && <ErrorBanner error={msg.error} errorType={msg.errorType} />}
           {msg.metrics && !msg.streaming && (
-            <div className="mt-1.5 text-[11px] text-muted-foreground/60 text-right font-mono">
+            <div className="mt-1.5 text-2xs text-ink-faint text-right font-mono tnum">
               {msg.metrics.cost_usd >= 0.01
                 ? `$${msg.metrics.cost_usd.toFixed(2)}`
                 : `$${msg.metrics.cost_usd.toFixed(4)}`}
@@ -268,7 +265,7 @@ export function MessageBubble({
           {onThreadClick && msg.id != null && msg.replyCount != null && msg.replyCount > 0 && (
             <button
               onClick={() => onThreadClick(msg.id!)}
-              className="mt-1.5 text-xs text-primary hover:underline"
+              className="mt-1.5 text-xs text-brand hover:underline"
             >
               {msg.replyCount} {msg.replyCount === 1 ? 'reply' : 'replies'}
             </button>

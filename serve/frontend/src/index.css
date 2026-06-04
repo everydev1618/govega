@@ -1,111 +1,148 @@
+@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  * {
+  *, *::before, *::after {
     @apply border-border;
+  }
+  html, body {
+    font-family: 'Switzer', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'ss01', 'cv11';
+    font-optical-sizing: auto;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   body {
     @apply bg-background text-foreground;
+    line-height: 1.45;
+  }
+  code, pre, .mono {
+    font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+  /* Tabular figures on numeric UI */
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  ::selection {
+    background: oklch(40% 0.135 30);
+    color: oklch(96.4% 0.012 60);
+  }
+
+  /* Calm scrollbars, hairline-thin */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: oklch(85.5% 0.022 50); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(75% 0.025 50); }
+}
+
+@layer components {
+  /* Annotation label: mono uppercase, oxblood. Used for figure captions,
+     metadata labels in panels, and any "small uppercase eyebrow" need.
+     Use sparingly — not as section grammar. */
+  .anno {
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.6875rem;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: oklch(40% 0.135 30);
+    font-weight: 500;
+  }
+
+  /* Status chip: small inline indicator for connection / system state. */
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-rule bg-paper text-ink-soft;
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .chip-dot::before {
+    content: '';
+    width: 6px; height: 6px; border-radius: 50%;
+    background: oklch(48% 0.090 145);
+    display: inline-block;
+  }
+  .chip-signal::before { background: oklch(56% 0.190 30); }
+  .chip-idle::before   { background: oklch(60% 0.018 45); }
+
+  /* Status dot used in lists / nav: tiny filled circle, semantic color */
+  .status-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+  .status-dot-running { background: oklch(48% 0.090 145); }
+  .status-dot-signal  { background: oklch(56% 0.190 30); }
+  .status-dot-idle    { background: oklch(60% 0.018 45); opacity: 0.4; }
+
+  /* Primary action: confident solid, no glow */
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-3.5 py-2 text-sm font-medium rounded-sm
+           bg-ink text-paper hover:bg-brand-deep transition-colors;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-3.5 py-2 text-sm font-medium rounded-sm
+           border border-rule bg-paper text-ink hover:bg-paper-deep transition-colors;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center px-2.5 py-1.5 text-sm rounded-sm
+           text-ink-soft hover:text-ink hover:bg-paper-deep transition-colors;
+  }
+
+  /* Code surface: paper-deep ground, hairline border */
+  .code-surface {
+    @apply bg-paper-deep border border-rule rounded-sm font-mono text-sm text-ink;
+    line-height: 1.55;
+  }
+
+  /* Section header (used in sidebar groups and panel headings) */
+  .section-label {
+    @apply text-2xs font-mono font-medium uppercase text-ink-faint;
+    letter-spacing: 0.06em;
+  }
+
+  /* Selected nav item: oxblood text + left rail + paper-deep bg */
+  .nav-item {
+    @apply relative flex items-center gap-2 px-3 py-1.5 text-sm rounded-sm
+           text-ink-soft hover:text-ink hover:bg-paper-deep transition-colors;
+  }
+  .nav-item-active {
+    @apply text-ink bg-paper-deep font-medium;
+  }
+  .nav-item-active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 4px; bottom: 4px;
+    width: 2px;
+    background: oklch(40% 0.135 30);
+    border-radius: 0 1px 1px 0;
   }
 }
 
-@keyframes constellation-fade-in {
-  from { opacity: 0; transform: scale(0.8); }
-  to { opacity: 1; transform: scale(1); }
+/* Hairline rule utility — used as the structural divider */
+.rule { border: 0; border-top: 1px solid oklch(85.5% 0.022 50); margin: 0; }
+.rule-v { border: 0; border-left: 1px solid oklch(85.5% 0.022 50); height: 100%; }
+
+/* Tight, calm transitions only. No decorative animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-@keyframes constellation-glow {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
-}
-
-@keyframes constellation-line-draw {
-  from { stroke-dashoffset: 24; }
-  to { stroke-dashoffset: 0; }
-}
-
-@keyframes constellation-activity-in {
-  from { opacity: 0; max-height: 0; }
-  to { opacity: 1; max-height: 40px; }
-}
-
-.constellation-activity {
-  animation: constellation-activity-in 300ms ease-out both;
-}
-
-.constellation-core {
-  animation: constellation-glow 2.5s ease-in-out infinite;
-}
-
-.constellation-node {
-  animation: constellation-fade-in 350ms ease-out both, constellation-glow 3s ease-in-out infinite;
-}
-
-.constellation-node-done {
-  animation: constellation-fade-in 350ms ease-out both;
-}
-
-@keyframes constellation-orbit {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.constellation-orbit {
-  animation: constellation-orbit 4s linear infinite;
-}
-
-.constellation-line {
-  stroke-dasharray: 24;
-  animation: constellation-line-draw 400ms ease-out both;
-}
-
-.org-chart-container {
-  animation: constellation-fade-in 500ms ease-out both;
-}
-
-.constellation-node-interactive:hover {
-  filter: brightness(1.3);
-}
-
-@keyframes agent-orbit {
-  from { transform: rotate(0deg) translateX(var(--orbit-radius)) rotate(0deg); }
-  to { transform: rotate(360deg) translateX(var(--orbit-radius)) rotate(-360deg); }
-}
-
-.agent-orbit-dot {
-  --orbit-radius: 11px;
-  animation: agent-orbit 2s linear infinite;
-}
-
-@keyframes visualize-glow {
-  0%, 100% { box-shadow: 0 4px 12px rgba(59,130,246,0.15), 0 0 0 0 rgba(59,130,246,0); }
-  50% { box-shadow: 0 4px 16px rgba(59,130,246,0.3), 0 0 0 4px rgba(59,130,246,0.08); }
-}
-
-.visualize-btn-active {
-  animation: visualize-glow 2.5s ease-in-out infinite;
-  border-color: rgba(59,130,246,0.3);
-}
-
+/* Hide scrollbars utility — kept from prior version, still used */
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 
-@keyframes activity-bar-in {
-  from { opacity: 0; max-height: 0; }
-  to { opacity: 1; max-height: 48px; }
+/* Subtle "live" pulse — replaces the busy orbital dots. Used on agents that
+   are actively inferring. Calmer than the orbital, conveys state without drama. */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
-
-@keyframes activity-item-in {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.activity-bar-animate-in {
-  animation: activity-bar-in 300ms ease-out;
-}
-
-.activity-item-animate-in {
-  animation: activity-item-in 200ms ease-out;
-}
+.live-pulse { animation: live-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite; }

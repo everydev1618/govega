@@ -35,13 +35,13 @@ const adminNav = [
 
 function SectionHeader({ children, action, collapsed, onToggle }: { children: React.ReactNode; action?: React.ReactNode; collapsed?: boolean; onToggle?: () => void }) {
   return (
-    <div className="flex items-center justify-between px-3 pt-3 pb-1">
+    <div className="flex items-center justify-between px-3 pt-4 pb-1.5">
       <button
         onClick={onToggle}
-        className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+        className="section-label flex items-center gap-1 hover:text-ink-soft transition-colors"
       >
         {onToggle && (
-          <svg className={`w-2.5 h-2.5 transition-transform ${collapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <svg className={`w-2 h-2 transition-transform ${collapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         )}
@@ -143,12 +143,12 @@ export function Layout() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Mobile header */}
-      <div className="fixed top-0 left-0 right-0 z-40 flex items-center gap-3 px-3 py-2 border-b border-border bg-card md:hidden">
+      <div className="fixed top-0 left-0 right-0 z-40 flex items-center gap-3 px-3 py-2 border-b border-rule bg-paper-deep md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+          className="p-1.5 rounded-sm text-ink-soft hover:text-ink hover:bg-paper transition-colors"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
           </svg>
         </button>
@@ -158,19 +158,19 @@ export function Layout() {
       {/* Sidebar backdrop (mobile) */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-ink/30 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-56 border-r border-border bg-card flex flex-col transform transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-3 border-b border-border flex items-center justify-between gap-2">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-56 border-r border-rule bg-paper-deep flex flex-col transform transition-transform duration-200 ease-out md:static md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-3 border-b border-rule flex items-center justify-between gap-2">
           <CompanySwitcher />
           <PeeringPill />
           <button
             onClick={() => setSidebarOpen(false)}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground md:hidden"
+            className="p-1 rounded-sm text-ink-soft hover:text-ink md:hidden"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -195,7 +195,7 @@ export function Layout() {
                 />
               )}
               {specialists.length > 0 && orchestratorAgent && (
-                <div className="mx-3 my-1 border-t border-border/50" />
+                <div className="mx-3 my-1.5 border-t border-rule/60" />
               )}
               {specialists.map(a => (
                 <AgentNavItem
@@ -236,23 +236,19 @@ export function Layout() {
                   key={ch.name}
                   to={`/channels/${ch.name}`}
                   className={({ isActive }) =>
-                    `flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors ${
-                      isActive
-                        ? 'bg-accent text-accent-foreground font-medium'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                    }`
+                    `nav-item justify-between ${isActive ? 'nav-item-active' : ''}`
                   }
                 >
-                  <span className="truncate"># {ch.name}</span>
+                  <span className="truncate"><span className="text-ink-faint">#</span> {ch.name}</span>
                   {ch.unread_count > 0 && (
-                    <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 font-medium leading-none flex-shrink-0 ml-1">
+                    <span className="text-2xs font-mono font-medium text-brand tnum flex-shrink-0 ml-1">
                       {ch.unread_count}
                     </span>
                   )}
                 </NavLink>
               ))}
               {channels.length === 0 && (
-                <p className="px-3 py-1 text-xs text-muted-foreground/50">No channels yet</p>
+                <p className="px-3 py-1 text-xs text-ink-faint">No channels yet</p>
               )}
             </div>
           )}
@@ -272,17 +268,14 @@ export function Layout() {
                   const elapsed = Math.round((Date.now() - new Date(proc.started_at).getTime()) / 1000)
                   const elapsedStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m`
                   return (
-                    <div key={proc.id} className="px-3 py-1.5 rounded-md">
+                    <div key={proc.id} className="px-3 py-1.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="relative flex h-2 w-2 flex-shrink-0">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
-                        </span>
-                        <span className="text-xs font-medium text-foreground truncate">{displayName}</span>
-                        <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{elapsedStr}</span>
+                        <span className="status-dot status-dot-running live-pulse flex-shrink-0" />
+                        <span className="text-xs font-medium text-ink truncate">{displayName}</span>
+                        <span className="text-2xs font-mono text-ink-faint tnum flex-shrink-0">{elapsedStr}</span>
                       </div>
                       {task && (
-                        <p className="text-[11px] text-muted-foreground/70 truncate mt-0.5 ml-3.5">{task}</p>
+                        <p className="text-2xs text-ink-soft truncate mt-0.5 ml-3.5">{task}</p>
                       )}
                     </div>
                   )
@@ -292,15 +285,11 @@ export function Layout() {
           )}
 
           {/* Inbox */}
-          <div className="mt-1">
+          <div className="mt-2">
             <NavLink
               to="/inbox"
               className={({ isActive }) =>
-                `flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                }`
+                `nav-item justify-between ${isActive ? 'nav-item-active' : ''}`
               }
             >
               <div className="flex items-center gap-2">
@@ -310,7 +299,7 @@ export function Layout() {
                 <span>Inbox</span>
               </div>
               {inboxCount > 0 && (
-                <span className="text-[10px] bg-red-500/20 text-red-400 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                <span className="text-2xs font-mono font-medium text-brand tnum">
                   {inboxCount}
                 </span>
               )}
@@ -318,16 +307,10 @@ export function Layout() {
           </div>
 
           {/* Tasks */}
-          <div className="mt-1">
+          <div>
             <NavLink
               to="/tasks"
-              className={({ isActive }) =>
-                `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                }`
-              }
+              className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -337,18 +320,11 @@ export function Layout() {
           </div>
 
           {/* Memory */}
-          <div className="mt-1">
+          <div>
             <NavLink
               to="/memory"
-              className={({ isActive }) =>
-                `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                }`
-              }
+              className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}
             >
-              {/* Brain icon */}
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
               </svg>
@@ -357,16 +333,10 @@ export function Layout() {
           </div>
 
           {/* Files */}
-          <div className="mt-1">
+          <div>
             <NavLink
               to="/files"
-              className={({ isActive }) =>
-                `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                }`
-              }
+              className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -376,15 +346,15 @@ export function Layout() {
           </div>
 
           {/* More (Admin) */}
-          <div className="mt-2">
+          <div className="mt-3 border-t border-rule/60 pt-2">
             <button
               onClick={() => setMoreOpen(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 w-full text-left text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="section-label flex items-center gap-1 px-3 py-1.5 w-full text-left hover:text-ink-soft transition-colors"
             >
-              <svg className={`w-3 h-3 transition-transform ${showMore ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className={`w-2 h-2 transition-transform ${showMore ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
-              <span className="text-[11px] font-semibold uppercase tracking-wider">More</span>
+              <span>More</span>
             </button>
             {showMore && (
               <div className="space-y-0.5 mt-0.5">
@@ -392,13 +362,7 @@ export function Layout() {
                   <NavLink
                     key={item.to}
                     to={item.to}
-                    className={({ isActive }) =>
-                      `block px-3 py-1.5 rounded-md text-sm transition-colors ${
-                        isActive
-                          ? 'bg-accent text-accent-foreground font-medium'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                      }`
-                    }
+                    className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}
                   >
                     {item.label}
                   </NavLink>
@@ -427,11 +391,11 @@ function VisualizeButton({ running }: { running: number }) {
   return (
     <button
       onClick={() => navigate('/visualize')}
-      className={`absolute bottom-5 right-5 z-30 group flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-full border border-border bg-card shadow-lg transition-all hover:scale-105 hover:border-primary/50 hover:shadow-primary/10 hover:shadow-xl ${running > 0 ? 'visualize-btn-active' : ''}`}
-      title="Supervision Tree"
+      className="absolute bottom-5 right-5 z-30 group flex items-center gap-2 pl-2.5 pr-3 py-2 rounded-sm border border-rule bg-paper text-ink-soft hover:text-ink hover:border-brand transition-colors"
+      title="Supervision tree"
     >
-      {/* Constellation icon */}
-      <svg className="w-4.5 h-4.5 text-muted-foreground group-hover:text-primary transition-colors" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      {/* Tree icon */}
+      <svg className="w-4 h-4" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
         <circle cx="9" cy="4" r="2" />
         <circle cx="4" cy="13" r="2" />
         <circle cx="14" cy="13" r="2" />
@@ -439,11 +403,9 @@ function VisualizeButton({ running }: { running: number }) {
         <line x1="10.5" y1="5.5" x2="12.5" y2="11.5" />
         <line x1="6" y1="13" x2="12" y2="13" />
       </svg>
+      <span className="text-xs font-medium">tree</span>
       {running > 0 && (
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-        </span>
+        <span className="status-dot status-dot-running live-pulse" />
       )}
     </button>
   )
@@ -469,31 +431,28 @@ function AgentNavItem({
       to={to}
       end={to === '/chat'}
       className={({ isActive }) =>
-        `flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-          isActive
-            ? 'bg-accent text-accent-foreground font-medium'
-            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-        }`
+        `nav-item ${isActive ? 'nav-item-active' : ''}`
       }
     >
       <div className="relative flex-shrink-0 flex items-center justify-center" style={{ width: 24, height: 24 }}>
         <AgentAvatar name={agent.name} displayName={displayName} avatar={avatar} size={5} />
-        {busy ? (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="agent-orbit-dot absolute w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.6)]" />
-          </div>
-        ) : (
-          <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-card ${
-            agent.status === 'running' ? 'bg-green-400' : 'bg-muted-foreground/30'
-          }`} />
-        )}
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-paper-deep ${
+            busy
+              ? 'bg-running live-pulse'
+              : agent.status === 'running'
+                ? 'bg-running'
+                : 'bg-ink-faint opacity-40'
+          }`}
+          aria-label={busy ? 'working' : agent.status === 'running' ? 'live' : 'idle'}
+        />
       </div>
       <div className="min-w-0 flex-1">
         <span className="block truncate">{displayName}</span>
-        {agent.title && <span className="block truncate text-[11px] text-muted-foreground/60 leading-tight">{agent.title}</span>}
+        {agent.title && <span className="block truncate text-2xs text-ink-faint leading-tight">{agent.title}</span>}
       </div>
       {unreadCount > 0 && (
-        <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 font-medium leading-none flex-shrink-0">
+        <span className="text-2xs font-mono font-medium text-brand tnum flex-shrink-0">
           {unreadCount}
         </span>
       )}

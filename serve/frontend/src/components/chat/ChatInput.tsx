@@ -32,7 +32,7 @@ function MentionDropdown({
 
   if (agents.length === 0) {
     return (
-      <div className="px-3 py-2 text-xs text-muted-foreground">No matching agents</div>
+      <div className="px-3 py-2 text-xs text-ink-faint">No matching agents</div>
     )
   }
 
@@ -47,13 +47,13 @@ function MentionDropdown({
             onMouseDown={e => { e.preventDefault(); onSelect(name) }}
             onMouseEnter={() => onHover(i)}
             className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm transition-colors text-left ${
-              i === selectedIndex ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/30'
+              i === selectedIndex ? 'bg-paper-deep text-ink' : 'text-ink-soft hover:bg-paper-deep/60'
             }`}
           >
             <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={6} />
             <div className="flex flex-col min-w-0">
               <span className="truncate font-medium">{label}</span>
-              {info?.title && <span className="truncate text-xs text-muted-foreground/70">{info.title}</span>}
+              {info?.title && <span className="truncate text-2xs text-ink-faint">{info.title}</span>}
             </div>
           </button>
         )
@@ -196,16 +196,16 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
     }
   }
 
-  const borderClass = borderColor || 'border-border focus:border-primary'
+  const borderClass = borderColor || 'border-rule focus:border-brand'
 
   return (
-    <div className="pt-3 border-t border-border space-y-1.5">
+    <div className="pt-3 border-t border-rule space-y-1.5">
       <div className="flex gap-2 items-end">
         <div className="relative flex-1" ref={mentionRef}>
           {mentionOpen && agentNames && (
-            <div className="absolute bottom-full mb-1.5 left-0 w-64 rounded-xl border border-border bg-card shadow-lg z-20 overflow-hidden">
-              <div className="px-3 py-2 border-b border-border">
-                <p className="text-xs text-muted-foreground font-medium">Mention an agent</p>
+            <div className="absolute bottom-full mb-1.5 left-0 w-64 rounded-sm border border-rule bg-paper z-20 overflow-hidden" style={{ boxShadow: '0 4px 16px -8px oklch(22% 0.018 40 / 0.12)' }}>
+              <div className="px-3 py-2 border-b border-rule">
+                <p className="anno">Mention an agent</p>
               </div>
               <MentionDropdown
                 agents={mentionAgents}
@@ -222,23 +222,24 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder || 'Type a message...'}
+            placeholder={placeholder || 'Type a message…'}
             disabled={sending}
-            className={`w-full px-4 py-2.5 rounded-xl bg-background border text-sm focus:outline-none disabled:opacity-50 resize-none overflow-y-auto transition-colors ${borderClass}`}
+            className={`w-full px-3.5 py-2.5 rounded-sm bg-paper border text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 resize-none overflow-y-auto transition-colors ${borderClass}`}
             style={{ maxHeight: '144px' }}
           />
         </div>
         <button
           onClick={handleSendClick}
           disabled={sending || !input.trim()}
-          className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50 flex-shrink-0"
+          className="p-2.5 rounded-sm bg-ink text-paper hover:bg-brand-deep disabled:opacity-40 disabled:hover:bg-ink transition-colors flex-shrink-0"
+          aria-label="Send"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
           </svg>
         </button>
       </div>
-      <p className="text-xs text-muted-foreground px-1">Enter to send · Shift+Enter for new line{agentNames?.length ? ' · @ to mention' : ''}</p>
+      <p className="text-xs text-ink-faint px-1">Enter to send · Shift+Enter for new line{agentNames?.length ? ' · @ to mention' : ''}</p>
     </div>
   )
 }

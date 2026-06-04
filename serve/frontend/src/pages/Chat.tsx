@@ -66,21 +66,21 @@ function AgentPicker({
       <button
         onClick={() => setOpen(v => !v)}
         title="Switch agent"
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm border border-rule text-xs text-ink-soft hover:text-ink hover:bg-paper-deep transition-colors"
       >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
         <span>Agents</span>
-        <span className="bg-primary/20 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none">
+        <span className="font-mono text-2xs text-brand tnum">
           {agents.length}
         </span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-border bg-card shadow-lg z-20 overflow-hidden">
-          <div className="px-3 py-2 border-b border-border">
-            <p className="text-xs text-muted-foreground font-medium">Your agents</p>
+        <div className="absolute right-0 top-full mt-1.5 w-52 rounded-sm border border-rule bg-paper z-20 overflow-hidden" style={{ boxShadow: '0 4px 16px -8px oklch(22% 0.018 40 / 0.12)' }}>
+          <div className="px-3 py-2 border-b border-rule">
+            <p className="anno">Your agents</p>
           </div>
           <div className="max-h-64 overflow-y-auto py-1">
             {agents.map(a => {
@@ -89,17 +89,17 @@ function AgentPicker({
                 <button
                   key={a.name}
                   onClick={() => { onSelect(a.name); setOpen(false) }}
-                  className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left ${
-                    activeAgent === a.name ? 'bg-accent/30 text-foreground' : 'text-muted-foreground'
+                  className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-paper-deep transition-colors text-left ${
+                    activeAgent === a.name ? 'bg-paper-deep text-ink' : 'text-ink-soft'
                   }`}
                 >
                   <AgentAvatar name={a.name} displayName={label} avatar={a.avatar} size={6} />
                   <div className="flex flex-col min-w-0">
                     <span className="truncate font-medium">{label}</span>
-                    {a.title && <span className="truncate text-xs text-muted-foreground/70">{a.title}</span>}
+                    {a.title && <span className="truncate text-2xs text-ink-faint">{a.title}</span>}
                   </div>
                   {activeAgent === a.name && (
-                    <svg className="w-3 h-3 ml-auto text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-3 h-3 ml-auto text-brand flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   )}
@@ -136,7 +136,7 @@ function TabBar({
         const info = displayInfo.get(name)
         const label = info?.displayName || name
         const borderColor = active
-          ? isIris ? 'border-primary' : 'border-emerald-500'
+          ? 'border-brand'
           : 'border-transparent'
         const showDivider = isIris && tabs.length > 1
         return (
@@ -145,8 +145,8 @@ function TabBar({
               onClick={() => onSelect(name)}
               className={`group flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors flex-shrink-0 ${borderColor} ${
                 active
-                  ? 'bg-background text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+                  ? 'bg-paper text-ink'
+                  : 'text-ink-soft hover:text-ink hover:bg-paper-deep/60'
               }`}
               title={info?.title || undefined}
             >
@@ -154,17 +154,17 @@ function TabBar({
               <div className="flex flex-col items-start min-w-0">
                 <span className="truncate max-w-[8rem]">{label}</span>
                 {info?.title && (
-                  <span className="truncate max-w-[8rem] text-[10px] font-normal text-muted-foreground leading-tight">{info.title}</span>
+                  <span className="truncate max-w-[8rem] text-2xs font-normal text-ink-faint leading-tight">{info.title}</span>
                 )}
               </div>
               {!isIris && (
                 <span
                   onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClose(name) }}
-                  className={`ml-0.5 p-0.5 rounded hover:bg-accent transition-colors ${
-                    active ? 'text-muted-foreground hover:text-foreground' : 'opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground'
+                  className={`ml-0.5 p-0.5 rounded-sm hover:bg-paper-deep transition-colors ${
+                    active ? 'text-ink-soft hover:text-ink' : 'opacity-0 group-hover:opacity-100 text-ink-soft hover:text-ink'
                   }`}
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </span>
@@ -172,7 +172,7 @@ function TabBar({
             </button>
             {showDivider && (
               <div className="flex items-center px-1">
-                <div className="w-px h-4 bg-border" />
+                <div className="w-px h-4 bg-rule" />
               </div>
             )}
           </div>
@@ -183,15 +183,17 @@ function TabBar({
 }
 
 function VegaStar() {
+  // Recolored from the prior multi-hue version: charcoal lines, oxblood
+  // accent dot at center. Same shape, monochrome voice.
   return (
-    <pre className="text-xs leading-snug font-mono select-none inline-block text-left" aria-hidden="true">
-      <span className="text-blue-300">{'        ·   '}</span><span className="text-cyan-400">{'✦'}</span><span className="text-blue-300">{'   ·'}</span>{'\n'}
-      <span className="text-indigo-400">{'         \\  '}</span><span className="text-cyan-400">{'│'}</span><span className="text-indigo-400">{'  /'}</span>{'\n'}
-      <span className="text-indigo-400">{'          \\ '}</span><span className="text-cyan-400">{'│'}</span><span className="text-indigo-400">{' /'}</span>{'\n'}
-      <span className="text-blue-300">{'  · '}</span><span className="text-rose-400">{'✦ ─────'}</span><span className="text-amber-300">{' ★ '}</span><span className="text-purple-400">{'───── ✦'}</span><span className="text-blue-300">{' ·'}</span>{'\n'}
-      <span className="text-orange-400">{'          / '}</span><span className="text-emerald-400">{'│'}</span><span className="text-orange-400">{' \\'}</span>{'\n'}
-      <span className="text-orange-400">{'         /  '}</span><span className="text-emerald-400">{'│'}</span><span className="text-orange-400">{'  \\'}</span>{'\n'}
-      <span className="text-blue-300">{'        ·   '}</span><span className="text-emerald-400">{'✦'}</span><span className="text-blue-300">{'   ·'}</span>
+    <pre className="text-xs leading-snug font-mono select-none inline-block text-left text-ink-faint" aria-hidden="true">
+      <span>{'        ·   '}</span><span className="text-ink-soft">{'✦'}</span><span>{'   ·'}</span>{'\n'}
+      <span>{'         \\  '}</span><span className="text-ink-soft">{'│'}</span><span>{'  /'}</span>{'\n'}
+      <span>{'          \\ '}</span><span className="text-ink-soft">{'│'}</span><span>{' /'}</span>{'\n'}
+      <span>{'  · '}</span><span className="text-ink-soft">{'✦ ─────'}</span><span className="text-brand">{' ★ '}</span><span className="text-ink-soft">{'───── ✦'}</span><span>{' ·'}</span>{'\n'}
+      <span>{'          / '}</span><span className="text-ink-soft">{'│'}</span><span>{' \\'}</span>{'\n'}
+      <span>{'         /  '}</span><span className="text-ink-soft">{'│'}</span><span>{'  \\'}</span>{'\n'}
+      <span>{'        ·   '}</span><span className="text-ink-soft">{'✦'}</span><span>{'   ·'}</span>
     </pre>
   )
 }
@@ -640,7 +642,7 @@ export function Chat() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Tab bar + actions */}
-      <div className="flex items-end border-b border-border">
+      <div className="flex items-end border-b border-rule">
         <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
           <TabBar
             tabs={openTabs}
@@ -662,7 +664,7 @@ export function Chat() {
             }, { cost: 0, tokens: 0 })
             if (totals.tokens === 0) return null
             return (
-              <span className="text-[11px] text-muted-foreground/60 font-mono pr-2 hidden sm:inline">
+              <span className="text-2xs text-ink-faint font-mono tnum pr-2 hidden sm:inline">
                 {totals.cost >= 0.01 ? `$${totals.cost.toFixed(2)}` : `$${totals.cost.toFixed(4)}`}
                 {' · '}
                 {totals.tokens >= 1000 ? `${(totals.tokens / 1000).toFixed(1)}k` : totals.tokens} tokens
@@ -677,10 +679,10 @@ export function Chat() {
           <button
             onClick={copyTranscript}
             title="Copy transcript"
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            className="p-2 rounded-sm text-ink-soft hover:text-ink hover:bg-paper-deep transition-colors"
           >
             {copied ? (
-              <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4 text-running" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
               </svg>
             ) : (
@@ -692,7 +694,7 @@ export function Chat() {
           <button
             onClick={clearChat}
             title="Clear chat"
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            className="p-2 rounded-sm text-ink-soft hover:text-ink hover:bg-paper-deep transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -708,9 +710,9 @@ export function Chat() {
             <div className="text-center space-y-4 max-w-md">
               <VegaStar />
               <div>
-                <h3 className="text-lg font-semibold text-foreground">What do you need?</h3>
-                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                  Iris routes your goals across all agents — or calls on Hera to build new ones.
+                <h3 className="text-lg font-semibold text-ink">What do you need?</h3>
+                <p className="text-sm text-ink-soft mt-1.5 leading-relaxed">
+                  Iris routes your goals across all agents, or calls on Hera to build new ones.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center pt-2">
@@ -718,7 +720,7 @@ export function Chat() {
                   <button
                     key={prompt}
                     onClick={() => send(prompt)}
-                    className="text-sm px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
+                    className="text-sm px-3 py-1.5 rounded-sm border border-rule text-ink-soft hover:text-ink hover:border-brand hover:bg-paper-deep transition-colors"
                   >
                     {prompt}
                   </button>
@@ -776,18 +778,18 @@ export function Chat() {
                 <AgentAvatar name={activeAgent} displayName={info?.displayName} avatar={info?.avatar} size={16} />
               </div>
               <div className="space-y-1">
-                <h2 className="text-xl font-bold text-foreground">{displayName}</h2>
-                {title && <p className="text-sm font-medium text-muted-foreground">{title}</p>}
+                <h2 className="text-xl font-semibold text-ink">{displayName}</h2>
+                {title && <p className="anno">{title}</p>}
               </div>
               {description && (
-                <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">{description}</p>
+                <p className="text-sm text-ink-soft leading-relaxed max-w-sm mx-auto">{description}</p>
               )}
               {activeAgentData?.team && activeAgentData.team.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 justify-center">
-                  <span className="text-xs text-muted-foreground mr-1">Team:</span>
+                <div className="flex flex-wrap gap-1.5 justify-center items-center">
+                  <span className="text-2xs text-ink-faint mr-1 uppercase tracking-wider font-mono">Team</span>
                   {activeAgentData.team.map(member => (
                     <button key={member} onClick={() => switchToAgent(member)}
-                      className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors"
+                      className="text-xs px-2.5 py-1 rounded-sm border border-rule text-ink-soft hover:text-ink hover:border-brand hover:bg-paper-deep transition-colors"
                     >
                       {agentDisplayInfo.get(member)?.displayName || member}
                     </button>
@@ -795,11 +797,11 @@ export function Chat() {
                 </div>
               )}
               <div className="space-y-2 pt-2">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Try asking</p>
+                <p className="anno">Try asking</p>
                 <div className="flex flex-col gap-2 items-center">
                   {examplePrompts.map((prompt, idx) => (
                     <button key={idx} onClick={() => send(prompt)}
-                      className="text-sm px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-accent/30 transition-colors max-w-xs"
+                      className="text-sm px-3.5 py-2 rounded-sm border border-rule text-ink-soft hover:text-ink hover:border-brand hover:bg-paper-deep transition-colors max-w-xs"
                     >
                       {prompt}
                     </button>
@@ -809,7 +811,7 @@ export function Chat() {
               {tools.length > 0 && (
                 <div className="pt-2">
                   <button onClick={() => setShowWelcomeTools(!showWelcomeTools)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
+                    className="text-xs text-ink-faint hover:text-ink-soft transition-colors inline-flex items-center gap-1"
                   >
                     <svg className={`w-3 h-3 transition-transform ${showWelcomeTools ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -819,15 +821,15 @@ export function Chat() {
                   {showWelcomeTools && (
                     <div className="flex flex-wrap gap-1.5 justify-center mt-2">
                       {tools.map(tool => (
-                        <span key={tool} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">{tool}</span>
+                        <span key={tool} className="text-2xs px-2 py-0.5 rounded-sm bg-paper-deep border border-rule text-ink-soft font-mono">{tool}</span>
                       ))}
                     </div>
                   )}
                 </div>
               )}
               {handoffFrom && (
-                <p className="text-xs text-muted-foreground">
-                  <span className="text-emerald-400">{'✦'}</span> Iris connected you here
+                <p className="text-xs text-ink-faint">
+                  <span className="text-brand">{'✦'}</span> Iris connected you here
                 </p>
               )}
             </div>
@@ -846,16 +848,16 @@ export function Chat() {
       <ChatInput
         onSend={send}
         sending={sending}
-        placeholder={isIris ? `Tell ${orchestratorDisplay} what you need...` : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}...`}
-        borderColor={isIris ? 'border-border focus:border-primary' : 'border-emerald-500/30 focus:border-emerald-500/60'}
+        placeholder={isIris ? `Tell ${orchestratorDisplay} what you need…` : `Message ${agentDisplayInfo.get(activeAgent)?.displayName || activeAgent}…`}
+        borderColor="border-rule focus:border-brand"
         agentNames={agentNamesList}
         agentDisplayInfo={agentDisplayInfo}
       />
 
       {/* File preview modal */}
       {previewLoading && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="animate-pulse text-white">Loading preview...</div>
+        <div className="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="text-paper text-sm">Loading preview…</div>
         </div>
       )}
       {previewFile && (

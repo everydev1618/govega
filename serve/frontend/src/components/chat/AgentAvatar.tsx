@@ -20,7 +20,7 @@ export function AgentAvatar({ name, displayName, avatar, size = 7 }: { name: str
   }
   const label = displayName || name
   return (
-    <div className={`${sizeClass} rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0 ${size === 12 || size === 16 ? 'text-lg' : 'text-xs'} font-semibold`}>
+    <div className={`${sizeClass} rounded-full bg-paper-deep text-brand border border-rule flex items-center justify-center flex-shrink-0 ${size === 12 || size === 16 ? 'text-lg' : 'text-xs'} font-semibold`}>
       {label[0]?.toUpperCase()}
     </div>
   )

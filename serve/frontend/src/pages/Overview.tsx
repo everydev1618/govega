@@ -16,20 +16,26 @@ export function Overview() {
   const hasWorkflows = workflows && workflows.length > 0
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Overview</h2>
-        <span className={`text-xs px-2 py-1 rounded-full ${connected ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+    <div className="space-y-7">
+      <div className="flex items-center justify-between pb-4 border-b border-rule">
+        <div>
+          <p className="anno mb-1.5">Dashboard</p>
+          <h1 className="text-2xl font-semibold text-ink tracking-tight">Overview</h1>
+        </div>
+        <span className={`chip ${connected ? 'chip-dot' : 'chip-signal'}`}>
           {connected ? 'Live' : 'Disconnected'}
         </span>
       </div>
 
       {/* Getting started — shown when the server is mostly empty */}
       {!hasAgents && (
-        <div className="p-5 rounded-lg border border-border bg-card space-y-5">
-          <h3 className="text-lg font-semibold">Get Started</h3>
-          <p className="text-sm text-muted-foreground">
-            Just talk to Iris — she'll route your goals across agents, ask Hera to build new ones, and set up schedules. Or go deeper:
+        <div className="p-5 rounded-sm border border-rule bg-paper-deep space-y-4">
+          <div>
+            <p className="anno mb-1.5">Get started</p>
+            <h3 className="text-lg font-semibold text-ink">Three ways in.</h3>
+          </div>
+          <p className="text-sm text-ink-soft max-w-prose">
+            Talk to Iris and she'll route your goals across agents, ask Hera to build new ones, and set up schedules. Or go deeper:
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -68,10 +74,10 @@ export function Overview() {
 
       {/* Stats grid */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Running" value={stats.running_processes} color="text-blue-400" />
-          <StatCard label="Completed" value={stats.completed_processes} color="text-green-400" />
-          <StatCard label="Total Cost" value={`$${stats.total_cost_usd.toFixed(4)}`} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-0 border-y border-rule">
+          <StatCard label="Running" value={stats.running_processes} tone="running" border="right" />
+          <StatCard label="Completed" value={stats.completed_processes} border="right" />
+          <StatCard label="Total cost" value={`$${stats.total_cost_usd.toFixed(4)}`} border="right" />
           <StatCard label="Uptime" value={stats.uptime} />
         </div>
       )}
@@ -85,21 +91,23 @@ export function Overview() {
       {hasWorkflows && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold">Workflows</h3>
-            <Link to="/workflows" className="text-xs text-primary hover:underline">View all</Link>
+            <h3 className="text-base font-semibold text-ink">Workflows</h3>
+            <Link to="/workflows" className="text-xs text-brand hover:underline">View all →</Link>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {workflows!.slice(0, 6).map(wf => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border-y border-rule">
+            {workflows!.slice(0, 6).map((wf, idx) => (
               <Link
                 key={wf.name}
                 to="/workflows"
-                className="p-3 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors"
+                className={`p-4 bg-paper hover:bg-paper-deep transition-colors group ${idx % 3 !== 2 ? 'md:border-r md:border-rule' : ''} ${idx !== workflows!.slice(0,6).length - 1 ? 'border-b border-rule md:border-b' : ''}`}
               >
-                <span className="font-medium text-sm">{wf.name}</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-medium text-sm text-ink group-hover:text-brand transition-colors">{wf.name}</span>
+                  <span className="text-2xs font-mono text-ink-faint tnum ml-auto">{wf.steps} step{wf.steps !== 1 ? 's' : ''}</span>
+                </div>
                 {wf.description && (
-                  <p className="text-xs text-muted-foreground mt-1">{wf.description}</p>
+                  <p className="text-xs text-ink-soft mt-1 truncate">{wf.description}</p>
                 )}
-                <p className="text-xs text-muted-foreground mt-1">{wf.steps} steps</p>
               </Link>
             ))}
           </div>
@@ -108,16 +116,21 @@ export function Overview() {
 
       {/* Recent events */}
       <div>
-        <h3 className="text-lg font-semibold mb-3">Recent Events</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-semibold text-ink">Recent events</h3>
+          <span className="anno">/api/v1/events</span>
+        </div>
         {events.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No events yet. Compose an agent or launch a workflow to see activity.</p>
+          <p className="text-ink-soft text-sm py-6 border-y border-rule">
+            No events yet. Compose an agent or launch a workflow to see activity.
+          </p>
         ) : (
-          <div className="space-y-2">
+          <div className="border-y border-rule divide-y divide-rule">
             {events.slice(0, 10).map((event, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border text-sm">
+              <div key={i} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-paper-deep/60 transition-colors">
                 <EventBadge type={event.type} />
-                <span className="text-muted-foreground">{event.agent || event.process_id}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="text-ink-soft font-mono text-xs">{event.agent || event.process_id}</span>
+                <span className="ml-auto text-2xs text-ink-faint font-mono tnum">
                   {new Date(event.timestamp).toLocaleTimeString()}
                 </span>
               </div>
@@ -133,19 +146,17 @@ function StepCard({ step, title, description, to, cta }: {
   step: number; title: string; description: string; to: string; cta: string
 }) {
   return (
-    <div className="p-4 rounded-lg border border-border bg-background space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
-          {step}
-        </span>
-        <h4 className="font-semibold text-sm">{title}</h4>
+    <div className="p-4 rounded-sm border border-rule bg-paper space-y-2.5">
+      <div className="flex items-baseline gap-2">
+        <span className="anno tnum">§{step}</span>
+        <h4 className="font-semibold text-sm text-ink">{title}</h4>
       </div>
-      <p className="text-xs text-muted-foreground">{description}</p>
+      <p className="text-xs text-ink-soft leading-relaxed">{description}</p>
       <Link
         to={to}
-        className="inline-block mt-1 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
+        className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1.5 rounded-sm bg-ink text-paper text-xs font-medium hover:bg-brand-deep transition-colors"
       >
-        {cta}
+        {cta} <span className="font-mono text-2xs">↗</span>
       </Link>
     </div>
   )
@@ -155,35 +166,47 @@ function QuickLink({ to, label, count, sublabel }: {
   to: string; label: string; count: number | null; sublabel: string
 }) {
   return (
-    <Link to={to} className="p-3 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors">
-      <p className="text-sm font-medium">{label}</p>
+    <Link to={to} className="p-3 rounded-sm bg-paper border border-rule hover:border-brand transition-colors group">
+      <p className="text-xs text-ink-faint font-mono uppercase tracking-wider mb-1">{label}</p>
       {count !== null ? (
-        <p className="text-lg font-bold">{count} <span className="text-xs font-normal text-muted-foreground">{sublabel}</span></p>
+        <p className="text-base text-ink group-hover:text-brand transition-colors">
+          <span className="font-semibold tnum">{count}</span>
+          <span className="text-xs text-ink-faint ml-1.5">{sublabel}</span>
+        </p>
       ) : (
-        <p className="text-xs text-muted-foreground">{sublabel}</p>
+        <p className="text-xs text-ink-soft group-hover:text-brand transition-colors">{sublabel} →</p>
       )}
     </Link>
   )
 }
 
-function StatCard({ label, value, color }: { label: string; value: string | number; color?: string }) {
+function StatCard({ label, value, tone, border }: {
+  label: string
+  value: string | number
+  tone?: 'running' | 'signal'
+  border?: 'right'
+}) {
+  const valueColor = tone === 'running' ? 'text-running' : tone === 'signal' ? 'text-signal' : 'text-ink'
+  const borderClass = border === 'right' ? 'md:border-r md:border-rule' : ''
   return (
-    <div className="p-4 rounded-lg bg-card border border-border">
-      <p className="text-xs text-muted-foreground mb-1">{label}</p>
-      <p className={`text-2xl font-bold ${color || ''}`}>{value}</p>
+    <div className={`px-4 py-4 bg-paper ${borderClass}`}>
+      <p className="anno mb-1.5">{label}</p>
+      <p className={`text-2xl font-semibold tnum ${valueColor}`}>{value}</p>
     </div>
   )
 }
 
 function EventBadge({ type }: { type: string }) {
+  // Color encodes outcome: running = success, signal = failure, ink-soft = neutral
   const colors: Record<string, string> = {
-    'process.started': 'bg-blue-900/50 text-blue-400',
-    'process.completed': 'bg-green-900/50 text-green-400',
-    'process.failed': 'bg-red-900/50 text-red-400',
+    'process.started': 'text-ink',
+    'process.completed': 'text-running',
+    'process.failed': 'text-signal',
   }
+  const color = colors[type] || 'text-ink-soft'
   return (
-    <span className={`text-xs px-2 py-0.5 rounded ${colors[type] || 'bg-muted text-muted-foreground'}`}>
-      {type.replace('process.', '')}
+    <span className={`text-2xs font-mono ${color} flex-shrink-0 w-28`}>
+      {type}
     </span>
   )
 }
@@ -191,10 +214,10 @@ function EventBadge({ type }: { type: string }) {
 function PageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="h-8 w-48 bg-paper-deep rounded-sm animate-pulse" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-20 bg-muted rounded animate-pulse" />
+          <div key={i} className="h-20 bg-paper-deep rounded-sm animate-pulse" />
         ))}
       </div>
     </div>
