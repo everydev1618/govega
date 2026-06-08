@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"sync"
 
 	aireproto "github.com/aire-protocol/aire-go"
@@ -100,6 +101,63 @@ func (c *Client) Send(ctx context.Context, ref, agentID, opName string, args []b
 		return nil, fmt.Errorf("aire: recv %s/%s on %s: %w", agentID, opName, addr.Endpoint, err)
 	}
 	return frame.Payload, nil
+}
+
+// SendStream invokes a remote agent and returns a channel of inbound frame
+// payloads plus an error channel. The payload channel closes when the
+// remote operation closes (FIN); the error channel is non-empty only if
+// the operation aborted abnormally.
+//
+// Callers must drain the payload channel even on error to release the
+// underlying QUIC stream.
+func (c *Client) SendStream(ctx context.Context, ref, agentID, opName string, args []byte) (<-chan []byte, <-chan error, error) {
+	addr, err := c.resolveRef(ctx, ref)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aire: resolve %q: %w", ref, err)
+	}
+	if agentID == "" {
+		agentID = addr.AgentID
+	}
+	if agentID == "" {
+		return nil, nil, fmt.Errorf("aire: no agentID provided and resolved Address has none for %q", ref)
+	}
+
+	conn, err := c.getOrDialConn(ctx, addr.Endpoint)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	op, err := conn.Invoke(ctx, agentID, opName, args)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aire: invoke %s/%s on %s: %w", agentID, opName, addr.Endpoint, err)
+	}
+
+	payloads := make(chan []byte, 16)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer func() { _ = op.Close() }()
+		defer close(payloads)
+		defer close(errs)
+		for {
+			f, err := op.Recv()
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+				errs <- err
+				return
+			}
+			select {
+			case payloads <- f.Payload:
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			}
+		}
+	}()
+
+	return payloads, errs, nil
 }
 
 // Close drains all peer connections held by the Client. Subsequent Sends
