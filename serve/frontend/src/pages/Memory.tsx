@@ -283,7 +283,7 @@ function PageView({
         </pre>
       )}
 
-      <article className="prose prose-sm dark:prose-invert max-w-none">
+      <article className="prose prose-sm prose-apex max-w-none">
         <ReactMarkdown>{page.content}</ReactMarkdown>
       </article>
 

@@ -143,7 +143,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
               {displayName}
             </p>
             {msg.content ? (
-              <div className="text-sm prose prose-invert prose-sm max-w-none prose-p:my-1 prose-code:text-purple-400 prose-code:before:content-none prose-code:after:content-none">
+              <div className="text-sm prose prose-sm prose-apex max-w-none prose-p:my-1">
                 <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
               </div>
             ) : streaming ? (

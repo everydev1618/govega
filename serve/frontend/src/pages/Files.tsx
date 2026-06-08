@@ -179,7 +179,7 @@ function FilePreview({ file, onClose, onDelete }: { file: FileContentResponse | 
 
           {ct === 'text/markdown' && file.encoding === 'utf-8' && (
             <div
-              className="prose prose-invert max-w-none text-foreground leading-relaxed"
+              className="prose prose-apex max-w-none leading-relaxed"
               dangerouslySetInnerHTML={{ __html: renderMarkdown(file.content) }}
             />
           )}
@@ -471,7 +471,7 @@ function InlinePreview({ path }: { path: string }) {
           <iframe srcDoc={file.content} sandbox="allow-scripts" className="w-full h-full rounded border border-border bg-white" title={name} />
         )}
         {ct === 'text/markdown' && file.encoding === 'utf-8' && (
-          <div className="prose prose-invert max-w-none text-foreground leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(file.content) }} />
+          <div className="prose prose-apex max-w-none leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(file.content) }} />
         )}
         {isTextType(ct) && ct !== 'text/markdown' && ct !== 'text/html' && file.encoding === 'utf-8' && (
           <pre className="text-sm font-mono leading-relaxed">

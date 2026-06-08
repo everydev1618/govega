@@ -47,7 +47,7 @@ export function FilePreview({ file, onClose }: { file: FileContentResponse; onCl
             <iframe srcDoc={file.content} sandbox="allow-scripts" className="w-full h-[65vh] rounded-lg border border-border bg-white" title={name} />
           )}
           {ct === 'text/markdown' && file.encoding === 'utf-8' && (
-            <div className="prose prose-invert max-w-none text-foreground leading-relaxed">
+            <div className="prose prose-apex max-w-none leading-relaxed">
               <Markdown>{file.content}</Markdown>
             </div>
           )}

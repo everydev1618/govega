@@ -146,3 +146,30 @@
   50% { opacity: 0.45; }
 }
 .live-pulse { animation: live-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+/* Prose colors pinned to the apex/govega design tokens. Use this in place of
+   `prose prose-invert` (which inverts to light text and is unreadable against
+   the cream background). Applies to channel views, thread panels, memory
+   pages, file previews — anywhere user-or-agent markdown is rendered. */
+.prose-apex { color: oklch(20% 0.012 80); }
+.prose-apex :where(h1, h2, h3, h4, h5, h6, strong) { color: inherit; }
+.prose-apex :where(a) { color: oklch(45% 0.135 30); }
+.prose-apex :where(blockquote) {
+  color: oklch(45% 0.012 80);
+  border-left-color: oklch(85.5% 0.022 50);
+}
+.prose-apex :where(hr) { border-color: oklch(85.5% 0.022 50); }
+.prose-apex :where(code) {
+  color: oklch(40% 0.135 30);
+  background: oklch(96% 0.012 60);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.2rem;
+}
+.prose-apex :where(code)::before,
+.prose-apex :where(code)::after { content: none; }
+.prose-apex :where(pre) {
+  background: oklch(96% 0.012 60);
+  border: 1px solid oklch(85.5% 0.022 50);
+  color: inherit;
+}
+.prose-apex :where(pre code) { background: transparent; padding: 0; }

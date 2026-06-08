@@ -568,7 +568,7 @@ export function MemoryGraphView() {
                 This page is referenced by other pages but doesn't exist yet.
               </p>
             ) : selectedPage ? (
-              <article className="prose prose-sm dark:prose-invert max-w-none">
+              <article className="prose prose-sm prose-apex max-w-none">
                 <ReactMarkdown>{selectedPage.content}</ReactMarkdown>
               </article>
             ) : (

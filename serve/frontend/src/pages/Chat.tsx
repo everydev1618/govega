@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useSSE } from '../hooks/useSSE'
 import { api, APIError } from '../lib/api'
 import type { AgentResponse, ChatEvent, FileContentResponse, TenantConfigResponse } from '../lib/types'
@@ -207,6 +207,7 @@ function baseAgentName(name: string): string {
 export function Chat() {
   const { agent: agentParam } = useParams<{ agent?: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { events } = useSSE()
 
   // Orchestrator identity comes from the live tenant config so a rename
@@ -406,7 +407,11 @@ export function Chat() {
           })
           .catch(() => {})
       })
-  }, [activeAgent]) // eslint-disable-line react-hooks/exhaustive-deps
+    // location.key is included so clicking the same sidebar link (which is
+    // a no-op for activeAgent) still re-fetches history — fixes the
+    // welcome-screen-stuck case when the intro message arrives async after
+    // the initial mount fetch returned empty.
+  }, [activeAgent, location.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Smart auto-scroll
   const isNearBottom = useCallback(() => {
@@ -704,7 +709,7 @@ export function Chat() {
       </div>
 
       {/* Messages */}
-      <div ref={messagesRef} className="flex-1 overflow-auto space-y-5 pb-4 relative">
+      <div ref={messagesRef} className="flex-1 overflow-auto space-y-5 pt-5 pb-4 relative">
         {loaded && messages.length === 0 && isIris && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-4 max-w-md">
