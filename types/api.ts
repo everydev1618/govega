@@ -1461,8 +1461,11 @@ export interface paths {
          *     POST /api/v3/connected_accounts/link) and returns it. The SPA
          *     navigates the browser to redirect_url; after consent the provider
          *     sends the user back to callback_url with
-         *     ?connected=<toolkit>&status=success|denied appended. The
-         *     connection is `pending` until the round-trip completes.
+         *     ?status=success|denied&connected_account_id=<id> appended (the
+         *     provider's param shape — the SPA resolves the toolkit by looking
+         *     the connection id up in the refreshed list). The connection is
+         *     `pending` until the round-trip completes; the backend wires the
+         *     MCP server lazily on the next GET /api/v1/integrations.
          */
         post: operations["connectIntegration"];
         delete?: never;
