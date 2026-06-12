@@ -1434,7 +1434,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the integration catalog with connection status */
+        /** List the integration catalog with connections */
         get: operations["listIntegrations"];
         put?: never;
         post?: never;
@@ -1444,7 +1444,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/integrations/{toolkit}/connection": {
+    "/api/v1/integrations/{toolkit}/connections": {
         parameters: {
             query?: never;
             header?: never;
@@ -1454,19 +1454,38 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start the OAuth consent flow for an integration
-         * @description Asks the connectivity provider for a hosted consent link
-         *     (Composio: POST /api/v3/connected_accounts/link) and returns it.
-         *     The SPA navigates the browser to redirect_url; after consent the
-         *     provider sends the user back to callback_url with
+         * Start the OAuth consent flow for a new account
+         * @description Creates a NEW connection on this toolkit — always allowed, even
+         *     when other accounts are already connected. Asks the connectivity
+         *     provider for a hosted consent link (Composio:
+         *     POST /api/v3/connected_accounts/link) and returns it. The SPA
+         *     navigates the browser to redirect_url; after consent the provider
+         *     sends the user back to callback_url with
          *     ?connected=<toolkit>&status=success|denied appended. The
          *     connection is `pending` until the round-trip completes.
          */
         post: operations["connectIntegration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{toolkit}/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
         /**
-         * Disconnect an integration
-         * @description Deletes the provider-side connected account and removes the
-         *     integration's MCP server from /api/v1/mcp/servers. Idempotent.
+         * Disconnect one account
+         * @description Deletes the provider-side connected account and removes that
+         *     connection's MCP server from /api/v1/mcp/servers. Other accounts
+         *     on the same toolkit are untouched. Idempotent.
          */
         delete: operations["disconnectIntegration"];
         options?: never;
@@ -2494,12 +2513,24 @@ export interface components {
             /** @description Catalog grouping, e.g. "communication", "dev_tools" */
             category?: string;
             is_popular?: boolean;
+            /** @description Connected accounts on this toolkit. Empty = not connected. */
+            connections: components["schemas"]["IntegrationConnectionResponse"][];
+        };
+        IntegrationConnectionResponse: {
+            /** @description Connection id (provider connected-account id, e.g. "ca_…") */
+            id: string;
+            /**
+             * @description Human label for the account (e.g. "Brandcave"), as reported by
+             *     the provider. Null until known. Also surfaced on per-agent
+             *     tools as AgentTool.account_label.
+             */
+            account_label?: string | null;
             /**
              * @description pending = consent flow started but not completed;
              *     expired = provider-side token refresh failed, reconnect required
              * @enum {string}
              */
-            status: "disconnected" | "pending" | "active" | "expired";
+            status: "pending" | "active" | "expired";
             /** Format: date-time */
             connected_at?: string | null;
         };
@@ -2551,6 +2582,8 @@ export interface components {
         MCPServerName: string;
         /** @description Integration toolkit slug (e.g. "slack", "github") */
         IntegrationToolkit: string;
+        /** @description Connection id (provider connected-account id, e.g. "ca_…") */
+        IntegrationConnectionId: string;
         /** @description User identifier for per-user agent sessions and memory */
         XAuthUser: string;
     };
@@ -5282,7 +5315,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Catalog of available integrations merged with this workspace's connection state */
+            /** @description Catalog of available integrations, each carrying this workspace's connected accounts */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5335,6 +5368,8 @@ export interface operations {
             path: {
                 /** @description Integration toolkit slug (e.g. "slack", "github") */
                 toolkit: components["parameters"]["IntegrationToolkit"];
+                /** @description Connection id (provider connected-account id, e.g. "ca_…") */
+                connection_id: components["parameters"]["IntegrationConnectionId"];
             };
             cookie?: never;
         };

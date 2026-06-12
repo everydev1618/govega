@@ -2416,20 +2416,22 @@ paths:
   # Generic third-party app connections (Slack, GitHub, Jira, …) brokered
   # by the tenant backend over a connectivity provider (Composio). The
   # contract is provider-agnostic: tenants never see or hold a provider
-  # key. Once a connection is active the backend self-connects the
-  # provider's hosted MCP server through /api/v1/mcp/servers, so agents
-  # consume the integration through the existing MCP + per-agent tool
-  # toggle surface. Bespoke integrations (telegram, gmail above) keep
-  # their concrete paths; {toolkit} here never shadows them because the
-  # connection sub-resource adds a path segment they don't use.
+  # key. Multi-account: a toolkit can hold any number of connections
+  # (e.g. two GitHub accounts) — each is one provider-side connected
+  # account and, once active, one MCP server self-connected through
+  # /api/v1/mcp/servers (named composio-<toolkit>[-n] to avoid the MCP
+  # registry's builtin names; account_label flows through to the
+  # per-agent tool surface). Bespoke integrations (telegram, gmail above)
+  # keep their concrete paths; {toolkit} here never shadows them because
+  # the connections sub-collection adds a path segment they don't use.
   /api/v1/integrations:
     get:
       tags: [Integrations]
-      summary: List the integration catalog with connection status
+      summary: List the integration catalog with connections
       operationId: listIntegrations
       responses:
         "200":
-          description: Catalog of available integrations merged with this workspace's connection state
+          description: Catalog of available integrations, each carrying this workspace's connected accounts
           content:
             application/json:
               schema:
@@ -2437,15 +2439,17 @@ paths:
                 items:
                   $ref: "#/components/schemas/IntegrationResponse"
 
-  /api/v1/integrations/{toolkit}/connection:
+  /api/v1/integrations/{toolkit}/connections:
     post:
       tags: [Integrations]
-      summary: Start the OAuth consent flow for an integration
+      summary: Start the OAuth consent flow for a new account
       description: |
-        Asks the connectivity provider for a hosted consent link
-        (Composio: POST /api/v3/connected_accounts/link) and returns it.
-        The SPA navigates the browser to redirect_url; after consent the
-        provider sends the user back to callback_url with
+        Creates a NEW connection on this toolkit — always allowed, even
+        when other accounts are already connected. Asks the connectivity
+        provider for a hosted consent link (Composio:
+        POST /api/v3/connected_accounts/link) and returns it. The SPA
+        navigates the browser to redirect_url; after consent the provider
+        sends the user back to callback_url with
         ?connected=<toolkit>&status=success|denied appended. The
         connection is `pending` until the round-trip completes.
       operationId: connectIntegration
@@ -2469,15 +2473,18 @@ paths:
         "502":
           description: Connectivity provider error
 
+  /api/v1/integrations/{toolkit}/connections/{connection_id}:
     delete:
       tags: [Integrations]
-      summary: Disconnect an integration
+      summary: Disconnect one account
       description: |
-        Deletes the provider-side connected account and removes the
-        integration's MCP server from /api/v1/mcp/servers. Idempotent.
+        Deletes the provider-side connected account and removes that
+        connection's MCP server from /api/v1/mcp/servers. Other accounts
+        on the same toolkit are untouched. Idempotent.
       operationId: disconnectIntegration
       parameters:
         - $ref: "#/components/parameters/IntegrationToolkit"
+        - $ref: "#/components/parameters/IntegrationConnectionId"
       responses:
         "200":
           description: Disconnected
@@ -2530,6 +2537,14 @@ components:
       schema:
         type: string
       description: Integration toolkit slug (e.g. "slack", "github")
+
+    IntegrationConnectionId:
+      name: connection_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Connection id (provider connected-account id, e.g. "ca_…")
 
     XAuthUser:
       name: X-Auth-User
@@ -4334,7 +4349,7 @@ components:
     # ── Integrations: brokered catalog ────────────────────────────────
     IntegrationResponse:
       type: object
-      required: [id, name, status]
+      required: [id, name, connections]
       properties:
         id:
           type: string
@@ -4350,9 +4365,29 @@ components:
           description: Catalog grouping, e.g. "communication", "dev_tools"
         is_popular:
           type: boolean
+        connections:
+          type: array
+          description: Connected accounts on this toolkit. Empty = not connected.
+          items:
+            $ref: "#/components/schemas/IntegrationConnectionResponse"
+
+    IntegrationConnectionResponse:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          description: Connection id (provider connected-account id, e.g. "ca_…")
+        account_label:
+          type: string
+          nullable: true
+          description: |
+            Human label for the account (e.g. "Brandcave"), as reported by
+            the provider. Null until known. Also surfaced on per-agent
+            tools as AgentTool.account_label.
         status:
           type: string
-          enum: [disconnected, pending, active, expired]
+          enum: [pending, active, expired]
           description: |
             pending = consent flow started but not completed;
             expired = provider-side token refresh failed, reconnect required
