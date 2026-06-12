@@ -1175,10 +1175,6 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// can rebrand at runtime without ops involvement.
 	mux.HandleFunc("GET /api/v1/tenant/config", s.handleGetTenantConfig)
 	mux.HandleFunc("PUT /api/v1/tenant/config", s.handleUpdateTenantConfig)
-	// Brokered integrations catalog (Composio under the hood).
-	mux.HandleFunc("GET /api/v1/integrations", s.handleListIntegrations)
-	mux.HandleFunc("POST /api/v1/integrations/{toolkit}/connections", s.handleConnectIntegration)
-	mux.HandleFunc("DELETE /api/v1/integrations/{toolkit}/connections/{connection_id}", s.handleDisconnectIntegration)
 	mux.HandleFunc("GET /api/v1/integrations/telegram", s.handleTelegramStatus)
 	mux.HandleFunc("POST /api/v1/integrations/telegram", s.handleTelegramConfigure)
 	mux.HandleFunc("DELETE /api/v1/integrations/telegram/{id}", s.handleTelegramRemove)
