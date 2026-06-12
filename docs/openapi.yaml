@@ -2412,6 +2412,82 @@ paths:
         "403":
           description: Handoff sub does not match authenticated user
 
+  # ── Integrations: brokered catalog (Composio under the hood) ─────────
+  # Generic third-party app connections (Slack, GitHub, Jira, …) brokered
+  # by the tenant backend over a connectivity provider (Composio). The
+  # contract is provider-agnostic: tenants never see or hold a provider
+  # key. Once a connection is active the backend self-connects the
+  # provider's hosted MCP server through /api/v1/mcp/servers, so agents
+  # consume the integration through the existing MCP + per-agent tool
+  # toggle surface. Bespoke integrations (telegram, gmail above) keep
+  # their concrete paths; {toolkit} here never shadows them because the
+  # connection sub-resource adds a path segment they don't use.
+  /api/v1/integrations:
+    get:
+      tags: [Integrations]
+      summary: List the integration catalog with connection status
+      operationId: listIntegrations
+      responses:
+        "200":
+          description: Catalog of available integrations merged with this workspace's connection state
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationResponse"
+
+  /api/v1/integrations/{toolkit}/connection:
+    post:
+      tags: [Integrations]
+      summary: Start the OAuth consent flow for an integration
+      description: |
+        Asks the connectivity provider for a hosted consent link
+        (Composio: POST /api/v3/connected_accounts/link) and returns it.
+        The SPA navigates the browser to redirect_url; after consent the
+        provider sends the user back to callback_url with
+        ?connected=<toolkit>&status=success|denied appended. The
+        connection is `pending` until the round-trip completes.
+      operationId: connectIntegration
+      parameters:
+        - $ref: "#/components/parameters/IntegrationToolkit"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectIntegrationRequest"
+      responses:
+        "200":
+          description: Consent flow started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectIntegrationResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: Connectivity provider error
+
+    delete:
+      tags: [Integrations]
+      summary: Disconnect an integration
+      description: |
+        Deletes the provider-side connected account and removes the
+        integration's MCP server from /api/v1/mcp/servers. Idempotent.
+      operationId: disconnectIntegration
+      parameters:
+        - $ref: "#/components/parameters/IntegrationToolkit"
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 # ═══════════════════════════════════════════════════════════════════════
 components:
   parameters:
@@ -2446,6 +2522,14 @@ components:
       schema:
         type: string
       description: MCP server name
+
+    IntegrationToolkit:
+      name: toolkit
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Integration toolkit slug (e.g. "slack", "github")
 
     XAuthUser:
       name: X-Auth-User
@@ -4246,3 +4330,54 @@ components:
           type: string
         refresh_token:
           type: string
+
+    # ── Integrations: brokered catalog ────────────────────────────────
+    IntegrationResponse:
+      type: object
+      required: [id, name, status]
+      properties:
+        id:
+          type: string
+          description: Toolkit slug, e.g. "slack"
+        name:
+          type: string
+        description:
+          type: string
+        icon_url:
+          type: string
+        category:
+          type: string
+          description: Catalog grouping, e.g. "communication", "dev_tools"
+        is_popular:
+          type: boolean
+        status:
+          type: string
+          enum: [disconnected, pending, active, expired]
+          description: |
+            pending = consent flow started but not completed;
+            expired = provider-side token refresh failed, reconnect required
+        connected_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ConnectIntegrationRequest:
+      type: object
+      required: [callback_url]
+      properties:
+        callback_url:
+          type: string
+          format: uri
+          description: |
+            Where the provider sends the user after consent. The backend
+            appends ?connected=<toolkit>&status=success|denied (or & when
+            the URL already has a query string).
+
+    ConnectIntegrationResponse:
+      type: object
+      required: [redirect_url]
+      properties:
+        redirect_url:
+          type: string
+          format: uri
+          description: Hosted consent URL the SPA navigates the browser to

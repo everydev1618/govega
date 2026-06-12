@@ -1427,6 +1427,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the integration catalog with connection status */
+        get: operations["listIntegrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{toolkit}/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start the OAuth consent flow for an integration
+         * @description Asks the connectivity provider for a hosted consent link
+         *     (Composio: POST /api/v3/connected_accounts/link) and returns it.
+         *     The SPA navigates the browser to redirect_url; after consent the
+         *     provider sends the user back to callback_url with
+         *     ?connected=<toolkit>&status=success|denied appended. The
+         *     connection is `pending` until the round-trip completes.
+         */
+        post: operations["connectIntegration"];
+        /**
+         * Disconnect an integration
+         * @description Deletes the provider-side connected account and removes the
+         *     integration's MCP server from /api/v1/mcp/servers. Idempotent.
+         */
+        delete: operations["disconnectIntegration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2438,6 +2485,40 @@ export interface components {
             client_secret: string;
             refresh_token: string;
         };
+        IntegrationResponse: {
+            /** @description Toolkit slug, e.g. "slack" */
+            id: string;
+            name: string;
+            description?: string;
+            icon_url?: string;
+            /** @description Catalog grouping, e.g. "communication", "dev_tools" */
+            category?: string;
+            is_popular?: boolean;
+            /**
+             * @description pending = consent flow started but not completed;
+             *     expired = provider-side token refresh failed, reconnect required
+             * @enum {string}
+             */
+            status: "disconnected" | "pending" | "active" | "expired";
+            /** Format: date-time */
+            connected_at?: string | null;
+        };
+        ConnectIntegrationRequest: {
+            /**
+             * Format: uri
+             * @description Where the provider sends the user after consent. The backend
+             *     appends ?connected=<toolkit>&status=success|denied (or & when
+             *     the URL already has a query string).
+             */
+            callback_url: string;
+        };
+        ConnectIntegrationResponse: {
+            /**
+             * Format: uri
+             * @description Hosted consent URL the SPA navigates the browser to
+             */
+            redirect_url: string;
+        };
     };
     responses: {
         /** @description Resource not found */
@@ -2468,6 +2549,8 @@ export interface components {
         ChannelName: string;
         /** @description MCP server name */
         MCPServerName: string;
+        /** @description Integration toolkit slug (e.g. "slack", "github") */
+        IntegrationToolkit: string;
         /** @description User identifier for per-user agent sessions and memory */
         XAuthUser: string;
     };
@@ -5188,6 +5271,85 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    listIntegrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Catalog of available integrations merged with this workspace's connection state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"][];
+                };
+            };
+        };
+    };
+    connectIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Integration toolkit slug (e.g. "slack", "github") */
+                toolkit: components["parameters"]["IntegrationToolkit"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Consent flow started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectIntegrationResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Connectivity provider error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disconnectIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Integration toolkit slug (e.g. "slack", "github") */
+                toolkit: components["parameters"]["IntegrationToolkit"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }
