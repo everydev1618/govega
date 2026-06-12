@@ -182,7 +182,7 @@ func (c *composioClient) do(ctx context.Context, method, path string, body any, 
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("composio %s %s: status %d: %s", method, path, resp.StatusCode, truncate(string(data), 200))
+		return fmt.Errorf("composio %s %s: status %d: %s", method, path, resp.StatusCode, truncate(string(data), 2000))
 	}
 	if out != nil {
 		return json.Unmarshal(data, out)
@@ -302,18 +302,42 @@ func (s *Server) ensureMCPConfig(ctx context.Context, c *composioClient, toolkit
 		}
 	}
 
-	body := map[string]any{
-		"name":            "apex-" + toolkit,
-		"auth_config_ids": []string{authConfigID},
-	}
-	if len(allowed) > 0 {
-		body["allowed_tools"] = allowed
-	}
-	var created struct {
+	create := func(tools []string) (struct {
 		ID     string `json:"id"`
 		MCPURL string `json:"mcp_url"`
+	}, error) {
+		body := map[string]any{
+			"name":            "apex-" + toolkit,
+			"auth_config_ids": []string{authConfigID},
+		}
+		if len(tools) > 0 {
+			body["allowed_tools"] = tools
+		}
+		var out struct {
+			ID     string `json:"id"`
+			MCPURL string `json:"mcp_url"`
+		}
+		err := c.do(ctx, http.MethodPost, "/api/v3/mcp/servers", body, &out)
+		return out, err
 	}
-	if err := c.do(ctx, http.MethodPost, "/api/v3/mcp/servers", body, &created); err != nil {
+
+	created, err := create(allowed)
+	if err != nil && len(allowed) > 0 {
+		// Composio's "important" list can contain slugs its MCP server API
+		// rejects ("Invalid tools provided … X, Y"). Strip the named slugs
+		// and retry once.
+		if rejected := rejectedToolSlugs(err.Error(), allowed); len(rejected) > 0 {
+			kept := allowed[:0:0]
+			for _, t := range allowed {
+				if !rejected[t] {
+					kept = append(kept, t)
+				}
+			}
+			slog.Warn("composio: retrying mcp config without rejected tools", "toolkit", toolkit, "rejected", len(rejected))
+			created, err = create(kept)
+		}
+	}
+	if err != nil {
 		return "", err
 	}
 	if created.MCPURL == "" {
@@ -321,6 +345,21 @@ func (s *Server) ensureMCPConfig(ctx context.Context, c *composioClient, toolkit
 	}
 	s.saveComposioSetting(key, created.MCPURL)
 	return created.MCPURL, nil
+}
+
+// rejectedToolSlugs returns which of the requested slugs an "Invalid tools
+// provided" error message names.
+func rejectedToolSlugs(errMsg string, requested []string) map[string]bool {
+	if !strings.Contains(errMsg, "Invalid tools") {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, t := range requested {
+		if strings.Contains(errMsg, t) {
+			out[t] = true
+		}
+	}
+	return out
 }
 
 func (s *Server) saveComposioSetting(key, value string) {
