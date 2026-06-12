@@ -2171,6 +2171,58 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   # ── Chat read receipts ────────────────────────────────────────────────
+  /api/v1/transcribe:
+    post:
+      tags: [Chat]
+      summary: Transcribe an audio clip to text (chat dictation)
+      description: >
+        Runs a short audio clip through the platform's Whisper transcriber
+        (the same one that handles Telegram voice notes). Used by the chat
+        input's dictation mic. Audio format is detected from the uploaded
+        filename's extension (webm/opus, mp4, mp3, etc.).
+      operationId: transcribeAudio
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio clip to transcribe (max 25MB).
+      responses:
+        "200":
+          description: Recognised text
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [text]
+                properties:
+                  text:
+                    type: string
+        "400":
+          description: Missing or unreadable file field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Transcription provider error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Transcription not configured (no API key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/chat/unread:
     get:
       tags: [Chat]

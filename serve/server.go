@@ -1074,6 +1074,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/agents/{name}/chat", s.handleClearChat)
 	mux.HandleFunc("POST /api/v1/agents/{name}/chat/read", s.handleMarkChatRead)
 	mux.HandleFunc("GET /api/v1/chat/unread", s.handleChatUnreadCounts)
+	mux.HandleFunc("POST /api/v1/transcribe", s.handleTranscribe)
 
 	// Memory
 	mux.HandleFunc("GET /api/v1/agents/{name}/memory", s.handleGetMemory)

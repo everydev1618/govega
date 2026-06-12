@@ -1267,6 +1267,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe an audio clip to text (chat dictation)
+         * @description Runs a short audio clip through the platform's Whisper transcriber (the same one that handles Telegram voice notes). Used by the chat input's dictation mic. Audio format is detected from the uploaded filename's extension (webm/opus, mp4, mp3, etc.).
+         */
+        post: operations["transcribeAudio"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/unread": {
         parameters: {
             query?: never;
@@ -4985,6 +5005,65 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             /** @description Invalid YAML */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    transcribeAudio: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description Audio clip to transcribe (max 25MB).
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Recognised text */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        text: string;
+                    };
+                };
+            };
+            /** @description Missing or unreadable file field */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Transcription provider error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Transcription not configured (no API key) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
