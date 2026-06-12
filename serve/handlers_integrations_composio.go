@@ -288,6 +288,26 @@ func (s *Server) ensureMCPConfig(ctx context.Context, c *composioClient, toolkit
 		return setting.Value, nil
 	}
 
+	// Reuse an existing server if one was created out-of-band (or the local
+	// cache was lost — fresh VEGA_HOME, make dev's isolated DB). Composio
+	// rejects duplicate names with MCP_DuplicateServerName, so without this
+	// the toolkit can never wire up again. Mirrors ensureAuthConfig.
+	serverName := "apex-" + toolkit
+	var existing struct {
+		Items []struct {
+			Name   string `json:"name"`
+			MCPURL string `json:"mcp_url"`
+		} `json:"items"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/api/v3/mcp/servers?limit=100", nil, &existing); err == nil {
+		for _, item := range existing.Items {
+			if item.Name == serverName && item.MCPURL != "" {
+				s.saveComposioSetting(key, item.MCPURL)
+				return item.MCPURL, nil
+			}
+		}
+	}
+
 	// Restrict to the curated "important" subset — the full toolkit can be
 	// hundreds of tools, which would flood agents' tool lists.
 	var toolsResp struct {
@@ -307,7 +327,7 @@ func (s *Server) ensureMCPConfig(ctx context.Context, c *composioClient, toolkit
 		MCPURL string `json:"mcp_url"`
 	}, error) {
 		body := map[string]any{
-			"name":            "apex-" + toolkit,
+			"name":            serverName,
 			"auth_config_ids": []string{authConfigID},
 		}
 		if len(tools) > 0 {

@@ -261,6 +261,60 @@ func TestDisconnectIntegration_Idempotent(t *testing.T) {
 	}
 }
 
+// TestEnsureMCPConfig_ReusesExistingServer — the MCP config URL is cached
+// in local settings, but the local DB can lose that cache while Composio
+// still has the server (fresh VEGA_HOME, make dev's isolated DB, …).
+// Creating then 400s with MCP_DuplicateServerName forever and the toolkit
+// never wires up. ensureMCPConfig must look up the existing server by name
+// and reuse it, mirroring ensureAuthConfig's out-of-band reuse.
+func TestEnsureMCPConfig_ReusesExistingServer(t *testing.T) {
+	var createAttempts int
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/tools":
+			json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/mcp/servers":
+			json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"id": "mcp_other", "name": "apex-other", "mcp_url": "https://composio.test/v3/mcp/mcp_other"},
+					{"id": "mcp_gh", "name": "apex-github", "mcp_url": "https://composio.test/v3/mcp/mcp_gh"},
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v3/mcp/servers":
+			createAttempts++
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+				"message": `An MCP server with name "apex-github" already exists`,
+				"slug":    "MCP_DuplicateServerName",
+			}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(fake.Close)
+
+	t.Setenv("COMPOSIO_API_KEY", "test-key")
+	t.Setenv("COMPOSIO_BASE_URL", fake.URL)
+	s := composioTestServer(t)
+
+	got, err := s.ensureMCPConfig(t.Context(), s.composio(), "github", "ac_test")
+	if err != nil {
+		t.Fatalf("ensureMCPConfig: %v", err)
+	}
+	if got != "https://composio.test/v3/mcp/mcp_gh" {
+		t.Fatalf("mcp url = %q, want the existing apex-github server's url", got)
+	}
+	if createAttempts != 0 {
+		t.Fatalf("create attempts = %d, want 0 — reuse must happen before create", createAttempts)
+	}
+
+	// And it must be cached for next time.
+	setting, err := s.store.GetSetting("composio/mcp_config/github")
+	if err != nil || setting == nil || setting.Value != got {
+		t.Fatalf("mcp url not cached: %v, %v", setting, err)
+	}
+}
+
 // TestTeardownConnectionMCP_ResetsAgents — agents snapshot their toolset at
 // spawn (govega#57 bug class), so wiring an MCP server up or down must reset
 // live agent processes or they keep a stale schema until restart. Teardown is
