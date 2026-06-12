@@ -1494,6 +1494,34 @@ func (i *Interpreter) ResetAgent(name string) error {
 	return i.orch.Kill(proc.ID)
 }
 
+// ResetAllAgents kills every live agent process while keeping all
+// definitions, so each agent respawns fresh on next use (EnsureAgent).
+// Used when the global tool collection changes at runtime (e.g. a Composio
+// MCP server connects after an OAuth consent): spawnAgent's Filter() takes
+// a snapshot at injection time, so live processes never see tools that
+// register later — same bug class as govega#57. In-flight work on a killed
+// process is lost; callers should only invoke this on rare, user-initiated
+// events. Conversation history survives — serve rehydrates fresh processes
+// from SQLite (hydrateAgent).
+func (i *Interpreter) ResetAllAgents() {
+	i.mu.Lock()
+	procs := make(map[string]*vega.Process, len(i.agents))
+	for name, proc := range i.agents {
+		procs[name] = proc
+	}
+	i.agents = make(map[string]*vega.Process)
+	i.mu.Unlock()
+
+	for name, proc := range procs {
+		if err := i.orch.Kill(proc.ID); err != nil {
+			slog.Debug("reset-all: kill failed", "agent", name, "error", err)
+		}
+	}
+	if len(procs) > 0 {
+		slog.Info("reset-all: agent processes reset; respawn on next use", "count", len(procs))
+	}
+}
+
 // RemoveComposedAgents kills and removes all agents that were NOT defined in
 // the original YAML file and are not meta-agents (iris, hera). This
 // restores the interpreter to its YAML-defined state after a reset.

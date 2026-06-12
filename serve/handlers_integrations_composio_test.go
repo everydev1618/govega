@@ -260,3 +260,42 @@ func TestDisconnectIntegration_Idempotent(t *testing.T) {
 		t.Fatalf("idempotent status = %d, body = %s", w.Code, w.Body.String())
 	}
 }
+
+// TestTeardownConnectionMCP_ResetsAgents — agents snapshot their toolset at
+// spawn (govega#57 bug class), so wiring an MCP server up or down must reset
+// live agent processes or they keep a stale schema until restart. Teardown is
+// the testable half (sync needs a real MCP handshake); both share the same
+// reset call.
+func TestTeardownConnectionMCP_ResetsAgents(t *testing.T) {
+	t.Setenv("COMPOSIO_API_KEY", "test-key")
+	s := composioTestServer(t)
+
+	before, err := s.interp.EnsureAgent("riley")
+	if err != nil {
+		t.Fatalf("EnsureAgent: %v", err)
+	}
+
+	// Persisted mapping from the connection to its MCP server name — the
+	// state syncConnectionMCP leaves behind.
+	if err := s.store.UpsertSetting(Setting{Key: composioConnectionKey("ca_1"), Value: "composio_github"}); err != nil {
+		t.Fatalf("UpsertSetting: %v", err)
+	}
+
+	s.teardownConnectionMCP("ca_1")
+
+	after, err := s.interp.EnsureAgent("riley")
+	if err != nil {
+		t.Fatalf("EnsureAgent after teardown: %v", err)
+	}
+	if after == before {
+		t.Fatal("expected agent processes to be reset after MCP teardown")
+	}
+
+	// No mapping → no-op → no reset.
+	unchanged, _ := s.interp.EnsureAgent("riley")
+	s.teardownConnectionMCP("ca_unknown")
+	still, _ := s.interp.EnsureAgent("riley")
+	if unchanged != still {
+		t.Fatal("teardown of an unknown connection must not reset agents")
+	}
+}

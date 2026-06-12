@@ -436,6 +436,12 @@ func (s *Server) syncConnectionMCP(ctx context.Context, c *composioClient, acct 
 		Timeout:   30,
 	})
 	s.saveComposioSetting(key, name)
+
+	// Live agent processes snapshot their toolset at spawn (govega#57 bug
+	// class) — without a reset they never see the just-connected tools
+	// until the server restarts. Definitions and chat history survive;
+	// each agent respawns lazily on its next message.
+	s.interp.ResetAllAgents()
 	slog.Info("composio: connected mcp server for account", "server", name, "account", acct.ID)
 }
 
@@ -460,6 +466,10 @@ func (s *Server) teardownConnectionMCP(connectionID string) {
 	if err := s.store.DeleteSetting(key); err != nil {
 		slog.Error("composio: failed to delete connection mapping", "key", key, "error", err)
 	}
+
+	// Mirror of the reset in syncConnectionMCP: agents holding the removed
+	// tools in their snapshot would keep calling a dead server.
+	s.interp.ResetAllAgents()
 }
 
 func composioStatusToWire(status string) string {
