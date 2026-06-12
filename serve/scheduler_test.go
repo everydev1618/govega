@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -254,6 +255,37 @@ func TestServer_Start_DropsStaleOrchestratorHeartbeat(t *testing.T) {
 		if strings.HasSuffix(j.Name, "-heartbeat") {
 			t.Fatalf("stale heartbeat row survived prune: %+v", j)
 		}
+	}
+}
+
+// callerResolverSentinelKey is a typed context-value key used by the
+// resolver-wiring tests below to verify the resolver actually fired.
+type callerResolverSentinelKey struct{}
+
+// TestScheduler_FireContext_AppliesResolver — the scheduler's per-fire
+// context MUST flow through any registered CallerResolver so background
+// LLM calls inherit per-user BYOK keys (apexvega#24).
+func TestScheduler_FireContext_AppliesResolver(t *testing.T) {
+	sch := NewScheduler(nil, nil, nil)
+	sch.SetCallerResolver(func(ctx context.Context, userID string) context.Context {
+		return context.WithValue(ctx, callerResolverSentinelKey{}, "fired:"+userID)
+	})
+	job := dsl.ScheduledJob{Name: "x", AgentName: "y", Message: "z"}
+	ctx := sch.fireContext(job)
+	got, _ := ctx.Value(callerResolverSentinelKey{}).(string)
+	if got != "fired:" {
+		t.Fatalf("resolver was not applied; got %q", got)
+	}
+}
+
+// TestScheduler_FireContext_NoResolver_NoOp — when no resolver is set, the
+// fire context is a plain context.Background(). Guards the self-hosted
+// case where there is no BYOK plumbing.
+func TestScheduler_FireContext_NoResolver_NoOp(t *testing.T) {
+	sch := NewScheduler(nil, nil, nil)
+	ctx := sch.fireContext(dsl.ScheduledJob{Name: "x"})
+	if got := ctx.Value(callerResolverSentinelKey{}); got != nil {
+		t.Fatalf("expected nil sentinel on no-resolver path; got %v", got)
 	}
 }
 

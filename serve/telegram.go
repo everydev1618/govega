@@ -147,6 +147,9 @@ func (s *Server) startTelegramBot(parent context.Context, cfg TelegramBotConfig)
 	if err != nil {
 		return nil, err
 	}
+	if s.callerResolver != nil {
+		bot.SetCallerResolver(s.callerResolver)
+	}
 
 	s.telegramMu.Lock()
 	// Replace any existing bot under the same id (atomic reconfigure).
@@ -299,6 +302,19 @@ type TelegramBot struct {
 	// a ReplyTarget keyed by the per-user clone agent name so async
 	// dispatch completions can be pushed back to this exact Telegram chat.
 	onIncoming func(agentName string, target dsl.ReplyTarget)
+
+	// resolver, when set, enriches inbound-handler ctx with caller
+	// identity + per-user credentials before dispatching to the agent
+	// (apexvega#24). Without it, background paths like Telegram inbound
+	// would hit the LLM with no BYOK key attached.
+	resolver CallerResolver
+}
+
+// SetCallerResolver registers a CallerResolver applied to the dispatch
+// context before SendToAgent on every inbound Telegram message. Pass
+// nil to clear.
+func (t *TelegramBot) SetCallerResolver(r CallerResolver) {
+	t.resolver = r
 }
 
 // NewTelegramBot creates a TelegramBot connected to the given token.
@@ -488,6 +504,13 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 
 	// Add memory context so tools can access the store.
 	ctx = ContextWithMemory(ctx, t.store, userID, t.agentName)
+
+	// Enrich with caller identity + BYOK key (apexvega#24). Without
+	// this, the LLM call would hit Anthropic with no key and 401.
+	// Apex tenants are single-user today, so the resolver ignores the
+	// userID arg and uses APEX_DEFAULT_USER_ID; multi-user tenants
+	// will eventually map this telegram userID to an apex user.
+	ctx = applyResolver(ctx, t.resolver, userID)
 
 	// Show "typing..." in the user's chat for the duration of inference.
 	// Telegram's typing indicator naturally expires after ~5s, so refresh

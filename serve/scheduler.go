@@ -33,10 +33,31 @@ type Scheduler struct {
 	recorder scheduleRunRecorder // optional — stamps last_run_at after each fire
 	persist  func(job dsl.ScheduledJob) error
 	remove   func(name string) error
+	resolver CallerResolver // optional — enriches per-fire ctx with caller identity (apexvega#24)
 
 	mu      sync.Mutex
 	jobs    []dsl.ScheduledJob
 	entries map[string]cron.EntryID // job name → cron entry ID
+}
+
+// SetCallerResolver registers a CallerResolver that runs at every job
+// fire to enrich the dispatch context with the scheduling user's
+// identity and per-user credentials. Pass nil to clear.
+func (s *Scheduler) SetCallerResolver(r CallerResolver) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resolver = r
+}
+
+// fireContext builds the context passed to SendToAgent for a job fire.
+// Extracted from makeFunc so the resolver wiring is unit-testable
+// without needing a live cron or interpreter.
+func (s *Scheduler) fireContext(job dsl.ScheduledJob) context.Context {
+	_ = job // reserved: future commits will read job.CreatedBy and pass it to resolver
+	s.mu.Lock()
+	r := s.resolver
+	s.mu.Unlock()
+	return applyResolver(context.Background(), r, "")
 }
 
 // NewScheduler creates a Scheduler. The persist and remove callbacks are
@@ -167,7 +188,7 @@ func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 		}
 
 		slog.Info("scheduler: firing job", "name", job.Name, "agent", job.AgentName)
-		ctx := context.Background()
+		ctx := s.fireContext(job)
 		// Use SendToAgent (synchronous, no inbox item) instead of
 		// DispatchToAgent to avoid spamming the inbox with no-op
 		// heartbeat results like "inbox empty."

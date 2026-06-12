@@ -230,6 +230,14 @@ type Server struct {
 	cfg       Config
 	startedAt time.Time
 
+	// callerResolver, when set, enriches the ctx for any background work
+	// path (scheduler tick, Telegram inbound, peering inbound) with the
+	// caller's identity + per-user credentials before dispatch. Set via
+	// WithCallerResolver before Start (apexvega#24). Nil in self-hosted
+	// mode — no resolution happens, and the static API key on the LLM
+	// client handles authentication just like before.
+	callerResolver CallerResolver
+
 	// extractLLM is a separate LLM client used for memory extraction.
 	extractLLM   llm.LLM
 	extractLLMMu sync.Once
@@ -620,6 +628,9 @@ func (s *Server) Start(ctx context.Context) error {
 	)
 	if checker, ok := s.store.(inboxChecker); ok {
 		s.scheduler.inbox = checker
+	}
+	if s.callerResolver != nil {
+		s.scheduler.SetCallerResolver(s.callerResolver)
 	}
 	if rec, ok := s.store.(scheduleRunRecorder); ok {
 		s.scheduler.recorder = rec

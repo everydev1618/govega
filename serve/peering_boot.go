@@ -41,7 +41,17 @@ func (s *Server) startPeering(_ context.Context) {
 	pStore := provider.PeeringStore()
 
 	dispatcher := newPeeringDispatcher(s.interp)
-	node, err := peering.NewNode(peering.NodeConfig{Store: pStore, Dispatcher: dispatcher})
+	cfg := peering.NodeConfig{Store: pStore, Dispatcher: dispatcher}
+	if s.callerResolver != nil {
+		// Background path: no peer-supplied user identity yet (AIRE v0.2
+		// will fix that). Resolve to the configured default user so the
+		// BYOK key for this tenant is attached before the agent runs.
+		resolver := s.callerResolver
+		cfg.WrapInboundContext = func(ctx context.Context) context.Context {
+			return resolver(ctx, "")
+		}
+	}
+	node, err := peering.NewNode(cfg)
 	if err != nil {
 		slog.Error("peering: NewNode failed; federation disabled", "error", err)
 		return

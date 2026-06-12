@@ -30,6 +30,12 @@ type NodeConfig struct {
 	// Required. In production this is a thin adapter around the Vega
 	// Interpreter; in tests it's a fake.
 	Dispatcher Dispatcher
+	// WrapInboundContext, when set, is called on the per-invoke ctx before
+	// dispatch so the serve layer can attach caller identity + per-user
+	// credentials (apexvega#24). Optional; nil means use ctx unchanged.
+	// Kept as a free function instead of a typed CallerResolver to avoid
+	// an import cycle with serve (which embeds this package).
+	WrapInboundContext func(ctx context.Context) context.Context
 }
 
 // Node is the peering runtime: it owns the local NodeID, the AIRE listener
@@ -252,7 +258,11 @@ func (n *Node) serveOp(cs *connState, op *aire.Operation) {
 		if peer != nil {
 			handle = peer.Handle
 		}
-		_ = HandleInbound(n.ctx, cs.peerNodeID, handle, ia.Agent, ia.Message, io, n.cfg.Store, n.cfg.Dispatcher)
+		invokeCtx := n.ctx
+		if n.cfg.WrapInboundContext != nil {
+			invokeCtx = n.cfg.WrapInboundContext(invokeCtx)
+		}
+		_ = HandleInbound(invokeCtx, cs.peerNodeID, handle, ia.Agent, ia.Message, io, n.cfg.Store, n.cfg.Dispatcher)
 	default:
 		_ = io.SendError(ErrCodeDenied, "unknown agent id: "+agentID)
 		_ = op.Close()
