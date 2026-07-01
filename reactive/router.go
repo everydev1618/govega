@@ -166,14 +166,41 @@ func (r *Router) handle(ctx context.Context, e events.Event) {
 		}
 		// Dispatch async so one slow wake does not stall the drain loop.
 		agent, msg := d.Agent, d.Message
+
+		// Causation (D2): events this wake emits inherit an Origin one level
+		// deeper than the triggering event, so the loop guard's depth check
+		// terminates reactive chains. The Origin rides the context and is
+		// stamped onto the wake's own completion below.
+		childOrigin := &events.Origin{
+			EventID:   e.ID,
+			AgentName: agent,
+			Depth:     events.Depth(e) + 1,
+		}
 		dctx := ctx
 		if r.cfg.Prepare != nil {
 			dctx = r.cfg.Prepare(ctx, agent)
 		}
+		dctx = events.ContextWithOrigin(dctx, childOrigin)
+
 		go func() {
 			result, err := r.cfg.Dispatch.SendToAgent(dctx, agent, msg)
 			if err != nil {
 				slog.Warn("reactive wake failed", "agent", agent, "event", e.Type, "error", err)
+			}
+			// Emit this wake's own completion so other agents (and this one)
+			// can react to it — carrying the deeper Origin so a self-referential
+			// chain is bounded by the loop guard's MaxDepth rather than running
+			// forever. This is what gives the depth guard teeth (Phase 2).
+			if r.cfg.Bus != nil {
+				status, errStr := "ok", ""
+				if err != nil {
+					status, errStr = "failed", err.Error()
+				}
+				r.cfg.Bus.Publish(events.Event{
+					Type:   "agent.completed",
+					Origin: childOrigin,
+					Data:   map[string]any{"agent": agent, "status": status, "result": result, "error": errStr},
+				})
 			}
 			if r.cfg.AfterWake != nil {
 				r.cfg.AfterWake(dctx, agent, e, result)

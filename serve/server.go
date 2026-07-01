@@ -798,6 +798,27 @@ func (s *Server) Start(ctx context.Context) error {
 			})
 		}
 
+		// Publish onto the domain-event spine so agents can react to another
+		// agent finishing a task (agent.completed). Origin is threaded from the
+		// dispatch context, so a delegation made *inside* a reactive wake
+		// inherits that wake's chain depth (D2) and the loop guard bounds it; a
+		// normal delegation carries no Origin and is a root event.
+		dispatchStatus, dispatchErrStr := "ok", ""
+		if dispatchErr != nil {
+			dispatchStatus, dispatchErrStr = "failed", dispatchErr.Error()
+		}
+		s.bus.Publish(events.Event{
+			Type:   "agent.completed",
+			Origin: events.OriginFromContext(dispatchCtx),
+			Data: map[string]any{
+				"agent":  completedAgent,
+				"caller": callerAgent,
+				"status": dispatchStatus,
+				"result": truncate(dispatchResp, 2048),
+				"error":  dispatchErrStr,
+			},
+		})
+
 		orchName := s.cfg.Orchestrator.Name
 		// Resolve who to poke: the originating caller if known, else the
 		// base orchestrator. Per-user clones are retired — caller names
@@ -1272,18 +1293,10 @@ func (s *Server) wireCallbacks() {
 			Result:    truncate(result, 4096),
 		})
 
-		// Double-feed the domain-event spine (D3): agents can react to another
-		// agent's completion. status distinguishes success from failure so a
-		// trigger can filter `where: status == failed`.
-		s.bus.Publish(events.Event{
-			Type: "agent.completed",
-			Data: map[string]any{
-				"agent":   agentName,
-				"process": p.ID,
-				"status":  "ok",
-				"result":  truncate(result, 2048),
-			},
-		})
+		// Note: agent.completed is emitted onto the spine from the dispatch-
+		// complete callback (a single, ctx-bearing emission point), not here —
+		// persistent chat processes rarely Complete(), and emitting from both
+		// would double-fire for ephemeral dispatch processes.
 
 		// Snapshot final state.
 		s.store.(*SQLiteStore).snapshotProcess(processToResponse(p))
@@ -1316,17 +1329,8 @@ func (s *Server) wireCallbacks() {
 			Error:     errMsg,
 		})
 
-		// Double-feed the spine (D3): a failed run is still an agent.completed
-		// event, distinguished by status so watchers can react to failures.
-		s.bus.Publish(events.Event{
-			Type: "agent.completed",
-			Data: map[string]any{
-				"agent":   agentName,
-				"process": p.ID,
-				"status":  "failed",
-				"error":   errMsg,
-			},
-		})
+		// (agent.completed with status=failed is emitted from the dispatch-
+		// complete callback; see the note in OnProcessComplete.)
 
 		// Snapshot final state.
 		s.store.(*SQLiteStore).snapshotProcess(processToResponse(p))

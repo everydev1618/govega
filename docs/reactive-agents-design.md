@@ -114,13 +114,15 @@ Causation is a **typed field, not a `Data["origin"]` string** (decision D2, §1.
 
 The v1 taxonomy (small, namespaced, `noun.verb`):
 
-| Event type | Emitted when | v1 source |
+| Event type | Emitted when | source (as built) |
 |---|---|---|
-| `agent.completed` | any agent finishes a run | orchestrator callback (already publishes `process.completed`) |
-| `agent.said` | an agent posts to a team channel / inbox | `DispatchToAgent` result path |
-| `schedule.fired` | a cron entry fires | scheduler `makeFunc` |
-| `memory.wrote` | an agent writes memory (`remember`) | `serve/memory_tools.go` |
-| `signal.custom` | emitted explicitly by a tool (`emit_event`) | new built-in tool |
+| `agent.completed` | an agent finishes a dispatched task, or a reactive wake finishes | dispatch-complete callback (`SetDispatchCompleteCallback`) **and** the router self-emits each wake's completion. *Not* `OnProcessComplete` — persistent chat processes rarely `Complete()`, and emitting from both would double-fire for ephemeral dispatch processes. |
+| `signal.*` | emitted explicitly by an agent | `emit_event` built-in tool |
+| `schedule.fired` | a cron entry fires | scheduler `makeFunc` (Phase 2) |
+| `agent.said` | an agent posts to a team channel / inbox | `DispatchToAgent` result path (Phase 2) |
+| `memory.wrote` | an agent writes memory (`remember`) | `serve/memory_tools.go` (Phase 2) |
+
+**Causation is threaded (D2).** When the router fires a wake for event `E`, it stamps a child `Origin{EventID, AgentName, Depth: Depth(E)+1}` onto the wake's context and onto the `agent.completed` it emits when the wake finishes. Any dispatch made *inside* the wake reads that Origin from the context, so delegated work inherits the chain depth too. The loop guard blocks incoming events at `Depth >= MaxDepth`, so a self-referential chain (an agent reacting to its own completions) terminates rather than running forever — the depth guard has teeth.
 
 Internal vocabulary first — agents reacting to each other, the clock, and explicit signals. External sensors (phase 3) emit into the same namespace (`email.received`, `file.changed`, …) with no router changes.
 
@@ -310,7 +312,7 @@ Resolved by §1.5: causation is typed (was #4); triggers live on the blueprint (
 Unifying the spine (D3) makes Phase 1 bigger than the earlier "one bridge" framing — it now includes standing up `events.Bus` — but the payoff is that everything after is a subscriber, not a new mechanism.
 
 - **Phase 1 — the spine + thinnest reactive slice + write-back.** Build `events.Bus` (typed `Event` + `Origin`, durable delivery) and make the SSE broker a double-fed projection of it (existing UI behavior unchanged). Then `reactive.Router` with rules-only gate + loop guard, `agent.completed` flowing on the spine, one agent reacting to it, `emit_event` tool, `Agent.Triggers` field wired from DSL. **And end-of-wake consolidation (§3.4)** — a reactive `Process.Complete()` distills the burst into a session note — because a slice that reacts without learning doesn't demonstrate the actual thesis. TDD: `events/bus_test.go`, `reactive/router_test.go`, `gate_test.go`, `loopguard_test.go`, `reactive/consolidate_test.go` first. Milestone: one agent wakes to another's completion *with its memory*, acts, and *remembers having done so* on the next wake — end to end.
-- **Phase 2 — breadth.** Full internal taxonomy (`schedule.fired`, `memory.wrote`, `agent.said`) publishing onto the spine; `composed_agents.triggers` column + Hera `triggers` param (runtime-created reactive agents); retire the old direct SSE/telemetry paths; model gate tier; importance-gated consolidation + promotion hierarchy (§3.6, outcome-aware notes rising toward `MEMORY.md`).
+- **Phase 2 — DONE so far: causation threading.** `Origin` is threaded through cognition (router context + dispatch context) and the router self-emits each wake's completion, so the loop guard's depth check terminates reactive chains (test: `TestReactiveChainTerminatesAtMaxDepth`). `agent.completed` now emits from the dispatch-complete callback, the realistic agent-to-agent trigger. **Remaining Phase 2:** rest of the taxonomy (`schedule.fired`, `memory.wrote`, `agent.said`); `composed_agents.triggers` column + Hera `triggers` param (runtime-created reactive agents); retire the direct SSE/telemetry paths; model gate tier; importance-gated + LLM-distilled consolidation and the promotion hierarchy (§3.6, outcome-aware notes rising toward `MEMORY.md`).
 - **Phase 3 — the outside world.** External sensors (file/email/webhook) emitting into the namespace; audit UI ("what the house made each agent think about — and ignore").
 
 ## 10. Why this is the right shape

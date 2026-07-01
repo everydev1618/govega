@@ -211,6 +211,65 @@ func TestPrepareContextHookRuns(t *testing.T) {
 	}
 }
 
+// A self-referential trigger (an agent that reacts to agent.completed and whose
+// wake emits agent.completed) must terminate at the loop guard's MaxDepth,
+// proving causation threading gives the depth guard teeth (Phase 2). Dedup and
+// rate are disabled so depth is the sole limiter.
+func TestReactiveChainTerminatesAtMaxDepth(t *testing.T) {
+	bus := events.NewBus()
+	defer bus.Close()
+
+	var mu sync.Mutex
+	depthsSeen := []int{}
+	// The dispatcher stands in for cognition; it also lets us observe the
+	// Origin depth threaded onto each wake's context.
+	disp := dispatcherFunc(func(ctx context.Context, _, _ string) (string, error) {
+		if o := events.OriginFromContext(ctx); o != nil {
+			mu.Lock()
+			depthsSeen = append(depthsSeen, o.Depth)
+			mu.Unlock()
+		}
+		return "", nil
+	})
+	reg := fakeRegistry{m: map[string][]Trigger{"echo": {{On: "agent.*", Prompt: "again"}}}}
+	r := NewRouter(Config{
+		Bus:      bus,
+		Dispatch: disp,
+		Triggers: reg,
+		Guard:    NewLoopGuard(LoopGuardConfig{MaxDepth: 3}),
+	})
+	r.Start(t.Context())
+
+	// Kick off the chain with a root event (depth 0).
+	bus.Publish(events.Event{Type: "agent.completed", Data: map[string]any{"status": "ok"}})
+
+	// Chain: depth0 wake -> emits depth1 -> wake -> emits depth2 -> wake ->
+	// emits depth3 -> guard blocks (3 >= MaxDepth). So exactly 3 wakes, at
+	// context depths 1, 2, 3.
+	deadline := time.After(2 * time.Second)
+	for {
+		mu.Lock()
+		n := len(depthsSeen)
+		mu.Unlock()
+		if n >= 3 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("chain did not reach 3 wakes; saw %d", n)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	// Give any erroneous extra wake a moment to (not) happen.
+	time.Sleep(200 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(depthsSeen) != 3 {
+		t.Fatalf("reactive chain should terminate at MaxDepth=3, got %d wakes (depths %v)", len(depthsSeen), depthsSeen)
+	}
+}
+
 type dispatcherFunc func(ctx context.Context, agent, msg string) (string, error)
 
 func (f dispatcherFunc) SendToAgent(ctx context.Context, agent, msg string) (string, error) {

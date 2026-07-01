@@ -29,6 +29,15 @@ func WithLazySpawn() InterpreterOption {
 	}
 }
 
+// WithLLM overrides the LLM backend used by every spawned agent. Without it,
+// the interpreter builds a default backend from the environment. Primarily for
+// tests that need a deterministic fake, but also usable by embedders.
+func WithLLM(backend llm.LLM) InterpreterOption {
+	return func(i *Interpreter) {
+		i.llmOverride = backend
+	}
+}
+
 // DelegationObserver is called after each agent-to-agent delegation completes.
 // It receives the caller agent name, target agent name, the delegation message,
 // and the response. Implementations should not block.
@@ -43,6 +52,7 @@ type Interpreter struct {
 	skillsLoader      *skills.Loader
 	delegationConfigs map[string]*DelegationDef
 	lazySpawn         bool
+	llmOverride       llm.LLM // set by WithLLM; applied per-agent in spawnAgent
 	delegationObserver DelegationObserver
 	inboxBackend      InboxBackend   // for async dispatch completion notifications
 	channelBackend    ChannelBackend // for posting completion summaries to channels
@@ -464,6 +474,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		Models:        def.Models,
 		System:        systemPrompt,
 		Tools:         agentTools,
+		LLM:           i.llmOverride, // nil unless WithLLM was set; orch default otherwise
 	}
 
 	if def.Temperature != nil {
