@@ -171,7 +171,12 @@ func (r *Router) Start(ctx context.Context) {
 func (r *Router) handle(ctx context.Context, e events.Event) {
 	for _, d := range r.evaluate(e) {
 		if !d.Fired {
-			r.audit(e, d.Agent, false, d.Reason)
+			// Only audit a genuine suppression (matched a trigger but was
+			// gated/errored). A bare non-match — this agent has no trigger for
+			// this event type — is not interesting and would flood the log.
+			if d.Reason != "" {
+				r.audit(e, d.Agent, false, d.Reason)
+			}
 			continue
 		}
 		// Dispatch async so one slow wake (or a slow model gate) does not stall
