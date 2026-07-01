@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -76,6 +77,36 @@ func (s *Server) startReactive(ctx context.Context) {
 		},
 	})
 	s.reactiveRouter.Start(ctx)
+
+	// Persist the spine to a durable log so the event history survives restart
+	// and is queryable for audit. Note: we deliberately do NOT replay this log
+	// into cognition on boot — re-firing yesterday's events would re-trigger
+	// actions. Durability here means durability of record, not re-execution.
+	go s.persistSpineEvents(ctx)
+}
+
+// persistSpineEvents writes every spine event to the durable events log.
+func (s *Server) persistSpineEvents(ctx context.Context) {
+	sub := s.bus.Subscribe(events.Durable, nil)
+	defer sub.Close()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e, ok := <-sub.C:
+			if !ok {
+				return
+			}
+			agent, _ := e.Data["agent"].(string)
+			data, _ := json.Marshal(e.Data)
+			s.store.InsertEvent(StoreEvent{
+				Type:      e.Type,
+				AgentName: agent,
+				Timestamp: e.Time,
+				Data:      string(data),
+			})
+		}
+	}
 }
 
 // registerEmitEventTool lets an agent publish a custom signal onto the spine,

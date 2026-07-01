@@ -1167,6 +1167,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Searchable activity log — refs govega#33. Queryable view over the
 	// events table (the SSE /events stream is live-only).
 	mux.HandleFunc("GET /api/v1/activity", s.handleSearchActivity)
+	mux.HandleFunc("POST /api/v1/events", s.handleEmitEvent)
+	mux.HandleFunc("GET /api/v1/reactive/activity", s.handleReactiveActivity)
 
 	// Inbox
 	mux.HandleFunc("GET /api/v1/inbox", s.handleListInbox)
