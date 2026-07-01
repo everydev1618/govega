@@ -43,21 +43,63 @@ func TestConsolidateReactiveWake_WritesNote(t *testing.T) {
 	}
 }
 
-// A no-op reaction (no output produced) is dropped, not journaled — the
-// importance gate that keeps the wiki from filling with noise (§3.4).
+// A no-op reaction is dropped, not journaled — the importance gate that keeps
+// the wiki from filling with noise (§3.4). Covers both empty output and short
+// dismissal phrases.
 func TestConsolidateReactiveWake_SkipsNoOp(t *testing.T) {
+	for _, result := range []string{"   ", "Nothing to do here.", "No action needed."} {
+		store := newTestStore(t)
+		s := &Server{store: store}
+		const agent = "night-watch"
+		e := events.Event{Type: "agent.completed", Data: map[string]any{"status": "ok"}}
+		s.consolidateReactiveWake(t.Context(), agent, e, result)
+
+		pages, err := store.ListMemoryPages(MemoryScopeAgent, agent, reactiveOwnerUserID, "sessions/reactive-")
+		if err != nil {
+			t.Fatalf("ListMemoryPages: %v", err)
+		}
+		if len(pages) != 0 {
+			t.Fatalf("no-op result %q should not consolidate, but %d note(s) written", result, len(pages))
+		}
+	}
+}
+
+// After enough reactions to the same event type, the pattern is promoted into
+// the always-injected MEMORY.md — repeated experience becoming disposition
+// (§3.6 / D4). The promotion line is updated in place, not duplicated.
+func TestReactivePromotionIntoMemoryMD(t *testing.T) {
 	store := newTestStore(t)
 	s := &Server{store: store}
-
 	const agent = "night-watch"
-	e := events.Event{Type: "agent.completed", Data: map[string]any{"status": "ok"}}
-	s.consolidateReactiveWake(t.Context(), agent, e, "   ")
+	e := events.Event{Type: "agent.completed", Data: map[string]any{"status": "failed"}}
 
-	pages, err := store.ListMemoryPages(MemoryScopeAgent, agent, reactiveOwnerUserID, "sessions/reactive-")
-	if err != nil {
-		t.Fatalf("ListMemoryPages: %v", err)
+	memHas := func() (string, bool) {
+		p, _ := store.GetMemoryPage(MemoryScopeAgent, agent, reactiveOwnerUserID, "MEMORY.md")
+		if p == nil {
+			return "", false
+		}
+		return p.Content, strings.Contains(p.Content, "Recurring") && strings.Contains(p.Content, "agent.completed")
 	}
-	if len(pages) != 0 {
-		t.Fatalf("a no-op wake should not be consolidated, but %d note(s) were written", len(pages))
+
+	// Below threshold: no promotion yet.
+	for range reactivePromotionThreshold - 1 {
+		s.consolidateReactiveWake(t.Context(), agent, e, "Noted the failure.")
+	}
+	if _, ok := memHas(); ok {
+		t.Fatal("promoted too early — below the recurrence threshold")
+	}
+
+	// Crossing the threshold promotes.
+	s.consolidateReactiveWake(t.Context(), agent, e, "Noted the failure.")
+	content, ok := memHas()
+	if !ok {
+		t.Fatalf("expected a Recurring line in MEMORY.md after threshold, got: %q", content)
+	}
+
+	// Another reaction updates in place — exactly one Recurring line.
+	s.consolidateReactiveWake(t.Context(), agent, e, "Noted the failure.")
+	content, _ = memHas()
+	if got := strings.Count(content, "Recurring:"); got != 1 {
+		t.Fatalf("promotion should update in place, found %d Recurring lines:\n%s", got, content)
 	}
 }

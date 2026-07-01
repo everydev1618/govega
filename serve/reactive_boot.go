@@ -34,6 +34,9 @@ func (s *Server) startReactive(ctx context.Context) {
 	// the spine.
 	s.interp.SetEventPublisher(func(e events.Event) { s.bus.Publish(e) })
 
+	// Distill reactive wakes into concise, outcome-aware memory notes.
+	s.reactiveDistiller = s.distillReactiveWake
+
 	s.registerEmitEventTool()
 
 	s.reactiveRouter = reactive.NewRouter(reactive.Config{
@@ -115,17 +118,31 @@ func (s *Server) registerEmitEventTool() {
 // are Phase 2 (§8 open decision #5).
 func (s *Server) consolidateReactiveWake(ctx context.Context, agentName string, e events.Event, result string) {
 	result = strings.TrimSpace(result)
-	if result == "" {
-		slog.Debug("reactive wake produced no output; nothing to consolidate",
+
+	// Importance gate (§3.4): drop no-op reactions so the wiki doesn't fill with
+	// noise. Logged, never silent.
+	if reactiveIsNoOp(result) {
+		slog.Debug("reactive wake was a no-op; nothing to consolidate",
 			"agent", agentName, "event", e.Type)
 		return
 	}
 
 	userID := reactiveOwnerUserID
 	ts := time.Now()
-	path := fmt.Sprintf("sessions/reactive-%s.md", ts.UTC().Format("2006-01-02-150405"))
-	summary := fmt.Sprintf("Reacted to `%s`.\n\nEvent data: %v\n\nWhat I did:\n%s\n",
-		e.Type, e.Data, result)
+	// Nanosecond precision so rapid successive wakes don't collide on one path
+	// (which would overwrite prior notes and undercount for promotion).
+	path := fmt.Sprintf("sessions/reactive-%s.md", ts.UTC().Format("2006-01-02-150405.000000000"))
+
+	// Body: an LLM-distilled summary if a distiller is wired (production),
+	// otherwise a legible templated note (tests / no-LLM). Either way the note
+	// is outcome-aware: what fired, and what the agent did about it.
+	body := fmt.Sprintf("What I did:\n%s\n", result)
+	if s.reactiveDistiller != nil {
+		if d := strings.TrimSpace(s.reactiveDistiller(ctx, e, result)); d != "" {
+			body = d + "\n"
+		}
+	}
+	summary := fmt.Sprintf("Reacted to `%s`.\n\nEvent data: %v\n\n%s", e.Type, e.Data, body)
 	frontmatter := fmt.Sprintf("active: true\nsource: reactive-wake\nagent: %s\nevent: %s\nat: %s",
 		agentName, e.Type, ts.UTC().Format(time.RFC3339))
 
@@ -147,4 +164,95 @@ func (s *Server) consolidateReactiveWake(ctx context.Context, agentName string, 
 	if err := s.linkSessionInIndex(userID, agentName, path, ts); err != nil {
 		slog.Warn("reactive consolidation: index session note failed", "agent", agentName, "error", err)
 	}
+
+	// Promotion (§3.6): once the agent has reacted to this event type enough
+	// times, promote a durable line into MEMORY.md — the always-injected
+	// "earned character" band (D4). Repeated experience becomes disposition.
+	s.maybePromoteRecurringReaction(userID, agentName, e.Type)
+}
+
+// reactiveNoOpPhrases are short results that indicate the wake decided there
+// was nothing to do. Kept conservative so real (if terse) work is still kept.
+var reactiveNoOpPhrases = []string{
+	"nothing to do", "no action needed", "no action required",
+	"nothing to report", "no-op", "ignored", "not relevant",
+}
+
+func reactiveIsNoOp(result string) bool {
+	if result == "" {
+		return true
+	}
+	low := strings.ToLower(result)
+	// Only treat as no-op when the whole (short) result reads as a dismissal.
+	if len(result) <= 80 {
+		for _, p := range reactiveNoOpPhrases {
+			if strings.Contains(low, p) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// reactivePromotionThreshold is how many times an agent must react to the same
+// event type before the pattern is promoted into MEMORY.md.
+const reactivePromotionThreshold = 3
+
+// maybePromoteRecurringReaction counts how often the agent has reacted to
+// eventType and, past the threshold, records a durable line in MEMORY.md so the
+// recurring pattern is always in the agent's head. Best-effort.
+func (s *Server) maybePromoteRecurringReaction(userID, agentName, eventType string) {
+	pages, err := s.store.ListMemoryPages(MemoryScopeAgent, agentName, userID, "sessions/reactive-")
+	if err != nil {
+		return
+	}
+	count := 0
+	needle := "event: " + eventType + "\n"
+	for _, p := range pages {
+		// Match on the frontmatter's event line; tolerate it being the last line.
+		if strings.Contains(p.Frontmatter+"\n", needle) {
+			count++
+		}
+	}
+	if count < reactivePromotionThreshold {
+		return
+	}
+
+	line := fmt.Sprintf("- Recurring: I regularly react to `%s` (seen %d times).", eventType, count)
+	const path = "MEMORY.md"
+	existing, _ := s.store.GetMemoryPage(MemoryScopeAgent, agentName, userID, path)
+	var content string
+	if existing != nil {
+		content = existing.Content
+	}
+	marker := fmt.Sprintf("react to `%s`", eventType)
+	if strings.Contains(content, marker) {
+		// Update the count in place by replacing the whole prior line.
+		lines := strings.Split(content, "\n")
+		for i, l := range lines {
+			if strings.Contains(l, marker) {
+				lines[i] = line
+				break
+			}
+		}
+		content = strings.Join(lines, "\n")
+	} else {
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		content += line + "\n"
+	}
+	if err := s.store.UpsertMemoryPage(MemoryPage{
+		Scope: MemoryScopeAgent, ScopeID: agentName, UserID: userID,
+		Path: path, Content: content, Frontmatter: existingFrontmatter(existing),
+	}); err != nil {
+		slog.Warn("reactive promotion: update MEMORY.md failed", "agent", agentName, "error", err)
+	}
+}
+
+func existingFrontmatter(p *MemoryPage) string {
+	if p != nil {
+		return p.Frontmatter
+	}
+	return ""
 }

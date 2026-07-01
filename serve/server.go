@@ -211,7 +211,10 @@ type Server struct {
 	// it (Phase 1); the reactive router subscribes to it to wake agents.
 	bus            *events.Bus
 	reactiveRouter *reactive.Router
-	store          Store
+	// reactiveDistiller, if set, turns a reactive wake's (event, result) into a
+	// concise memory note via the LLM. Nil = use the templated fallback.
+	reactiveDistiller func(ctx context.Context, e events.Event, result string) string
+	store             Store
 	// Peering subsystem (orchestrator-to-orchestrator federation over AIRE).
 	// Nil when VEGA_PEERING_ADDR is unset. See peering_boot.go.
 	peeringNode   *peering.Node

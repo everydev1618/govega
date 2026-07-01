@@ -81,6 +81,10 @@ agents:
 	defer s.bus.Close()
 
 	s.startReactive(t.Context())
+	// Keep the consolidation note deterministic: use the templated body, not an
+	// LLM-distilled one (distillation is covered separately and would make a
+	// live model call here).
+	s.reactiveDistiller = nil
 
 	// Fire a signal the watcher subscribes to. In production this would come
 	// from another agent's emit_event call or a completion; here we publish it

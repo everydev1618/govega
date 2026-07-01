@@ -48,3 +48,24 @@ func (c *llmClassifier) Salient(ctx context.Context, agentName, wakePrompt strin
 	}
 	return true, reason
 }
+
+// distillReactiveWake turns a reactive wake's (event, result) into a concise,
+// outcome-aware memory note via the extract LLM. Returns "" on any error so
+// the caller falls back to the templated note (fail-safe, never blocks the
+// consolidation).
+func (s *Server) distillReactiveWake(ctx context.Context, e events.Event, result string) string {
+	backend := s.getExtractLLM()
+	if backend == nil {
+		return ""
+	}
+	sys := "You distill an AI agent's reactive action into a terse memory note (1-3 sentences) it will read next time a similar event fires. Capture what happened and what the agent did about it and how it turned out. No preamble."
+	user := fmt.Sprintf("Event type: %s\nEvent data: %v\n\nWhat the agent did:\n%s", e.Type, e.Data, result)
+	resp, err := backend.Generate(ctx, []llm.Message{
+		{Role: llm.RoleSystem, Content: sys},
+		{Role: llm.RoleUser, Content: user},
+	}, nil)
+	if err != nil || resp == nil {
+		return ""
+	}
+	return strings.TrimSpace(resp.Content)
+}
