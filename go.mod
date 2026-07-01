@@ -5,6 +5,7 @@ go 1.25.7
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.0
 	github.com/aire-protocol/aire-go v0.0.0-20260509053352-78cc4cbe6e44
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/everydev1618/vega-population v0.1.0
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
@@ -34,6 +35,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

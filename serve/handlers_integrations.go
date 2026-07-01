@@ -81,15 +81,86 @@ func (s *Server) handleTelegramRemove(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.TelegramBotsSnapshot())
 }
 
+// --- Discord (multi-bot) ---
+
+type discordConfigureRequest struct {
+	Token string `json:"token"`
+	Agent string `json:"agent"`
+	Label string `json:"label,omitempty"`
+}
+
+// handleDiscordStatus returns the list of configured bots (running or not).
+// Tokens are never included.
+func (s *Server) handleDiscordStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.DiscordBotsSnapshot())
+}
+
+// handleDiscordConfigure adds a new bot or replaces an existing one with the
+// same bot id (the snowflake derived from the token).
+func (s *Server) handleDiscordConfigure(w http.ResponseWriter, r *http.Request) {
+	var req discordConfigureRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON body"})
+		return
+	}
+	req.Token = strings.TrimSpace(req.Token)
+	req.Agent = strings.TrimSpace(req.Agent)
+	req.Label = strings.TrimSpace(req.Label)
+	if req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "token is required"})
+		return
+	}
+
+	agentName := req.Agent
+	if agentName == "" {
+		agentName = s.cfg.Orchestrator.Name
+	}
+
+	doc := s.interp.Document()
+	if _, ok := doc.Agents[agentName]; !ok {
+		var names []string
+		for n, def := range doc.Agents {
+			if def.IsMeta && n != s.cfg.Orchestrator.Name {
+				continue
+			}
+			names = append(names, n)
+		}
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "agent " + strconv.Quote(agentName) + " does not exist; available: " + strings.Join(names, ", "),
+		})
+		return
+	}
+
+	if _, err := s.AddDiscordBot(nil, req.Token, agentName, req.Label); err != nil {
+		writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: "discord: " + err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.DiscordBotsSnapshot())
+}
+
+// handleDiscordRemove stops + drops one bot by id.
+func (s *Server) handleDiscordRemove(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "id is required"})
+		return
+	}
+	if err := s.RemoveDiscordBot(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.DiscordBotsSnapshot())
+}
+
 // --- Gmail ---
 
 // GmailStatus describes the current Gmail builtin server state for the
 // integrations API. The fields mirror the keys we read at runtime.
 type GmailStatus struct {
-	Connected         bool `json:"connected"`
-	HasClientID       bool `json:"has_client_id"`
-	HasClientSecret   bool `json:"has_client_secret"`
-	HasRefreshToken   bool `json:"has_refresh_token"`
+	Connected       bool `json:"connected"`
+	HasClientID     bool `json:"has_client_id"`
+	HasClientSecret bool `json:"has_client_secret"`
+	HasRefreshToken bool `json:"has_refresh_token"`
 }
 
 const (
@@ -209,4 +280,3 @@ func (s *Server) handleGmailDisable(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, s.gmailSnapshot())
 }
-

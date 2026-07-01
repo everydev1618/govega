@@ -145,6 +145,8 @@ type Config struct {
 	BlobDir       string
 	TelegramToken string       // TELEGRAM_BOT_TOKEN; leave empty to disable
 	TelegramAgent string       // TELEGRAM_AGENT; defaults to first agent if empty
+	DiscordToken  string       // DISCORD_BOT_TOKEN; leave empty to disable
+	DiscordAgent  string       // DISCORD_AGENT; defaults to orchestrator if empty
 	Company       *dsl.Company // optional company identity (env var overrides)
 
 	// PublicURL is the externally-reachable base URL of this server (no
@@ -234,6 +236,13 @@ type Server struct {
 	telegramMu  sync.Mutex
 	telegrams   map[string]*runningTelegramBot
 	telegramCtx context.Context
+
+	// Discord bots. Same multi-bot model as Telegram, keyed by bot ID (the
+	// snowflake derived from the token). Each bot owns a gateway session;
+	// discordCtx is the parent Start ctx so all sessions close on stop.
+	discordMu  sync.Mutex
+	discords   map[string]*runningDiscordBot
+	discordCtx context.Context
 
 	scheduler *Scheduler
 	cfg       Config
@@ -952,6 +961,11 @@ func (s *Server) Start(ctx context.Context) error {
 	s.telegrams = make(map[string]*runningTelegramBot)
 	s.telegramMu.Unlock()
 
+	s.discordMu.Lock()
+	s.discordCtx = ctx
+	s.discords = make(map[string]*runningDiscordBot)
+	s.discordMu.Unlock()
+
 	// Start any persisted Telegram bots, plus the env-var-configured bot
 	// (if any) for backward compatibility.
 	s.startPersistedTelegramBots(ctx)
@@ -962,6 +976,18 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		if _, err := s.AddTelegramBot(ctx, token, agent, "env"); err != nil {
 			slog.Warn("env-configured telegram bot init failed", "error", err)
+		}
+	}
+
+	// Same for Discord: persisted bots plus an optional env-var bot.
+	s.startPersistedDiscordBots(ctx)
+	if token := os.Getenv("DISCORD_BOT_TOKEN"); token != "" {
+		agent := os.Getenv("DISCORD_AGENT")
+		if agent == "" {
+			agent = s.cfg.Orchestrator.Name
+		}
+		if _, err := s.AddDiscordBot(ctx, token, agent, "env"); err != nil {
+			slog.Warn("env-configured discord bot init failed", "error", err)
 		}
 	}
 
@@ -1229,6 +1255,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/integrations/telegram", s.handleTelegramStatus)
 	mux.HandleFunc("POST /api/v1/integrations/telegram", s.handleTelegramConfigure)
 	mux.HandleFunc("DELETE /api/v1/integrations/telegram/{id}", s.handleTelegramRemove)
+	mux.HandleFunc("GET /api/v1/integrations/discord", s.handleDiscordStatus)
+	mux.HandleFunc("POST /api/v1/integrations/discord", s.handleDiscordConfigure)
+	mux.HandleFunc("DELETE /api/v1/integrations/discord/{id}", s.handleDiscordRemove)
 	mux.HandleFunc("GET /api/v1/integrations/gmail", s.handleGmailStatus)
 	mux.HandleFunc("POST /api/v1/integrations/gmail", s.handleGmailConfigure)
 	mux.HandleFunc("DELETE /api/v1/integrations/gmail", s.handleGmailDisable)
