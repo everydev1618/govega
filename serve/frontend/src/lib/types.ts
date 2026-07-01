@@ -81,6 +81,14 @@ export interface MetricsResponse {
   last_active_at?: string
 }
 
+// TriggerDef is one reactive trigger: the event an agent wakes on and how.
+export interface TriggerDef {
+  on: string
+  where?: string
+  gate?: string
+  prompt: string
+}
+
 export interface AgentResponse {
   name: string
   display_name?: string
@@ -90,6 +98,7 @@ export interface AgentResponse {
   system?: string
   tools?: string[]
   team?: string[]
+  triggers?: TriggerDef[]
   process_id?: string
   status?: 'idle' | 'running' | 'error' | 'provisioning'
   streaming?: boolean
@@ -199,6 +208,7 @@ export interface CreateAgentRequest {
   team?: string[]
   system?: string
   temperature?: number
+  triggers?: TriggerDef[]
 }
 
 export interface UpdateAgentRequest {
@@ -207,6 +217,7 @@ export interface UpdateAgentRequest {
   system?: string
   team?: string[]
   temperature?: number
+  triggers?: TriggerDef[]
 }
 
 export interface CreateAgentResponse {

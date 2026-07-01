@@ -4,7 +4,7 @@ import { useAPI } from '../hooks/useAPI'
 import { useSSE } from '../hooks/useSSE'
 import { api } from '../lib/api'
 import { getAvatar } from '../lib/avatars'
-import type { PopulationInstalledItem, CreateAgentRequest, ProcessResponse, AgentResponse, UpdateAgentRequest } from '../lib/types'
+import type { PopulationInstalledItem, CreateAgentRequest, ProcessResponse, AgentResponse, UpdateAgentRequest, TriggerDef } from '../lib/types'
 
 export function AgentRegistry() {
   const navigate = useNavigate()
@@ -119,14 +119,33 @@ export function AgentRegistry() {
       name: agent.name,
       model: agent.model || '',
       system: agent.system || '',
+      triggers: agent.triggers ? agent.triggers.map(t => ({ ...t })) : [],
     })
   }
+
+  const updateTrigger = (i: number, patch: Partial<TriggerDef>) =>
+    setEditForm(f => {
+      const triggers = [...(f.triggers || [])]
+      triggers[i] = { ...triggers[i], ...patch }
+      return { ...f, triggers }
+    })
+  const addTrigger = () =>
+    setEditForm(f => ({ ...f, triggers: [...(f.triggers || []), { on: '', prompt: '' }] }))
+  const removeTrigger = (i: number) =>
+    setEditForm(f => ({ ...f, triggers: (f.triggers || []).filter((_, j) => j !== i) }))
 
   const saveEdit = async () => {
     if (!editingAgent) return
     setSaving(true)
     try {
-      await api.updateAgent(editingAgent.name, editForm)
+      // Drop incomplete trigger rows (need both an event and a prompt).
+      const cleaned: UpdateAgentRequest = {
+        ...editForm,
+        triggers: (editForm.triggers || [])
+          .filter(t => t.on.trim() !== '' && t.prompt.trim() !== '')
+          .map(t => ({ on: t.on.trim(), where: t.where?.trim() || undefined, gate: t.gate || undefined, prompt: t.prompt })),
+      }
+      await api.updateAgent(editingAgent.name, cleaned)
       setEditingAgent(null)
       refetch()
     } catch {
@@ -537,9 +556,81 @@ export function AgentRegistry() {
                 <textarea
                   value={editForm.system || ''}
                   onChange={e => setEditForm(f => ({ ...f, system: e.target.value }))}
-                  rows={20}
+                  rows={12}
                   className="w-full flex-1 px-3 py-2 rounded bg-background border border-border text-sm focus:outline-none focus:border-primary font-mono text-xs leading-relaxed"
                 />
+              </div>
+
+              {/* Reactive triggers */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm text-muted-foreground">
+                    Reactive triggers
+                    <span className="ml-2 text-xs text-muted-foreground/70">events this agent wakes on</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addTrigger}
+                    className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    + Add trigger
+                  </button>
+                </div>
+
+                {(editForm.triggers?.length ?? 0) === 0 && (
+                  <p className="text-xs text-muted-foreground/70 py-2">
+                    None. This agent only runs when messaged. Add a trigger to make it react to events
+                    like <span className="font-mono">agent.completed</span> or <span className="font-mono">signal.*</span>.
+                  </p>
+                )}
+
+                <div className="space-y-3">
+                  {(editForm.triggers || []).map((t, i) => (
+                    <div key={i} className="p-3 rounded bg-background border border-border space-y-2">
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="on (e.g. agent.completed, signal.*)"
+                          value={t.on}
+                          onChange={e => updateTrigger(i, { on: e.target.value })}
+                          className="px-2 py-1.5 rounded bg-card border border-border text-xs font-mono focus:outline-none focus:border-primary"
+                        />
+                        <input
+                          type="text"
+                          placeholder='where (optional, e.g. status == failed)'
+                          value={t.where || ''}
+                          onChange={e => updateTrigger(i, { where: e.target.value })}
+                          className="px-2 py-1.5 rounded bg-card border border-border text-xs font-mono focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeTrigger(i)}
+                          title="Remove trigger"
+                          className="text-muted-foreground hover:text-red-400 transition-colors px-1"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <textarea
+                        placeholder="prompt — rendered against the event, e.g. {{.Data.agent}} failed: {{.Data.error}}"
+                        value={t.prompt}
+                        onChange={e => updateTrigger(i, { prompt: e.target.value })}
+                        rows={2}
+                        className="w-full px-2 py-1.5 rounded bg-card border border-border text-xs font-mono focus:outline-none focus:border-primary leading-relaxed"
+                      />
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={t.gate === 'model'}
+                          onChange={e => updateTrigger(i, { gate: e.target.checked ? 'model' : '' })}
+                        />
+                        Add a model salience check before waking (gate: model)
+                      </label>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 

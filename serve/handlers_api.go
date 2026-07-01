@@ -242,6 +242,7 @@ func (s *Server) buildAgentResponse(name string, def *dsl.Agent, defaultModel st
 		Model:          model,
 		System:         def.System,
 		Tools:          def.Tools,
+		Triggers:       def.Triggers,
 	}
 	hasProcess := proc != nil
 	var procStatus vega.Status

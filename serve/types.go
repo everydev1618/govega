@@ -4,6 +4,7 @@ import (
 	"time"
 
 	vega "github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/dsl"
 )
 
 // --- API Response Types ---
@@ -121,9 +122,10 @@ type AgentResponse struct {
 	// Internal meta-agent — typically filtered out of public listings.
 	IsBuilder bool   `json:"is_builder,omitempty"`
 	Model     string `json:"model,omitempty"`
-	System         string   `json:"system,omitempty"`
-	Tools          []string `json:"tools,omitempty"`
-	Team           []string `json:"team,omitempty"`
+	System         string           `json:"system,omitempty"`
+	Tools          []string         `json:"tools,omitempty"`
+	Team           []string         `json:"team,omitempty"`
+	Triggers       []dsl.TriggerDef `json:"triggers,omitempty"`
 	ProcessID string `json:"process_id,omitempty"`
 	// Status is the high-level agent lifecycle state. Always present.
 	Status AgentStatus `json:"status"`
@@ -463,6 +465,7 @@ type CreateAgentRequest struct {
 	Team           []string `json:"team,omitempty"`
 	System         string   `json:"system,omitempty"`
 	Temperature    *float64 `json:"temperature,omitempty"`
+	Triggers       []dsl.TriggerDef `json:"triggers,omitempty"`
 }
 
 // CreateAgentResponse is returned when a new agent is composed.
@@ -594,6 +597,9 @@ type UpdateAgentRequest struct {
 	System         *string  `json:"system,omitempty"`
 	Team           []string `json:"team,omitempty"`
 	Temperature    *float64 `json:"temperature,omitempty"`
+	// Triggers replaces the agent's reactive triggers when non-nil. An empty
+	// (non-nil) slice clears them; nil leaves them unchanged.
+	Triggers []dsl.TriggerDef `json:"triggers,omitempty"`
 }
 
 // --- MCP Connection Types ---

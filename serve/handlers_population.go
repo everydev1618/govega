@@ -236,6 +236,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		System:         system,
 		Tools:          toolNames,
 		Temperature:    req.Temperature,
+		Triggers:       req.Triggers,
 	}
 
 	// Send a field_set snapshot before AddAgent runs so SSE subscribers
@@ -266,6 +267,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Team:           req.Team,
 		System:         system,
 		Temperature:    req.Temperature,
+		Triggers:       req.Triggers,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}); err != nil {
@@ -352,6 +354,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 				Tools:          def.Tools,
 				Team:           def.Team,
 				Temperature:    def.Temperature,
+				Triggers:       def.Triggers,
 				CreatedAt:      now,
 				UpdatedAt:      now,
 			}
@@ -397,6 +400,9 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Temperature != nil {
 		existing.Temperature = req.Temperature
+	}
+	if req.Triggers != nil {
+		existing.Triggers = req.Triggers
 	}
 
 	// Remove old agent from interpreter.
@@ -457,6 +463,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		System:         system,
 		Tools:          toolNames,
 		Temperature:    existing.Temperature,
+		Triggers:       existing.Triggers,
 	}
 
 	if err := s.interp.AddAgent(newName, agentDef); err != nil {
