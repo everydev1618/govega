@@ -152,6 +152,9 @@ export interface MCPServerResponse {
   url?: string
   command?: string
   tools: string[]
+  // Editable is false for servers auto-connected from the built-in registry
+  // via env vars (no stored config to edit) — the FE hides Edit for them.
+  editable?: boolean
 }
 
 export interface BrokerEvent {

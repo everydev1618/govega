@@ -855,20 +855,31 @@ function ServerCard({
           </>
         ) : (
           <>
-            <button
-              onClick={onEdit}
-              disabled={anyBusy}
-              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
-            >
-              Edit
-            </button>
-            <button
-              onClick={onDuplicate}
-              disabled={anyBusy}
-              className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
-            >
-              Duplicate
-            </button>
+            {server.editable ? (
+              <>
+                <button
+                  onClick={onEdit}
+                  disabled={anyBusy}
+                  className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={onDuplicate}
+                  disabled={anyBusy}
+                  className="text-xs px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground font-medium disabled:opacity-50 transition-colors"
+                >
+                  Duplicate
+                </button>
+              </>
+            ) : (
+              <span
+                className="text-xs px-2.5 py-1 text-muted-foreground italic"
+                title="Auto-connected from the built-in registry via environment variables. Edit its keys in ~/.vega/env, then Refresh."
+              >
+                configured via env
+              </span>
+            )}
             <button
               onClick={() => onToggle(true)}
               disabled={anyBusy}

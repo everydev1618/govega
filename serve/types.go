@@ -204,6 +204,11 @@ type MCPServerResponse struct {
 	URL       string   `json:"url,omitempty"`
 	Command   string   `json:"command,omitempty"`
 	Tools     []string `json:"tools"`
+	// Editable is true only when the server has a stored config row (i.e. it
+	// was added via the UI/API). Servers auto-connected from the built-in
+	// registry via env vars have no editable config; the FE hides Edit for
+	// them and shows they're configured via the environment instead.
+	Editable bool `json:"editable"`
 }
 
 // WorkflowRunRequest is the request to launch a workflow.

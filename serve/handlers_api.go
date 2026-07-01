@@ -1054,6 +1054,18 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 	t := s.interp.Tools()
 	statuses := t.MCPServerStatuses()
 
+	// A server is editable only if it has a stored config row. Env/registry
+	// auto-connected servers (e.g. composio via COMPOSIO_API_KEY) have none, so
+	// the FE hides Edit for them rather than 404ing on getMCPServerConfig.
+	editable := make(map[string]bool)
+	if sqlStore, ok := s.store.(*SQLiteStore); ok {
+		if servers, err := sqlStore.ListMCPServers(); err == nil {
+			for _, sc := range servers {
+				editable[sc.Name] = true
+			}
+		}
+	}
+
 	resp := make([]MCPServerResponse, 0, len(statuses))
 	for _, st := range statuses {
 		resp = append(resp, MCPServerResponse{
@@ -1063,6 +1075,7 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 			URL:       st.URL,
 			Command:   st.Command,
 			Tools:     st.Tools,
+			Editable:  editable[st.Name],
 		})
 	}
 
@@ -1097,6 +1110,7 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 					resp = append(resp, MCPServerResponse{
 						Name:     sc.Name,
 						Disabled: true,
+						Editable: true,
 					})
 				}
 			}
