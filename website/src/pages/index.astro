@@ -32,6 +32,7 @@ const version = '0.7.0'
       </a>
       <nav class="header-nav">
         <a href="#model">supervision model</a>
+        <a href="#reactive">reactive</a>
         <a href="#surfaces">surfaces</a>
         <a href="#api">api</a>
         <a href={`${BASE}getting-started`}>get started</a>
@@ -196,10 +197,115 @@ const version = '0.7.0'
 
   <hr class="rule" />
 
-  <!-- §3 Three surfaces -->
+  <!-- §3 Reactive agents -->
+  <section id="reactive" class="frame section">
+    <div class="section-num">
+      §3 &nbsp; reactivity
+      <p class="sidenote">
+        A process supervisor restarts what dies. A reactive agent wakes
+        to what happens. Same event bus underneath — the one the
+        dashboard already subscribes to — now also drives cognition.
+        The agent that wakes is the one with the memory, not the one
+        with the open socket.
+      </p>
+    </div>
+    <div class="section-body">
+      <h2 class="display display-section">Agents that wake to events. And remember waking.</h2>
+      <p class="lede" style="margin-top: 1.5rem;">
+        An agent declares the events it reacts to. When one fires, it
+        wakes into an ordinary run with its own memory already attached.
+        A salience gate stands between the event and the token spend.
+        And when the run ends, it writes back — so the agent learns
+        from having reacted, instead of starting from zero every time.
+      </p>
+
+      <div class="surfaces">
+        <!-- Triggers -->
+        <article class="surface">
+          <header>
+            <span class="anno">3.1</span>
+            <h3>Declare the triggers</h3>
+          </header>
+          <div class="code yaml-block">
+            <p><span class="c-key">agents</span>:</p>
+            <p>&nbsp;&nbsp;<span class="c-fn">night-watch</span>:</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">model</span>: claude-haiku-4-5</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">triggers</span>:</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="c-key">on</span>: <span class="c-str">agent.completed</span></p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">where</span>: <span class="c-str">"status == failed"</span></p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-key">prompt</span>: <span class="c-str">"&#123;&#123;.Data.agent&#125;&#125; failed. Note it."</span></p>
+          </div>
+          <p class="surface-foot">
+            Reactivity sits on the blueprint next to the system prompt and
+            the tools — a third faculty, versioned with the rest of the agent.
+          </p>
+        </article>
+
+        <!-- Salience gate -->
+        <article class="surface">
+          <header>
+            <span class="anno">3.2</span>
+            <h3>Gate the salience</h3>
+          </header>
+          <div class="code">
+            <p><span class="c-com"># tier 1 — free, synchronous</span></p>
+            <p>type&nbsp;glob&nbsp;·&nbsp;<span class="c-key">where</span>&nbsp;predicate</p>
+            <p><span class="c-com"># tier 2 — cheap model, opt-in</span></p>
+            <p><span class="c-key">gate</span>: <span class="c-str">model</span>&nbsp;→&nbsp;yes/no</p>
+            <p>&nbsp;</p>
+            <p><span class="c-com"># loop guard, always on</span></p>
+            <p>depth&nbsp;·&nbsp;rate&nbsp;·&nbsp;dedup</p>
+          </div>
+          <p class="surface-foot">
+            Not every event deserves a thought. Rules reject most for free; a
+            model judges the rest. The <span class="mono" style="color: var(--signal);">depth</span>
+            guard bounds a chain of agents reacting to each other so a fleet
+            can't run away.
+          </p>
+        </article>
+
+        <!-- Self-learning -->
+        <article class="surface">
+          <header>
+            <span class="anno">3.3</span>
+            <h3>Learn from the wake</h3>
+          </header>
+          <div class="code">
+            <p>event&nbsp;<span class="c-com">→</span>&nbsp;gate</p>
+            <p>&nbsp;&nbsp;<span class="c-com">→</span>&nbsp;wake <span class="c-com">(+memory)</span></p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-com">→</span>&nbsp;act</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-com">→</span>&nbsp;<span class="c-fn">consolidate</span></p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c-com">→</span>&nbsp;memory</p>
+          </div>
+          <p class="surface-foot">
+            The run distills into an outcome-aware note. Reactions that recur
+            get promoted into always-injected memory — repeated experience
+            becoming disposition, without editing the authored prompt.
+          </p>
+        </article>
+      </div>
+
+      <div class="errors">
+        <p class="anno">3.4 · where events come from</p>
+        <p>One spine. Agents react to each other, to the clock, to their own signals, and to the outside world.</p>
+        <table class="errors-table">
+          <tbody>
+            <tr><td><span class="mono c-tag">agent.completed</span></td><td>an agent finished a task</td></tr>
+            <tr><td><span class="mono c-tag">schedule.fired</span></td><td>a cron entry came due</td></tr>
+            <tr><td><span class="mono c-tag">memory.wrote</span></td><td>an agent recorded something</td></tr>
+            <tr><td><span class="mono c-tag">signal.*</span></td><td>emitted by an agent, or <span class="mono">POST /api/v1/events</span> from anything</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- §4 Three surfaces -->
   <section id="surfaces" class="frame section">
     <div class="section-num">
-      §3 &nbsp; surfaces
+      §4 &nbsp; surfaces
       <p class="sidenote">
         Same runtime, three ways in. The dashboard, the YAML DSL, and
         the Go library all drive the same orchestrator and write to the
@@ -214,7 +320,7 @@ const version = '0.7.0'
         <!-- Chat surface -->
         <article class="surface">
           <header>
-            <span class="anno">3.1</span>
+            <span class="anno">4.1</span>
             <h3>Chat with Iris</h3>
           </header>
           <div class="chat">
@@ -239,7 +345,7 @@ const version = '0.7.0'
         <!-- YAML surface -->
         <article class="surface">
           <header>
-            <span class="anno">3.2</span>
+            <span class="anno">4.2</span>
             <h3>Declare in YAML</h3>
           </header>
           <div class="code yaml-block">
@@ -265,7 +371,7 @@ const version = '0.7.0'
         <!-- Go surface -->
         <article class="surface">
           <header>
-            <span class="anno">3.3</span>
+            <span class="anno">4.3</span>
             <h3>Embed in Go</h3>
           </header>
           <div class="code go-block">
@@ -296,10 +402,10 @@ const version = '0.7.0'
 
   <hr class="rule" />
 
-  <!-- §4 Live trace -->
+  <!-- §5 Live trace -->
   <section class="frame section">
     <div class="section-num">
-      §4 &nbsp; observability
+      §5 &nbsp; observability
       <p class="sidenote">
         Every state change goes through one event bus. The dashboard
         subscribes to it. So does any client that hits
@@ -337,10 +443,10 @@ const version = '0.7.0'
 
   <hr class="rule" />
 
-  <!-- §5 API surface -->
+  <!-- §6 API surface -->
   <section id="api" class="frame section">
     <div class="section-num">
-      §5 &nbsp; api
+      §6 &nbsp; api
       <p class="sidenote">
         Every agent, channel, process, and workflow is addressable.
         OpenAPI spec ships in the binary. Generated TS types in
@@ -379,9 +485,9 @@ const version = '0.7.0'
 
   <hr class="rule" />
 
-  <!-- §6 Colophon -->
+  <!-- §7 Colophon -->
   <section class="frame section colophon">
-    <div class="section-num">§6 &nbsp; colophon</div>
+    <div class="section-num">§7 &nbsp; colophon</div>
     <div class="section-body">
       <h2 class="display display-section">Built by one person, on purpose.</h2>
       <p class="lede" style="margin-top: 1.5rem;">
@@ -587,7 +693,7 @@ const version = '0.7.0'
   .yaml-block, .go-block { font-size: 0.82rem; line-height: 1.55; min-height: 18rem; }
   .yaml-block p, .go-block p, .chat p { margin: 0; }
 
-  /* §4 Live trace */
+  /* §5 Live trace */
   .trace {
     margin-top: 2.5rem;
     border: 1px solid var(--rule);
@@ -620,7 +726,7 @@ const version = '0.7.0'
     .trace-body { font-size: 0.72rem; padding: 0.9rem 0.95rem; }
   }
 
-  /* §5 API table */
+  /* §6 API table */
   .api-table {
     width: 100%;
     margin-top: 2.5rem;
@@ -658,7 +764,7 @@ const version = '0.7.0'
   .api-foot p { color: var(--ink-soft); margin: 0; }
   .api-foot .anno { margin-bottom: 0.4rem; display: block; }
 
-  /* §6 Colophon */
+  /* §7 Colophon */
   .colophon-meta { margin-top: 2rem; color: var(--ink-faint); font-size: 0.82rem; }
 
   /* Footer */
