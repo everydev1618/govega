@@ -211,6 +211,77 @@ func TestPrepareContextHookRuns(t *testing.T) {
 	}
 }
 
+type fakeClassifier struct {
+	salient bool
+	reason  string
+	calls   int
+	mu      sync.Mutex
+}
+
+func (c *fakeClassifier) Salient(_ context.Context, _, _ string, _ events.Event) (bool, string) {
+	c.mu.Lock()
+	c.calls++
+	c.mu.Unlock()
+	return c.salient, c.reason
+}
+
+func (c *fakeClassifier) callCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls
+}
+
+// A trigger with gate:model must not fire when the classifier rejects the
+// event, but must fire when it accepts. Triggers without gate:model bypass it.
+func TestModelGate(t *testing.T) {
+	run := func(t *testing.T, gate string, salient bool) (fired bool, classifierCalls int) {
+		bus := events.NewBus()
+		defer bus.Close()
+		disp := &fakeDispatcher{fired: make(chan dispatchCall, 1)}
+		clf := &fakeClassifier{salient: salient, reason: "test"}
+		reg := fakeRegistry{m: map[string][]Trigger{"w": {{On: "signal.*", Gate: gate, Prompt: "go"}}}}
+		r := NewRouter(Config{Bus: bus, Dispatch: disp, Triggers: reg, Classifier: clf})
+		r.Start(t.Context())
+		bus.Publish(events.Event{Type: "signal.x"})
+		select {
+		case <-disp.fired:
+			// Let any post-fire classifier bookkeeping settle before reading.
+			time.Sleep(20 * time.Millisecond)
+			return true, clf.callCount()
+		case <-time.After(400 * time.Millisecond):
+			return false, clf.callCount()
+		}
+	}
+
+	t.Run("model gate rejects -> no fire", func(t *testing.T) {
+		fired, calls := run(t, "model", false)
+		if fired {
+			t.Fatal("wake should be blocked when classifier says not salient")
+		}
+		if calls != 1 {
+			t.Fatalf("classifier should have been consulted once, got %d", calls)
+		}
+	})
+	t.Run("model gate accepts -> fire", func(t *testing.T) {
+		fired, calls := run(t, "model", true)
+		if !fired {
+			t.Fatal("wake should fire when classifier says salient")
+		}
+		if calls != 1 {
+			t.Fatalf("classifier should have been consulted once, got %d", calls)
+		}
+	})
+	t.Run("no gate -> classifier not consulted", func(t *testing.T) {
+		fired, calls := run(t, "", false)
+		if !fired {
+			t.Fatal("a rules-only trigger should fire regardless of classifier")
+		}
+		if calls != 0 {
+			t.Fatalf("classifier must not run for non-model gates, got %d calls", calls)
+		}
+	})
+}
+
 // A self-referential trigger (an agent that reacts to agent.completed and whose
 // wake emits agent.completed) must terminate at the loop guard's MaxDepth,
 // proving causation threading gives the depth guard teeth (Phase 2). Dedup and

@@ -46,6 +46,8 @@ func (s *Server) startReactive(ctx context.Context) {
 			RateWindow:    reactiveRateWindow,
 			DedupWindow:   reactiveDedupWindow,
 		}),
+		// Tier-2 salience gate for triggers that opt in with `gate: model`.
+		Classifier: &llmClassifier{llm: s.getExtractLLM},
 		// Attach the agent's own memory to the wake context, exactly as the
 		// chat handlers do — this is what makes the reaction "rely on my
 		// memory" (§5). Read-side continuity of self.

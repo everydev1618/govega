@@ -51,6 +51,9 @@ type Config struct {
 	Dispatch Dispatcher
 	Triggers TriggerRegistry
 	Guard    *LoopGuard
+	// Classifier, if set, is the tier-2 salience gate for triggers that opt in
+	// with `gate: model`. Nil means rules-only (the gate is a no-op).
+	Classifier Classifier
 	// Prepare decorates the dispatch context per agent — e.g. attaching memory
 	// via serve.ContextWithMemory. Nil means identity.
 	Prepare func(ctx context.Context, agentName string) context.Context
@@ -74,10 +77,18 @@ type Router struct {
 // NewRouter builds a Router from cfg. It does not subscribe until Start.
 func NewRouter(cfg Config) *Router { return &Router{cfg: cfg} }
 
+// Classifier is the optional tier-2 salience gate (§5.2): a cheap model check
+// that runs after the rules tier passes, for triggers that opt in with
+// `gate: model`. reason is recorded in the audit log.
+type Classifier interface {
+	Salient(ctx context.Context, agentName, wakePrompt string, e events.Event) (salient bool, reason string)
+}
+
 // decision is the outcome of evaluating one agent against one event.
 type decision struct {
 	Agent   string
 	Message string
+	Gate    string // matched trigger's Gate ("" | "model")
 	Fired   bool
 	Reason  string
 }
@@ -112,6 +123,7 @@ func (r *Router) evaluate(e events.Event) []decision {
 		}
 		d.Fired = true
 		d.Message = msg
+		d.Gate = t.Gate
 		out = append(out, d)
 	}
 	return out
@@ -158,14 +170,13 @@ func (r *Router) Start(ctx context.Context) {
 
 func (r *Router) handle(ctx context.Context, e events.Event) {
 	for _, d := range r.evaluate(e) {
-		if r.cfg.Audit != nil {
-			r.cfg.Audit(Record{Agent: d.Agent, EventID: e.ID, Type: e.Type, Fired: d.Fired, Reason: d.Reason})
-		}
 		if !d.Fired {
+			r.audit(e, d.Agent, false, d.Reason)
 			continue
 		}
-		// Dispatch async so one slow wake does not stall the drain loop.
-		agent, msg := d.Agent, d.Message
+		// Dispatch async so one slow wake (or a slow model gate) does not stall
+		// the drain loop.
+		agent, msg, gate := d.Agent, d.Message, d.Gate
 
 		// Causation (D2): events this wake emits inherit an Origin one level
 		// deeper than the triggering event, so the loop guard's depth check
@@ -183,6 +194,18 @@ func (r *Router) handle(ctx context.Context, e events.Event) {
 		dctx = events.ContextWithOrigin(dctx, childOrigin)
 
 		go func() {
+			// Tier-2 salience gate (§5.2): a cheap model check for triggers
+			// that opted in via `gate: model`. Fail-open — if no classifier is
+			// wired, the gate is a no-op; a classifier that says "not salient"
+			// blocks the wake and is audited.
+			if gate == "model" && r.cfg.Classifier != nil {
+				if ok, cr := r.cfg.Classifier.Salient(dctx, agent, msg, e); !ok {
+					r.audit(e, agent, false, "gate:model:"+cr)
+					return
+				}
+			}
+			r.audit(e, agent, true, "")
+
 			result, err := r.cfg.Dispatch.SendToAgent(dctx, agent, msg)
 			if err != nil {
 				slog.Warn("reactive wake failed", "agent", agent, "event", e.Type, "error", err)
@@ -206,6 +229,12 @@ func (r *Router) handle(ctx context.Context, e events.Event) {
 				r.cfg.AfterWake(dctx, agent, e, result)
 			}
 		}()
+	}
+}
+
+func (r *Router) audit(e events.Event, agent string, fired bool, reason string) {
+	if r.cfg.Audit != nil {
+		r.cfg.Audit(Record{Agent: agent, EventID: e.ID, Type: e.Type, Fired: fired, Reason: reason})
 	}
 }
 
