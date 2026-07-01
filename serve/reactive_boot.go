@@ -30,6 +30,10 @@ const (
 // emit_event tool. Cheap when no agent declares triggers: the router still
 // drains the bus but ReactiveTriggers returns nothing, so no wakes fire.
 func (s *Server) startReactive(ctx context.Context) {
+	// Let interpreter-hosted tools (e.g. remember -> memory.wrote) emit onto
+	// the spine.
+	s.interp.SetEventPublisher(func(e events.Event) { s.bus.Publish(e) })
+
 	s.registerEmitEventTool()
 
 	s.reactiveRouter = reactive.NewRouter(reactive.Config{

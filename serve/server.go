@@ -1637,6 +1637,7 @@ func (s *Server) injectHera() {
 				Team:           agent.Team,
 				Skills:         skills,
 				Temperature:    agent.Temperature,
+				Triggers:       agent.Triggers,
 				CreatedAt:      now,
 				UpdatedAt:      now,
 			}

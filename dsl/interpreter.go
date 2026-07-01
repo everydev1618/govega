@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/everydev1618/govega"
+	"github.com/everydev1618/govega/events"
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/govega/internal/skills"
@@ -52,7 +53,8 @@ type Interpreter struct {
 	skillsLoader      *skills.Loader
 	delegationConfigs map[string]*DelegationDef
 	lazySpawn         bool
-	llmOverride       llm.LLM // set by WithLLM; applied per-agent in spawnAgent
+	llmOverride       llm.LLM               // set by WithLLM; applied per-agent in spawnAgent
+	eventPublish      func(e events.Event)  // set by SetEventPublisher; nil = no-op (spine)
 	delegationObserver DelegationObserver
 	inboxBackend      InboxBackend   // for async dispatch completion notifications
 	channelBackend    ChannelBackend // for posting completion summaries to channels
@@ -1881,6 +1883,20 @@ func (i *Interpreter) SetDispatchStartCallback(fn func(agentName string)) {
 // their work in /chat/<agent>.
 func (i *Interpreter) SetDispatchCompleteCallback(fn func(ctx context.Context, agentName, callerName, message, response string, err error)) {
 	i.onDispatchComplete = fn
+}
+
+// SetEventPublisher wires the interpreter (and the tools it hosts) to the
+// reactive event spine. serve sets this to the bus's Publish so, e.g., the
+// remember tool can emit memory.wrote. Nil is a safe no-op.
+func (i *Interpreter) SetEventPublisher(fn func(e events.Event)) {
+	i.eventPublish = fn
+}
+
+// PublishEvent emits an event onto the spine if a publisher is wired.
+func (i *Interpreter) PublishEvent(e events.Event) {
+	if i.eventPublish != nil {
+		i.eventPublish(e)
+	}
 }
 
 // SetDispatchEventCallback registers a callback that fires for every

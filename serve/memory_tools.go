@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/events"
 	"github.com/everydev1618/govega/tools"
 )
 
@@ -93,6 +94,12 @@ func RegisterMemoryTools(interp *dsl.Interpreter) {
 			if err != nil {
 				return "", fmt.Errorf("save memory: %w", err)
 			}
+
+			// Emit onto the spine so agents can react to a memory being written.
+			interp.PublishEvent(events.Event{
+				Type: "memory.wrote",
+				Data: map[string]any{"agent": agent, "type": string(typ), "topic": topic},
+			})
 
 			return fmt.Sprintf("Saved to memory (id=%d, type=%q, topic=%q).", id, typ, topic), nil
 		}),

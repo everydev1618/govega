@@ -673,6 +673,7 @@ func (s *Server) restoreComposedAgents() {
 			System:         system,
 			Tools:          toolNames,
 			Temperature:    a.Temperature,
+			Triggers:       a.Triggers,
 		}
 
 		if err := s.interp.AddAgent(a.Name, agentDef); err != nil {

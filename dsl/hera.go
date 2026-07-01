@@ -481,6 +481,7 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 			team := toStringSlice(params["team"])
 			knowledge := toStringSlice(params["knowledge"])
 			skillsDirs := toStringSlice(params["skills_dirs"])
+			triggers := parseTriggerParams(params["triggers"])
 
 			// Inject default identity if no system prompt was provided. Without
 			// it the LLM has no anchor and inherits the orchestrator persona
@@ -508,6 +509,7 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 				Tools:          toolNames,
 				Team:           team,
 				Knowledge:      knowledge,
+				Triggers:       triggers,
 			}
 
 			if len(skillsDirs) > 0 {
@@ -649,8 +651,38 @@ func newCreateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 				Type:        "array",
 				Description: "Directories containing skill packs for the agent",
 			},
+			"triggers": {
+				Type:        "array",
+				Description: "Reactive triggers: events this agent wakes on. Each item is an object with `on` (event glob, e.g. \"agent.completed\", \"signal.*\", \"schedule.fired\"), optional `where` (a tiny predicate over event data like \"status == failed\"), optional `gate` (\"model\" to add an LLM salience check), and `prompt` (a template rendered against the event, e.g. \"Agent {{.Data.agent}} failed: {{.Data.error}}\"). Leave empty for an agent that only runs when invoked.",
+			},
 		},
 	}
+}
+
+// parseTriggerParams converts the loosely-typed `triggers` tool param (a slice
+// of maps) into typed TriggerDefs, tolerating missing/extra keys.
+func parseTriggerParams(raw any) []TriggerDef {
+	list, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	var out []TriggerDef
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		td := TriggerDef{}
+		td.On, _ = m["on"].(string)
+		td.Where, _ = m["where"].(string)
+		td.Gate, _ = m["gate"].(string)
+		td.Prompt, _ = m["prompt"].(string)
+		if td.On == "" || td.Prompt == "" {
+			continue // a trigger with no event or no prompt is meaningless
+		}
+		out = append(out, td)
+	}
+	return out
 }
 
 func newUpdateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) tools.ToolDef {

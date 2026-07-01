@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/events"
 	"github.com/robfig/cron/v3"
 )
 
@@ -188,6 +189,14 @@ func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
 		}
 
 		slog.Info("scheduler: firing job", "name", job.Name, "agent", job.AgentName)
+
+		// Emit onto the reactive spine so agents can wake on the clock
+		// (schedule.fired) — the job's own AgentName still runs below.
+		s.interp.PublishEvent(events.Event{
+			Type: "schedule.fired",
+			Data: map[string]any{"job": job.Name, "agent": job.AgentName},
+		})
+
 		ctx := s.fireContext(job)
 		// Use SendToAgent (synchronous, no inbox item) instead of
 		// DispatchToAgent to avoid spamming the inbox with no-op

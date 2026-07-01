@@ -486,10 +486,11 @@ type ComposedAgent struct {
 	Skills         []string  `json:"skills,omitempty"`
 	Tools          []string  `json:"tools,omitempty"`
 	Team           []string  `json:"team,omitempty"`
-	System         string    `json:"system,omitempty"`
-	Temperature    *float64  `json:"temperature,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	System         string           `json:"system,omitempty"`
+	Temperature    *float64         `json:"temperature,omitempty"`
+	Triggers       []dsl.TriggerDef `json:"triggers,omitempty"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 // MemoryType discriminates between memory categories so the agent can

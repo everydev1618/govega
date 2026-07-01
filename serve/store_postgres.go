@@ -271,6 +271,7 @@ func (s *PostgresStore) InsertComposedAgent(a ComposedAgent) error {
 	toolsJSON, _ := json.Marshal(a.Tools)
 	teamJSON, _ := json.Marshal(a.Team)
 	gradJSON, _ := json.Marshal(a.AvatarGradient)
+	triggersJSON, _ := json.Marshal(a.Triggers)
 	if a.CreatedAt.IsZero() {
 		a.CreatedAt = time.Now().UTC()
 	}
@@ -280,8 +281,8 @@ func (s *PostgresStore) InsertComposedAgent(a ComposedAgent) error {
 	_, err := s.db.Exec(
 		`INSERT INTO composed_agents
 		 (name, display_name, title, description, avatar, icon, avatar_gradient,
-		  model, persona, skills, tools, team, system, temperature, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		  model, persona, skills, tools, team, system, temperature, triggers, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		 ON CONFLICT (name) DO UPDATE SET
 		   display_name    = EXCLUDED.display_name,
 		   title           = EXCLUDED.title,
@@ -296,10 +297,11 @@ func (s *PostgresStore) InsertComposedAgent(a ComposedAgent) error {
 		   team            = EXCLUDED.team,
 		   system          = EXCLUDED.system,
 		   temperature     = EXCLUDED.temperature,
+		   triggers        = EXCLUDED.triggers,
 		   updated_at      = EXCLUDED.updated_at`,
 		a.Name, a.DisplayName, a.Title, a.Description, a.Avatar, a.Icon, string(gradJSON),
 		a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON),
-		a.System, a.Temperature, a.CreatedAt, a.UpdatedAt,
+		a.System, a.Temperature, string(triggersJSON), a.CreatedAt, a.UpdatedAt,
 	)
 	return err
 }
@@ -307,7 +309,7 @@ func (s *PostgresStore) InsertComposedAgent(a ComposedAgent) error {
 func (s *PostgresStore) ListComposedAgents() ([]ComposedAgent, error) {
 	rows, err := s.db.Query(
 		`SELECT name, display_name, title, description, avatar, icon, avatar_gradient,
-		        model, persona, skills, tools, team, system, temperature, created_at, updated_at
+		        model, persona, skills, tools, team, system, temperature, triggers, created_at, updated_at
 		 FROM composed_agents ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -317,18 +319,19 @@ func (s *PostgresStore) ListComposedAgents() ([]ComposedAgent, error) {
 	var agents []ComposedAgent
 	for rows.Next() {
 		var a ComposedAgent
-		var skillsJSON, toolsJSON, teamJSON, gradJSON string
+		var skillsJSON, toolsJSON, teamJSON, gradJSON, triggersJSON string
 		var temp sql.NullFloat64
 		var updatedAt sql.NullTime
 		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Description, &a.Avatar, &a.Icon,
 			&gradJSON, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON,
-			&a.System, &temp, &a.CreatedAt, &updatedAt); err != nil {
+			&a.System, &temp, &triggersJSON, &a.CreatedAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(skillsJSON), &a.Skills)
 		_ = json.Unmarshal([]byte(toolsJSON), &a.Tools)
 		_ = json.Unmarshal([]byte(teamJSON), &a.Team)
 		_ = json.Unmarshal([]byte(gradJSON), &a.AvatarGradient)
+		_ = json.Unmarshal([]byte(triggersJSON), &a.Triggers)
 		if temp.Valid {
 			a.Temperature = &temp.Float64
 		}

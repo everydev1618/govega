@@ -97,6 +97,7 @@ func (s *SQLiteStore) Init() error {
 		team            TEXT NOT NULL DEFAULT '[]',
 		system          TEXT NOT NULL DEFAULT '',
 		temperature     REAL,
+		triggers        TEXT NOT NULL DEFAULT '[]',
 		created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
@@ -321,6 +322,9 @@ func (s *SQLiteStore) Init() error {
 
 	// Migrate: add description column for the user-facing body text.
 	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN description TEXT NOT NULL DEFAULT ''`)
+
+	// Migrate: add reactive triggers column (reactive-agents Phase 2).
+	s.db.Exec(`ALTER TABLE composed_agents ADD COLUMN triggers TEXT NOT NULL DEFAULT '[]'`)
 
 	// Migrate: add tool_activities column to chat_messages + channel_messages.
 	// Stores a JSON array of completed tool calls captured during the
@@ -574,6 +578,7 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 	toolsJSON, _ := json.Marshal(a.Tools)
 	teamJSON, _ := json.Marshal(a.Team)
 	gradJSON, _ := json.Marshal(a.AvatarGradient)
+	triggersJSON, _ := json.Marshal(a.Triggers)
 	if a.CreatedAt.IsZero() {
 		a.CreatedAt = time.Now().UTC()
 	}
@@ -581,8 +586,8 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 		a.UpdatedAt = time.Now().UTC()
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO composed_agents (name, display_name, title, description, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO composed_agents (name, display_name, title, description, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, triggers, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 		   display_name    = excluded.display_name,
 		   title           = excluded.title,
@@ -597,8 +602,9 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 		   team            = excluded.team,
 		   system          = excluded.system,
 		   temperature     = excluded.temperature,
+		   triggers        = excluded.triggers,
 		   updated_at      = excluded.updated_at`,
-		a.Name, a.DisplayName, a.Title, a.Description, a.Avatar, a.Icon, string(gradJSON), a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, a.CreatedAt, a.UpdatedAt,
+		a.Name, a.DisplayName, a.Title, a.Description, a.Avatar, a.Icon, string(gradJSON), a.Model, a.Persona, string(skillsJSON), string(toolsJSON), string(teamJSON), a.System, a.Temperature, string(triggersJSON), a.CreatedAt, a.UpdatedAt,
 	)
 	return err
 }
@@ -606,7 +612,7 @@ func (s *SQLiteStore) InsertComposedAgent(a ComposedAgent) error {
 // ListComposedAgents returns all composed agents.
 func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	rows, err := s.db.Query(
-		`SELECT name, display_name, title, description, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, created_at, updated_at
+		`SELECT name, display_name, title, description, avatar, icon, avatar_gradient, model, persona, skills, tools, team, system, temperature, triggers, created_at, updated_at
 		 FROM composed_agents ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -617,16 +623,17 @@ func (s *SQLiteStore) ListComposedAgents() ([]ComposedAgent, error) {
 	var agents []ComposedAgent
 	for rows.Next() {
 		var a ComposedAgent
-		var skillsJSON, toolsJSON, teamJSON, gradJSON string
+		var skillsJSON, toolsJSON, teamJSON, gradJSON, triggersJSON string
 		var temp sql.NullFloat64
 		var updatedAt sql.NullTime
-		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Description, &a.Avatar, &a.Icon, &gradJSON, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &a.CreatedAt, &updatedAt); err != nil {
+		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Title, &a.Description, &a.Avatar, &a.Icon, &gradJSON, &a.Model, &a.Persona, &skillsJSON, &toolsJSON, &teamJSON, &a.System, &temp, &triggersJSON, &a.CreatedAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(skillsJSON), &a.Skills)
 		json.Unmarshal([]byte(toolsJSON), &a.Tools)
 		json.Unmarshal([]byte(teamJSON), &a.Team)
 		json.Unmarshal([]byte(gradJSON), &a.AvatarGradient)
+		json.Unmarshal([]byte(triggersJSON), &a.Triggers)
 		if temp.Valid {
 			a.Temperature = &temp.Float64
 		}
