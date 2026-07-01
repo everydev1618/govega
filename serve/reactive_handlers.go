@@ -40,10 +40,12 @@ func (s *Server) handleEmitEvent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"event": e.Type, "id": e.ID})
 }
 
-// handleReactiveActivity is a convenience view over the audit trail: the
-// router's decisions (reactive.fired / reactive.gated:*) and the spine events,
-// so an operator can see what the house made each agent think about — and what
-// it ignored. Backed by the same events table as /api/v1/activity.
+// handleReactiveActivity is the reactive view's data source: the router's
+// decisions (reactive.fired / reactive.gated:*) and the spine events agents
+// react to (agent.completed, signal.*, schedule.fired, memory.wrote), so an
+// operator can see what the house made each agent think about — and what it
+// ignored. Backed by the same events table as /api/v1/activity; process.* and
+// other non-reactive noise is filtered out.
 func (s *Server) handleReactiveActivity(w http.ResponseWriter, r *http.Request) {
 	limit := 200
 	if v := r.URL.Query().Get("limit"); v != "" {
@@ -51,18 +53,40 @@ func (s *Server) handleReactiveActivity(w http.ResponseWriter, r *http.Request) 
 			limit = n
 		}
 	}
-	// Query is a case-insensitive LIKE; "reactive." matches the router's audit
-	// rows. We then keep only reactive.* / spine event types.
-	evs, _, err := s.store.SearchEvents(ActivityFilter{Query: "reactive.", Limit: limit})
+	// Fetch a wider recent window so reactive events aren't crowded out by
+	// process.* noise, then keep only the reactive families up to limit.
+	fetchN := limit * 4
+	if fetchN > 500 {
+		fetchN = 500 // store clamps here anyway
+	}
+	evs, _, err := s.store.SearchEvents(ActivityFilter{Limit: fetchN})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	out := make([]StoreEvent, 0, len(evs))
+	out := make([]StoreEvent, 0, limit)
 	for _, e := range evs {
-		if strings.HasPrefix(e.Type, "reactive.") {
+		if isReactiveEventType(e.Type) {
 			out = append(out, e)
+			if len(out) >= limit {
+				break
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": out, "count": len(out)})
+}
+
+// isReactiveEventType reports whether an event belongs to the reactive view:
+// the router's audit decisions and the spine event families agents react to.
+func isReactiveEventType(t string) bool {
+	switch {
+	case strings.HasPrefix(t, "reactive."),
+		strings.HasPrefix(t, "signal."),
+		t == "agent.completed",
+		t == "agent.said",
+		t == "schedule.fired",
+		t == "memory.wrote":
+		return true
+	}
+	return false
 }

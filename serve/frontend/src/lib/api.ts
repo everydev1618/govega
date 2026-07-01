@@ -34,7 +34,23 @@ export async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> 
   return res.json()
 }
 
+// ReactiveEvent is one row from the reactive activity log: a router decision
+// (reactive.fired / reactive.gated:*) or a spine event agents react to.
+export interface ReactiveEvent {
+  id: number
+  type: string
+  agent_name?: string
+  timestamp: string
+  data?: string
+  result?: string
+  error?: string
+}
+
 export const api = {
+  // Reactive activity — the trigger router's decisions + the spine events.
+  getReactiveActivity: (limit = 200) =>
+    fetchAPI<{ events: ReactiveEvent[]; count: number }>(`/reactive/activity?limit=${limit}`),
+
   // Company
   getCompany: () => fetchAPI<import('./types').CompanyResponse>('/company'),
   getTenantConfig: () => fetchAPI<import('./types').TenantConfigResponse>('/tenant/config'),

@@ -82,7 +82,9 @@ func TestHandleReactiveActivity(t *testing.T) {
 	now := time.Now().UTC()
 	_ = store.InsertEvent(StoreEvent{Type: "reactive.fired", AgentName: "watcher", Timestamp: now})
 	_ = store.InsertEvent(StoreEvent{Type: "reactive.gated:rate", AgentName: "watcher", Timestamp: now})
-	_ = store.InsertEvent(StoreEvent{Type: "process.completed", AgentName: "other", Timestamp: now})
+	_ = store.InsertEvent(StoreEvent{Type: "agent.completed", AgentName: "builder", Timestamp: now})
+	_ = store.InsertEvent(StoreEvent{Type: "signal.deploy", AgentName: "", Timestamp: now})
+	_ = store.InsertEvent(StoreEvent{Type: "process.completed", AgentName: "other", Timestamp: now}) // noise, excluded
 
 	s := &Server{store: store}
 	req := httptest.NewRequest("GET", "/api/v1/reactive/activity", nil)
@@ -99,12 +101,17 @@ func TestHandleReactiveActivity(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
+	seen := map[string]bool{}
 	for _, e := range body.Events {
-		if !strings.HasPrefix(e.Type, "reactive.") {
-			t.Fatalf("non-reactive event leaked into reactive activity: %q", e.Type)
+		if e.Type == "process.completed" {
+			t.Fatalf("non-reactive noise leaked into reactive activity: %q", e.Type)
 		}
+		seen[e.Type] = true
 	}
-	if body.Count < 2 {
-		t.Fatalf("expected the 2 reactive events, got %d", body.Count)
+	// Both the router audit and the spine families should be present.
+	for _, want := range []string{"reactive.fired", "reactive.gated:rate", "agent.completed", "signal.deploy"} {
+		if !seen[want] {
+			t.Fatalf("expected %q in reactive activity, got types %v", want, seen)
+		}
 	}
 }

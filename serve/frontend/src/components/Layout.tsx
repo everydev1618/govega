@@ -26,6 +26,7 @@ const adminNav = [
   { to: '/schedules', label: 'Schedules' },
   { to: '/processes', label: 'Processes' },
   { to: '/events', label: 'Events' },
+  { to: '/reactive', label: 'Reactive' },
   { to: '/spawn-tree', label: 'Spawn Tree' },
   { to: '/visualize', label: 'Visualize' },
   { to: '/connections', label: 'Connections' },

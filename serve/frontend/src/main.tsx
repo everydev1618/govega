@@ -21,6 +21,7 @@ import { Schedules } from './pages/Schedules'
 import { Settings } from './pages/Settings'
 import { Visualize } from './pages/Visualize'
 import { Memory } from './pages/Memory'
+import { Reactive } from './pages/Reactive'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -38,6 +39,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="tasks" element={<Tasks />} />
           <Route path="spawn-tree" element={<SpawnTree />} />
           <Route path="events" element={<EventStream />} />
+          <Route path="reactive" element={<Reactive />} />
           <Route path="population" element={<Population />} />
           <Route path="agents" element={<AgentRegistry />} />
           <Route path="connections" element={<Connections />} />
