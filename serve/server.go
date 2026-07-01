@@ -15,9 +15,11 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/events"
 	"github.com/everydev1618/govega/internal/envcompat"
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
+	"github.com/everydev1618/govega/reactive"
 	"github.com/everydev1618/govega/serve/peering"
 	"github.com/everydev1618/vega-population/population"
 )
@@ -205,7 +207,11 @@ type ExtraSystemProvider func(ctx context.Context, agentName, baseAgent, userID 
 type Server struct {
 	interp *dsl.Interpreter
 	broker *EventBroker
-	store  Store
+	// bus is the domain-event spine (D3). The SSE broker is double-fed from
+	// it (Phase 1); the reactive router subscribes to it to wake agents.
+	bus            *events.Bus
+	reactiveRouter *reactive.Router
+	store          Store
 	// Peering subsystem (orchestrator-to-orchestrator federation over AIRE).
 	// Nil when VEGA_PEERING_ADDR is unset. See peering_boot.go.
 	peeringNode   *peering.Node
@@ -361,6 +367,7 @@ func New(interp *dsl.Interpreter, cfg Config) *Server {
 	return &Server{
 		interp:          interp,
 		broker:          NewEventBroker(),
+		bus:             events.NewBus(),
 		store:           cfg.Store, // may be nil; Start() opens SQLite when so
 		cfg:             cfg,
 		streams:         make(map[string]*activeStream),
@@ -937,6 +944,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wire orchestrator callbacks to broker + store.
 	s.wireCallbacks()
 
+	// Stand up reactive cognition: the event spine's trigger router + the
+	// emit_event tool. Harmless when no agent declares triggers.
+	s.startReactive(ctx)
+
 	// Build router.
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
@@ -1005,6 +1016,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Close broker first — this closes all SSE subscriber channels,
 	// unblocking their handlers so the HTTP server can drain cleanly.
 	s.broker.Close()
+	// Tear down the event spine (the reactive router stops via ctx cancel).
+	if s.bus != nil {
+		s.bus.Close()
+	}
 
 	// Graceful shutdown with 5s timeout.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1257,6 +1272,19 @@ func (s *Server) wireCallbacks() {
 			Result:    truncate(result, 4096),
 		})
 
+		// Double-feed the domain-event spine (D3): agents can react to another
+		// agent's completion. status distinguishes success from failure so a
+		// trigger can filter `where: status == failed`.
+		s.bus.Publish(events.Event{
+			Type: "agent.completed",
+			Data: map[string]any{
+				"agent":   agentName,
+				"process": p.ID,
+				"status":  "ok",
+				"result":  truncate(result, 2048),
+			},
+		})
+
 		// Snapshot final state.
 		s.store.(*SQLiteStore).snapshotProcess(processToResponse(p))
 	})
@@ -1286,6 +1314,18 @@ func (s *Server) wireCallbacks() {
 			AgentName: agentName,
 			Timestamp: time.Now(),
 			Error:     errMsg,
+		})
+
+		// Double-feed the spine (D3): a failed run is still an agent.completed
+		// event, distinguished by status so watchers can react to failures.
+		s.bus.Publish(events.Event{
+			Type: "agent.completed",
+			Data: map[string]any{
+				"agent":   agentName,
+				"process": p.ID,
+				"status":  "failed",
+				"error":   errMsg,
+			},
 		})
 
 		// Snapshot final state.

@@ -333,6 +333,30 @@ func (p *Parser) parseAgent(name string, raw any) (*Agent, error) {
 		}
 	}
 
+	// Parse reactive triggers (§4.2)
+	if trigs, ok := m["triggers"].([]any); ok {
+		for _, tr := range trigs {
+			tm, ok := tr.(map[string]any)
+			if !ok {
+				continue
+			}
+			td := TriggerDef{}
+			if v, ok := tm["on"].(string); ok {
+				td.On = v
+			}
+			if v, ok := tm["where"].(string); ok {
+				td.Where = v
+			}
+			if v, ok := tm["gate"].(string); ok {
+				td.Gate = v
+			}
+			if v, ok := tm["prompt"].(string); ok {
+				td.Prompt = v
+			}
+			agent.Triggers = append(agent.Triggers, td)
+		}
+	}
+
 	return agent, nil
 }
 

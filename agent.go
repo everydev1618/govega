@@ -5,6 +5,7 @@ import (
 
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/memory"
+	"github.com/everydev1618/govega/reactive"
 	"github.com/everydev1618/govega/tools"
 )
 
@@ -72,6 +73,13 @@ type Agent struct {
 
 	// MaxIterations limits tool call loop iterations (default: DefaultMaxIterations)
 	MaxIterations int
+
+	// Triggers are the events this agent reacts to. Reactivity is the third
+	// declarative faculty alongside System (personality) and Memory; it lives
+	// on the blueprint so an Agent is a complete description of a reactive
+	// entity. Empty means the agent only runs when explicitly invoked. See
+	// docs/reactive-agents-design.md (decision D1).
+	Triggers []reactive.Trigger
 }
 
 // Default configuration values

@@ -110,6 +110,9 @@ type Agent struct {
 	Skills         *SkillsDef         `yaml:"skills"`
 	Delegation     *DelegationDef     `yaml:"delegation"`
 	Memory         *MemoryDef         `yaml:"memory"`
+	// Triggers declare the events this agent reacts to (reactive cognition).
+	// See docs/reactive-agents-design.md §4.2.
+	Triggers []TriggerDef `yaml:"triggers,omitempty" json:"triggers,omitempty"`
 
 	// Norm is the name of a top-level `norms:` entry whose guidance is
 	// composed into this agent's system prompt at spawn time. Empty
@@ -122,6 +125,17 @@ type Agent struct {
 	// listings and protected from runtime mutation. Set by Inject*-style
 	// constructors; not parsed from YAML.
 	IsMeta bool `yaml:"-" json:"-"`
+}
+
+// TriggerDef declares one reactive subscription in the DSL: when an event of
+// type `on` (a glob like "agent.*") arrives and its optional `where` predicate
+// holds, the agent wakes with `prompt` rendered against the event. `gate`
+// selects the salience tier ("" = rules only, "model" = cheap classifier).
+type TriggerDef struct {
+	On     string `yaml:"on" json:"on"`
+	Where  string `yaml:"where,omitempty" json:"where,omitempty"`
+	Gate   string `yaml:"gate,omitempty" json:"gate,omitempty"`
+	Prompt string `yaml:"prompt" json:"prompt"`
 }
 
 // MemoryDef configures per-agent memory behavior.

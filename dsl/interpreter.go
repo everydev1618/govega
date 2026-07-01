@@ -14,6 +14,7 @@ import (
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/govega/internal/skills"
+	"github.com/everydev1618/govega/reactive"
 	"github.com/everydev1618/govega/tools"
 )
 
@@ -473,6 +474,16 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	}
 	if def.Effort != "" {
 		agent.Effort = def.Effort
+	}
+
+	// Reactive triggers: events this agent wakes to (§4.2 / D1).
+	for _, td := range def.Triggers {
+		agent.Triggers = append(agent.Triggers, reactive.Trigger{
+			On:     td.On,
+			Where:  td.Where,
+			Gate:   td.Gate,
+			Prompt: td.Prompt,
+		})
 	}
 
 	// Map DSL retry config to core retry policy
@@ -1392,6 +1403,36 @@ func (i *Interpreter) Agents() map[string]*vega.Process {
 		copy[k] = v
 	}
 	return copy
+}
+
+// ReactiveTriggers returns each agent's reactive triggers, keyed by the name
+// that SendToAgent accepts. Satisfies reactive.TriggerRegistry, so the router
+// reads triggers off agent definitions — the single source of truth (D1).
+//
+// It reads *definitions* (i.doc.Agents), not spawned processes, on purpose:
+// under lazy-spawn a purely-reactive agent may never have been messaged, and
+// idle agents get evicted — but their triggers must still be discoverable so
+// the agent can wake. SendToAgent spawns the agent on the wake itself.
+func (i *Interpreter) ReactiveTriggers() map[string][]reactive.Trigger {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	out := make(map[string][]reactive.Trigger)
+	for name, def := range i.doc.Agents {
+		if def == nil || len(def.Triggers) == 0 {
+			continue
+		}
+		trigs := make([]reactive.Trigger, 0, len(def.Triggers))
+		for _, td := range def.Triggers {
+			trigs = append(trigs, reactive.Trigger{
+				On:     td.On,
+				Where:  td.Where,
+				Gate:   td.Gate,
+				Prompt: td.Prompt,
+			})
+		}
+		out[name] = trigs
+	}
+	return out
 }
 
 // HasAgent reports whether an agent with this name is defined (whether or
