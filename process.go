@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"html"
 	"strings"
 	"sync"
 	"time"
@@ -650,9 +651,12 @@ func (p *Process) buildMessages() []llm.Message {
 	return filtered
 }
 
-// formatToolResult formats a tool result for the LLM.
+// formatToolResult formats a tool result for the LLM. The result payload is
+// HTML-escaped so a tool returning literal <tool_result>/<tool_use> markup
+// (e.g. fetched web content or MCP output) can't forge blocks in the
+// conversation history; the llm backend unescapes it before sending to the API.
 func formatToolResult(id, name, result string) string {
-	return "<tool_result tool_use_id=\"" + id + "\" name=\"" + name + "\">\n" + result + "\n</tool_result>"
+	return "<tool_result tool_use_id=\"" + id + "\" name=\"" + name + "\">\n" + html.EscapeString(result) + "\n</tool_result>"
 }
 
 // formatToolCall formats a tool call for the assistant message.

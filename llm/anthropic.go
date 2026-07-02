@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -580,7 +581,10 @@ func parseToolResultXML(s string) (map[string]any, string) {
 
 	openTag := s[:tagEnd]
 	toolUseID := extractAttr(openTag, "tool_use_id")
-	resultContent := strings.TrimSpace(s[tagEnd+1 : endIdx])
+	// The producer HTML-escapes the payload so it can't contain literal tag
+	// sequences that break out of the block (history-injection guard). Restore
+	// the original content for the API.
+	resultContent := html.UnescapeString(strings.TrimSpace(s[tagEnd+1 : endIdx]))
 
 	block := map[string]any{
 		"type":        "tool_result",
