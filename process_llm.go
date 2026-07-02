@@ -132,6 +132,28 @@ func countUserMessages(messages []llm.Message) int {
 	return n
 }
 
+// sendChunk sends s on ch, aborting if ctx is cancelled. Returns false if the
+// send was abandoned — prevents the producer goroutine from blocking forever
+// when the stream consumer (e.g. a disconnected SSE client) stops reading.
+func sendChunk(ctx context.Context, ch chan<- string, s string) bool {
+	select {
+	case ch <- s:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// sendEvent sends ev on ch, aborting if ctx is cancelled. See sendChunk.
+func sendEvent(ctx context.Context, ch chan<- ChatEvent, ev ChatEvent) bool {
+	select {
+	case ch <- ev:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // executeLLMLoop runs the LLM call loop, handling tool calls.
 func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, CallMetrics, error) {
 	metrics := CallMetrics{}
@@ -264,7 +286,9 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 			switch event.Type {
 			case llm.StreamEventContentDelta:
 				if event.Delta != "" {
-					chunks <- event.Delta
+					if !sendChunk(ctx, chunks, event.Delta) {
+						return fullResponse, ctx.Err()
+					}
 					iterResponse += event.Delta
 					fullResponse += event.Delta
 				}
@@ -413,7 +437,9 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 				totalOutputTokens += ev.OutputTokens
 			case llm.StreamEventContentDelta:
 				if ev.Delta != "" {
-					events <- ChatEvent{Type: ChatEventTextDelta, Delta: ev.Delta}
+					if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: ev.Delta}) {
+						return fullResponse, ctx.Err()
+					}
 					iterResponse += ev.Delta
 					fullResponse += ev.Delta
 				}
@@ -436,11 +462,13 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 						json.Unmarshal([]byte(currentToolJSON), &currentToolCall.Arguments)
 					}
 					// Emit tool_start with complete arguments.
-					events <- ChatEvent{
+					if !sendEvent(ctx, events, ChatEvent{
 						Type:       ChatEventToolStart,
 						ToolCallID: currentToolCall.ID,
 						ToolName:   currentToolCall.Name,
 						Arguments:  currentToolCall.Arguments,
+					}) {
+						return fullResponse, ctx.Err()
 					}
 					toolCalls = append(toolCalls, *currentToolCall)
 					currentToolCall = nil
@@ -493,12 +521,14 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		// Emit tool end events and build result message in order.
 		var toolResults strings.Builder
 		for _, tr := range richResults {
-			events <- ChatEvent{
+			if !sendEvent(ctx, events, ChatEvent{
 				Type:       ChatEventToolEnd,
 				ToolCallID: tr.id,
 				ToolName:   tr.name,
 				Result:     tr.result,
 				DurationMs: tr.elapsed,
+			}) {
+				return fullResponse, ctx.Err()
 			}
 			toolResults.WriteString(formatToolResult(tr.id, tr.name, tr.result))
 			toolResults.WriteString("\n")
@@ -510,7 +540,9 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 			})
 			// Separate tool results from next LLM response with a newline
 			// so streamed text doesn't concatenate without whitespace.
-			events <- ChatEvent{Type: ChatEventTextDelta, Delta: "\n\n"}
+			if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: "\n\n"}) {
+				return fullResponse, ctx.Err()
+			}
 			fullResponse += "\n\n"
 		}
 	}

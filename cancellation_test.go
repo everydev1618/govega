@@ -63,6 +63,56 @@ func TestStopAbortsInFlightSend(t *testing.T) {
 	}
 }
 
+// chattyLLM streams many deltas then finishes, letting a test fill the stream
+// buffer without ever draining it.
+type chattyLLM struct{}
+
+func (chattyLLM) Generate(context.Context, []llm.Message, []llm.ToolSchema) (*llm.LLMResponse, error) {
+	return &llm.LLMResponse{Content: "done"}, nil
+}
+
+func (chattyLLM) GenerateStream(ctx context.Context, _ []llm.Message, _ []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent)
+	go func() {
+		defer close(ch)
+		for i := 0; i < 100000; i++ {
+			select {
+			case ch <- llm.StreamEvent{Type: llm.StreamEventContentDelta, Delta: "x"}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// TestAbandonedStreamUnblocksOnCancel verifies the producer goroutine doesn't
+// block forever when the consumer stops reading: cancelling the process must
+// unblock the send. Regression test for H6.
+func TestAbandonedStreamUnblocksOnCancel(t *testing.T) {
+	o := NewOrchestrator(WithLLM(chattyLLM{}))
+	p, err := o.Spawn(Agent{Name: "x"})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	stream, err := p.SendStream(context.Background(), "hi")
+	if err != nil {
+		t.Fatalf("SendStream: %v", err)
+	}
+
+	// Deliberately do NOT read stream.chunks. Once the buffer fills, the
+	// producer blocks on the send. Cancelling the process must free it.
+	time.Sleep(50 * time.Millisecond)
+	p.Stop()
+
+	select {
+	case <-stream.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("abandoned stream producer did not unblock after Stop (H6)")
+	}
+}
+
 // TestKillAbortsInFlightStream verifies orchestrator Kill aborts an in-flight
 // streaming Send.
 func TestKillAbortsInFlightStream(t *testing.T) {
