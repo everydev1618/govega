@@ -31,6 +31,7 @@ func tenantTestServer(t *testing.T) *Server {
 		broker:  NewEventBroker(),
 		streams: map[string]*activeStream{},
 		cfg: Config{
+			Version: "v9.9.9-test",
 			Builder: dsl.HeraConfig{Name: "hera"},
 			Orchestrator: dsl.IrisConfig{
 				Name: "aria", DisplayName: "ARIA", Title: "Orchestrator", ProductName: "Apex",
@@ -66,6 +67,9 @@ func TestTenantConfig_GetReturnsCurrent(t *testing.T) {
 	}
 	if got.ProductName != "Apex" {
 		t.Errorf("product_name = %q", got.ProductName)
+	}
+	if got.Version != "v9.9.9-test" {
+		t.Errorf("version = %q, want v9.9.9-test", got.Version)
 	}
 }
 

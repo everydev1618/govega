@@ -342,6 +342,7 @@ export interface TenantConfigResponse {
   product_name?: string
   accent_color?: string
   logo_url?: string
+  version?: string
 }
 
 // --- Agent Template Types ---

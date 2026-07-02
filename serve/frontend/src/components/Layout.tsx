@@ -372,6 +372,11 @@ export function Layout() {
             )}
           </div>
         </nav>
+        {tenant?.version && (
+          <div className="px-3 py-2 border-t border-rule text-[10px] uppercase tracking-wider text-ink-faint">
+            {tenant.version}
+          </div>
+        )}
       </aside>
 
       {/* Main content */}

@@ -1,9 +1,14 @@
 .PHONY: build frontend-build serve-dev test test-pg clean types types-verify \
         pg-up pg-down pg-reset pg-shell pg-url
 
+# Version stamped into the binary (shown by `vega version` and in the
+# server UI). Falls back to "dev" outside a git checkout.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+GO_LDFLAGS := -X main.version=$(VERSION)
+
 # Build the vega binary with embedded frontend.
 build: frontend-build
-	go build -o bin/vega ./cmd/vega
+	go build -ldflags "$(GO_LDFLAGS)" -o bin/vega ./cmd/vega
 
 # Build only the frontend.
 frontend-build:

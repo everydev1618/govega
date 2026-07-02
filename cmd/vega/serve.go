@@ -111,6 +111,7 @@ Examples:
 
 	// Create and start server
 	cfg := serve.Config{
+		Version:       version,
 		Addr:          *addr,
 		DBPath:        *dbPath,
 		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),

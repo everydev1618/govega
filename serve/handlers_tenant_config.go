@@ -39,6 +39,8 @@ type TenantConfigResponse struct {
 	ProductName         string `json:"product_name,omitempty"`
 	AccentColor         string `json:"accent_color,omitempty"`
 	LogoURL             string `json:"logo_url,omitempty"`
+	// Version is the govega build version. Read-only — ignored on PUT.
+	Version string `json:"version,omitempty"`
 }
 
 // UpdateTenantConfigRequest is the partial-PUT body. Pointer fields
@@ -63,6 +65,7 @@ func (s *Server) handleGetTenantConfig(w http.ResponseWriter, r *http.Request) {
 		OrchestratorDisplay: s.cfg.Orchestrator.DisplayName,
 		OrchestratorTitle:   s.cfg.Orchestrator.Title,
 		ProductName:         s.cfg.Orchestrator.ProductName,
+		Version:             s.cfg.Version,
 	}
 	if accent != nil {
 		resp.AccentColor = accent.Value
@@ -143,6 +146,7 @@ func (s *Server) handleUpdateTenantConfig(w http.ResponseWriter, r *http.Request
 		OrchestratorDisplay: s.cfg.Orchestrator.DisplayName,
 		OrchestratorTitle:   s.cfg.Orchestrator.Title,
 		ProductName:         s.cfg.Orchestrator.ProductName,
+		Version:             s.cfg.Version,
 	}
 	if accent != nil {
 		resp.AccentColor = accent.Value

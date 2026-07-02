@@ -128,8 +128,12 @@ const (
 
 // Config holds server configuration.
 type Config struct {
-	Addr   string
-	DBPath string
+	// Version is the govega build version (e.g. "v0.7.15"), surfaced to
+	// the UI via GET /api/v1/tenant/config. Set by the CLI from the
+	// ldflags-injected main.version; empty ("dev") when unset.
+	Version string
+	Addr    string
+	DBPath  string
 	// DBKind picks the persistence backend. Defaults to SQLite when empty.
 	DBKind DBKind
 	// DBURL is the Postgres connection URL when DBKind == "postgres"
