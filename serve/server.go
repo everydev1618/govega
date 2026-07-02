@@ -1336,8 +1336,8 @@ func (s *Server) wireCallbacks() {
 		// persistent chat processes rarely Complete(), and emitting from both
 		// would double-fire for ephemeral dispatch processes.
 
-		// Snapshot final state.
-		s.store.(*SQLiteStore).snapshotProcess(processToResponse(p))
+		// Snapshot final state (via the Store interface — works for any backend).
+		_ = s.store.InsertProcessSnapshot(snapshotFromResponse(processToResponse(p)))
 	})
 
 	orch.OnProcessFailed(func(p *vega.Process, err error) {
@@ -1370,8 +1370,8 @@ func (s *Server) wireCallbacks() {
 		// (agent.completed with status=failed is emitted from the dispatch-
 		// complete callback; see the note in OnProcessComplete.)
 
-		// Snapshot final state.
-		s.store.(*SQLiteStore).snapshotProcess(processToResponse(p))
+		// Snapshot final state (via the Store interface — works for any backend).
+		_ = s.store.InsertProcessSnapshot(snapshotFromResponse(processToResponse(p)))
 	})
 }
 

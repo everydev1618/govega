@@ -2511,9 +2511,9 @@ func (s *SQLiteStore) ChatUnreadCounts(userID string) (map[string]int, error) {
 	return counts, rows.Err()
 }
 
-// snapshotProcess creates a snapshot from a live process and persists it.
-func (s *SQLiteStore) snapshotProcess(proc ProcessResponse) error {
-	snap := ProcessSnapshot{
+// snapshotFromResponse builds a ProcessSnapshot from a live process response.
+func snapshotFromResponse(proc ProcessResponse) ProcessSnapshot {
+	return ProcessSnapshot{
 		ProcessID:    proc.ID,
 		AgentName:    proc.Agent,
 		Status:       proc.Status,
@@ -2525,5 +2525,4 @@ func (s *SQLiteStore) snapshotProcess(proc ProcessResponse) error {
 		CompletedAt:  proc.CompletedAt,
 		SnapshotAt:   time.Now(),
 	}
-	return s.InsertProcessSnapshot(snap)
 }
