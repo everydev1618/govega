@@ -33,6 +33,9 @@ type AnthropicLLM struct {
 	model        string
 	effort       string        // "" | "low" | "medium" | "high" | "xhigh" | "max"
 	semaphore    chan struct{} // limits concurrent API requests
+	// retryBase is the exponential-backoff base for retries (default 5s
+	// when zero). Tests shrink it.
+	retryBase time.Duration
 }
 
 // AnthropicOption configures the Anthropic client.
@@ -288,6 +291,16 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 			}
 			httpResp, err := client.Do(httpReq)
 			if err != nil {
+				// Transport failure before the stream opened — retry.
+				if ctx.Err() == nil && attempt < maxRetries {
+					wait := retryAfterDelay(nil, attempt, a.retryBase)
+					slog.Warn("API request failed (stream), retrying", "error", err, "attempt", attempt+1, "wait", wait)
+					select {
+					case <-time.After(wait):
+						continue
+					case <-ctx.Done():
+					}
+				}
 				eventCh <- StreamEvent{Type: StreamEventError, Error: err}
 				return
 			}
@@ -303,10 +316,10 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 
 			body, _ := io.ReadAll(httpResp.Body)
 
-			// Retry on 429 (rate limit) and 529 (overloaded).
-			if (httpResp.StatusCode == 429 || httpResp.StatusCode == 529) && attempt < maxRetries {
-				wait := retryAfterDelay(httpResp, attempt)
-				slog.Warn("API rate limited (stream), retrying", "status", httpResp.StatusCode, "attempt", attempt+1, "wait", wait)
+			// Retry transient statuses before the stream opened: 429, 529, 5xx.
+			if isRetryableStatus(httpResp.StatusCode) && attempt < maxRetries {
+				wait := retryAfterDelay(httpResp, attempt, a.retryBase)
+				slog.Warn("API transient error (stream), retrying", "status", httpResp.StatusCode, "attempt", attempt+1, "wait", wait)
 				httpResp.Body.Close()
 				select {
 				case <-time.After(wait):
@@ -740,6 +753,21 @@ func (a *AnthropicLLM) doRequest(ctx context.Context, req *anthropicRequest) (*a
 
 		httpResp, err := a.httpClient.Do(httpReq)
 		if err != nil {
+			// Transport-level failure (connection reset, DNS blip):
+			// transient — retry unless the caller's context is done.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if attempt < maxRetries {
+				wait := retryAfterDelay(nil, attempt, a.retryBase)
+				slog.Warn("API request failed, retrying", "error", err, "attempt", attempt+1, "wait", wait)
+				select {
+				case <-time.After(wait):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
 			return nil, fmt.Errorf("http request: %w", err)
 		}
 
@@ -757,10 +785,10 @@ func (a *AnthropicLLM) doRequest(ctx context.Context, req *anthropicRequest) (*a
 			return &resp, nil
 		}
 
-		// Retry on 429 (rate limit) and 529 (overloaded).
-		if (httpResp.StatusCode == 429 || httpResp.StatusCode == 529) && attempt < maxRetries {
-			wait := retryAfterDelay(httpResp, attempt)
-			slog.Warn("API rate limited, retrying", "status", httpResp.StatusCode, "attempt", attempt+1, "wait", wait)
+		// Retry transient statuses: 429 rate limit, 529 overloaded, 5xx.
+		if isRetryableStatus(httpResp.StatusCode) && attempt < maxRetries {
+			wait := retryAfterDelay(httpResp, attempt, a.retryBase)
+			slog.Warn("API transient error, retrying", "status", httpResp.StatusCode, "attempt", attempt+1, "wait", wait)
 			select {
 			case <-time.After(wait):
 				continue
@@ -785,18 +813,34 @@ func (a *AnthropicLLM) doRequest(ctx context.Context, req *anthropicRequest) (*a
 	return nil, fmt.Errorf("max retries exceeded")
 }
 
-// retryAfterDelay returns how long to wait before retrying a rate-limited request.
-// It respects the retry-after header if present, otherwise uses exponential backoff.
-func retryAfterDelay(resp *http.Response, attempt int) time.Duration {
-	if ra := resp.Header.Get("retry-after"); ra != "" {
-		if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
-			return time.Duration(secs) * time.Second
+// isRetryableStatus reports whether an HTTP status is a transient failure
+// worth retrying: rate limits (429), Anthropic overload (529), and server
+// errors (500/502/503/504). 4xx client errors are never retried.
+func isRetryableStatus(status int) bool {
+	switch status {
+	case 429, 500, 502, 503, 504, 529:
+		return true
+	}
+	return false
+}
+
+// retryAfterDelay returns how long to wait before retrying a transient
+// failure. It respects the retry-after header if present, otherwise uses
+// exponential backoff from base (5s when base is zero): 5s, 10s, 20s, ….
+func retryAfterDelay(resp *http.Response, attempt int, base time.Duration) time.Duration {
+	if resp != nil {
+		if ra := resp.Header.Get("retry-after"); ra != "" {
+			if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
+				return time.Duration(secs) * time.Second
+			}
 		}
 	}
-	// Exponential backoff: 5s, 10s, 20s, 40s, 60s
-	wait := time.Duration(5<<uint(attempt)) * time.Second
-	if wait > 60*time.Second {
-		wait = 60 * time.Second
+	if base <= 0 {
+		base = 5 * time.Second
+	}
+	wait := base << uint(attempt)
+	if max := base * 12; wait > max {
+		wait = max
 	}
 	return wait
 }
