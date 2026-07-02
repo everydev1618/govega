@@ -112,6 +112,43 @@ func (t *HTTPTransport) Send(ctx context.Context, method string, params any) (js
 	return rpcResp.Result, nil
 }
 
+// Notify sends a JSON-RPC notification over HTTP: no id, and any response
+// body is discarded — servers reply 202/204 (or an empty 200) to
+// notifications per the streamable-HTTP MCP spec.
+func (t *HTTPTransport) Notify(ctx context.Context, method string, params any) error {
+	notif := JSONRPCNotification{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+	}
+	data, err := json.Marshal(notif)
+	if err != nil {
+		return fmt.Errorf("marshal notification: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", t.config.URL, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	for k, v := range t.config.Headers {
+		httpReq.Header.Set(k, v)
+	}
+
+	resp, err := t.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("http request: %w", err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("http status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // parseHTTPRPCResponse handles both `application/json` (object) and
 // `text/event-stream` (SSE frames) bodies. For SSE we walk the frames and
 // take the first frame's `data:` payload, which the MCP spec defines as the

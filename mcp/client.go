@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -83,10 +84,12 @@ func (c *Client) Connect(ctx context.Context) error {
 		Capabilities:    initResult.Capabilities,
 	}
 
-	// Send initialized notification
-	_, err = c.transport.Send(ctx, "notifications/initialized", nil)
-	if err != nil {
-		// Some servers don't require this, so don't fail
+	// Send initialized notification — fire-and-forget (no id, no reply).
+	// Routing this through Send used to block Connect until the caller's
+	// context expired, because servers never respond to notifications.
+	if err := c.transport.Notify(ctx, "notifications/initialized", nil); err != nil {
+		// Some servers don't require this, so don't fail the connect.
+		slog.Debug("initialized notification failed", "server", c.name, "error", err)
 	}
 
 	// Set up notification handler

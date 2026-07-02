@@ -28,6 +28,11 @@ type Transport interface {
 	// Send sends a JSON-RPC request and returns the result.
 	Send(ctx context.Context, method string, params any) (json.RawMessage, error)
 
+	// Notify sends a JSON-RPC notification: no id, fire-and-forget.
+	// Servers never respond to notifications, so unlike Send this must
+	// not wait for a reply.
+	Notify(ctx context.Context, method string, params any) error
+
 	// Close closes the connection.
 	Close() error
 

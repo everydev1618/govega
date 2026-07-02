@@ -13,6 +13,7 @@ type mockTransport struct {
 	responses       map[string]json.RawMessage
 	notifyHandler   func(string, json.RawMessage)
 	sendCalls       []mockSendCall
+	notifyCalls     []string
 }
 
 type mockSendCall struct {
@@ -40,6 +41,11 @@ func (m *mockTransport) Send(ctx context.Context, method string, params any) (js
 
 	// Return empty success response by default
 	return json.RawMessage(`{}`), nil
+}
+
+func (m *mockTransport) Notify(ctx context.Context, method string, params any) error {
+	m.notifyCalls = append(m.notifyCalls, method)
+	return nil
 }
 
 func (m *mockTransport) Close() error {
@@ -94,6 +100,23 @@ func TestClientConnect(t *testing.T) {
 
 	if client.ServerInfo().Name != "test-server" {
 		t.Errorf("Expected server name 'test-server', got '%s'", client.ServerInfo().Name)
+	}
+
+	// The initialized notification is fire-and-forget: sent via Notify,
+	// never as a request that waits for a response no server will send.
+	for _, call := range mock.sendCalls {
+		if call.method == "notifications/initialized" {
+			t.Error("notifications/initialized sent as a blocking request instead of a notification")
+		}
+	}
+	found := false
+	for _, m := range mock.notifyCalls {
+		if m == "notifications/initialized" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("notifications/initialized was never sent")
 	}
 }
 
