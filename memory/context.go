@@ -48,6 +48,27 @@ func (c *TokenBudgetContext) Add(msg llm.Message) {
 	}
 }
 
+// RemoveLastIf removes the most recent message if it matches the given role
+// and content, returning whether a message was removed. Callers use this to
+// roll back a user message whose LLM turn failed, keeping the history free
+// of orphaned user messages.
+func (c *TokenBudgetContext) RemoveLastIf(role llm.Role, content string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	n := len(c.messages)
+	if n == 0 {
+		return false
+	}
+	last := c.messages[n-1]
+	if last.Role != role || last.Content != content {
+		return false
+	}
+	c.messages = c.messages[:n-1]
+	c.tokenCount -= estimateTokens(last.Content)
+	return true
+}
+
 // Messages returns messages that fit within maxTokens.
 // If the requested maxTokens is lower than our budget, we return fewer messages.
 func (c *TokenBudgetContext) Messages(maxTokens int) []llm.Message {

@@ -96,6 +96,11 @@ type Process struct {
 	// mutex for thread safety
 	mu sync.RWMutex
 
+	// sendMu serializes conversation turns (Send/SendStream/SendStreamRich).
+	// Concurrent turns on one process would interleave user/assistant
+	// messages and run overlapping LLM calls against the same history.
+	sendMu sync.Mutex
+
 	// finalResult stores the result when process completes
 	finalResult string
 
@@ -275,7 +280,12 @@ func (p *Process) withProcessCancel(ctx context.Context) (context.Context, conte
 }
 
 // Send sends a message and waits for a response.
+// Turns are serialized per process: a Send that arrives while another turn
+// is in flight waits for it to finish rather than interleaving history.
 func (p *Process) Send(ctx context.Context, message string) (string, error) {
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+
 	p.mu.Lock()
 	if p.status != StatusRunning && p.status != StatusPending {
 		p.mu.Unlock()
@@ -296,6 +306,9 @@ func (p *Process) Send(ctx context.Context, message string) (string, error) {
 	// Execute the LLM call loop (may involve tool calls)
 	response, callMetrics, err := p.executeLLMLoop(ctx, message)
 	if err != nil {
+		// The turn produced no assistant reply; leaving the user message in
+		// place would make the next turn send two consecutive user messages.
+		p.rollbackUserMessage(message)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			// Context cancelled or timed out — fail the process so ensureAgent
 			// can respawn it cleanly on the next call rather than leaving it
@@ -368,21 +381,25 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 	p.metrics.LastActiveAt = time.Now()
 	p.mu.Unlock()
 
-	// Add user message to context
-	p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
-
 	// Create stream
 	stream := &Stream{
 		chunks: make(chan string, DefaultStreamBufferSize),
 		done:   make(chan struct{}),
 	}
 
-	// Execute streaming in goroutine
+	// Execute streaming in goroutine. The user message is appended inside
+	// the goroutine, once the turn holds sendMu — appending it here would
+	// let concurrent stream sends interleave their user messages.
 	go func() {
+		p.sendMu.Lock()
+		defer p.sendMu.Unlock()
+
 		ctx, cancel := p.withProcessCancel(ctx)
 		defer cancel()
 		defer close(stream.chunks)
 		defer close(stream.done)
+
+		p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
 
 		response, err := p.executeLLMStream(ctx, message, stream.chunks)
 		stream.mu.Lock()
@@ -393,6 +410,8 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 		// Add assistant response to context
 		if err == nil {
 			p.addMessage(llm.Message{Role: llm.RoleAssistant, Content: response})
+		} else {
+			p.rollbackUserMessage(message)
 		}
 	}()
 
@@ -412,15 +431,18 @@ func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStre
 	p.metrics.LastActiveAt = time.Now()
 	p.mu.Unlock()
 
-	p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
-
 	stream := newChatStream()
 
 	go func() {
+		p.sendMu.Lock()
+		defer p.sendMu.Unlock()
+
 		ctx, cancel := p.withProcessCancel(ctx)
 		defer cancel()
 		defer close(stream.events)
 		defer close(stream.done)
+
+		p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
 
 		response, err := p.executeLLMStreamRich(ctx, message, stream.events)
 		stream.mu.Lock()
@@ -430,6 +452,8 @@ func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStre
 
 		if err == nil {
 			p.addMessage(llm.Message{Role: llm.RoleAssistant, Content: response})
+		} else {
+			p.rollbackUserMessage(message)
 		}
 	}()
 
@@ -618,6 +642,30 @@ func (p *Process) addMessage(msg llm.Message) {
 			trimmed := make([]llm.Message, len(p.messages)-newHead)
 			copy(trimmed, p.messages[newHead:])
 			p.messages = trimmed
+		}
+	}
+}
+
+// rollbackUserMessage removes the trailing user message appended by a Send
+// variant whose LLM turn failed without producing an assistant reply. Callers
+// must hold sendMu, which guarantees the trailing message is still the one
+// this turn appended. The agent's ContextManager mirror is rolled back too
+// when it supports removal (see memory.TokenBudgetContext.RemoveLastIf).
+func (p *Process) rollbackUserMessage(content string) {
+	p.mu.Lock()
+	if n := len(p.messages); n > 0 {
+		last := p.messages[n-1]
+		if last.Role == llm.RoleUser && last.Content == content {
+			p.messages = p.messages[:n-1]
+		}
+	}
+	p.mu.Unlock()
+
+	if p.Agent.Context != nil {
+		if r, ok := p.Agent.Context.(interface {
+			RemoveLastIf(role llm.Role, content string) bool
+		}); ok {
+			r.RemoveLastIf(llm.RoleUser, content)
 		}
 	}
 }
