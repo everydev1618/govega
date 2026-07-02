@@ -2,6 +2,7 @@ package vega
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -751,13 +752,14 @@ func TestAutomaticRestartWithSupervision(t *testing.T) {
 	o := NewOrchestrator(WithLLM(&mockLLM{}))
 	agent := Agent{Name: "TestAgent"}
 
-	restartCount := 0
+	// restartCount is written from the async restart goroutine, so guard it.
+	var restartCount atomic.Int64
 	sup := Supervision{
 		Strategy:    Restart,
 		MaxRestarts: 2,
 		Window:      time.Minute,
 		OnRestart: func(p *Process, attempt int) {
-			restartCount = attempt
+			restartCount.Store(int64(attempt))
 		},
 	}
 
@@ -769,7 +771,7 @@ func TestAutomaticRestartWithSupervision(t *testing.T) {
 	// Wait for restart
 	time.Sleep(100 * time.Millisecond)
 
-	if restartCount == 0 {
+	if restartCount.Load() == 0 {
 		t.Error("OnRestart callback should have been called")
 	}
 }
