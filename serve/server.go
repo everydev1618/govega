@@ -954,6 +954,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 	go s.scheduler.Start(ctx)
 
+	// Periodic retention sweep — events and process snapshots grow
+	// unboundedly otherwise. Windows configurable via VEGA_RETENTION_*.
+	s.startRetentionSweeper(ctx)
+
 	// Idle agent process eviction. Composed agents that haven't been
 	// messaged in 30 minutes are unloaded; EnsureAgent re-spawns them
 	// on demand if the user comes back. Meta-agents (orchestrator,

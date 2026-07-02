@@ -404,6 +404,36 @@ func (s *PostgresStore) DeleteChatMessages(agent string) error {
 	return err
 }
 
+// SweepRetention deletes rows older than the per-table retention windows.
+func (s *PostgresStore) SweepRetention(policy RetentionPolicy) (RetentionSweepResult, error) {
+	var res RetentionSweepResult
+	now := time.Now().UTC()
+
+	sweep := func(query string, retention time.Duration, out *int64) error {
+		if retention <= 0 {
+			return nil
+		}
+		r, err := s.db.Exec(query, now.Add(-retention))
+		if err != nil {
+			return err
+		}
+		n, _ := r.RowsAffected()
+		*out = n
+		return nil
+	}
+
+	if err := sweep(`DELETE FROM events WHERE timestamp < $1`, policy.Events, &res.Events); err != nil {
+		return res, fmt.Errorf("sweep events: %w", err)
+	}
+	if err := sweep(`DELETE FROM process_snapshots WHERE snapshot_at < $1`, policy.Snapshots, &res.Snapshots); err != nil {
+		return res, fmt.Errorf("sweep process_snapshots: %w", err)
+	}
+	if err := sweep(`DELETE FROM chat_messages WHERE created_at < $1`, policy.ChatMessages, &res.ChatMessages); err != nil {
+		return res, fmt.Errorf("sweep chat_messages: %w", err)
+	}
+	return res, nil
+}
+
 // --- User memory ---
 
 func (s *PostgresStore) UpsertUserMemory(userID, agent, layer, content string) error {

@@ -64,6 +64,11 @@ type Store interface {
 	// DeleteChatMessages removes all chat messages for an agent.
 	DeleteChatMessages(agent string) error
 
+	// SweepRetention deletes rows older than the per-table retention
+	// windows. A zero duration keeps that table's rows forever. Returns
+	// the number of rows deleted per table.
+	SweepRetention(policy RetentionPolicy) (RetentionSweepResult, error)
+
 	// UpsertMemoryPage creates a page if absent, or overwrites Content +
 	// Frontmatter + advances UpdatedAt on conflict (PK = scope, scope_id,
 	// user_id, path). CreatedAt is preserved across updates. Refs govega#71.
@@ -446,6 +451,21 @@ type ActivityFilter struct {
 }
 
 // StoreEvent is a persisted orchestration event.
+// RetentionPolicy sets per-table retention windows for SweepRetention.
+// A zero duration keeps that table's rows forever.
+type RetentionPolicy struct {
+	Events       time.Duration
+	Snapshots    time.Duration
+	ChatMessages time.Duration
+}
+
+// RetentionSweepResult reports rows deleted per table by one sweep.
+type RetentionSweepResult struct {
+	Events       int64
+	Snapshots    int64
+	ChatMessages int64
+}
+
 type StoreEvent struct {
 	ID        int64     `json:"id"`
 	Type      string    `json:"type"`

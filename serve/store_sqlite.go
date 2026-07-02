@@ -63,6 +63,38 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
+// SweepRetention deletes rows older than the per-table retention windows.
+// Timestamps are bound as time.Time — the driver stores and compares them
+// in RFC3339 text form consistently with the insert paths.
+func (s *SQLiteStore) SweepRetention(policy RetentionPolicy) (RetentionSweepResult, error) {
+	var res RetentionSweepResult
+	now := time.Now().UTC()
+
+	sweep := func(query string, retention time.Duration, out *int64) error {
+		if retention <= 0 {
+			return nil
+		}
+		r, err := s.db.Exec(query, now.Add(-retention))
+		if err != nil {
+			return err
+		}
+		n, _ := r.RowsAffected()
+		*out = n
+		return nil
+	}
+
+	if err := sweep(`DELETE FROM events WHERE timestamp < ?`, policy.Events, &res.Events); err != nil {
+		return res, fmt.Errorf("sweep events: %w", err)
+	}
+	if err := sweep(`DELETE FROM process_snapshots WHERE snapshot_at < ?`, policy.Snapshots, &res.Snapshots); err != nil {
+		return res, fmt.Errorf("sweep process_snapshots: %w", err)
+	}
+	if err := sweep(`DELETE FROM chat_messages WHERE created_at < ?`, policy.ChatMessages, &res.ChatMessages); err != nil {
+		return res, fmt.Errorf("sweep chat_messages: %w", err)
+	}
+	return res, nil
+}
+
 // Init creates the schema tables.
 func (s *SQLiteStore) Init() error {
 	schema := `
@@ -303,6 +335,8 @@ func (s *SQLiteStore) Init() error {
 	CREATE INDEX IF NOT EXISTS idx_events_process ON events(process_id);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_process ON process_snapshots(process_id);
+	CREATE INDEX IF NOT EXISTS idx_snapshots_at ON process_snapshots(snapshot_at);
+	CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at);
 	CREATE INDEX IF NOT EXISTS idx_workflow_runs_id ON workflow_runs(run_id);
 	CREATE INDEX IF NOT EXISTS idx_chat_agent ON chat_messages(agent);
 	`
