@@ -126,18 +126,20 @@ func (t *Tools) LoadFile(path string) error {
 
 // mergeSettings returns a new params map with settings as defaults, user params taking precedence.
 func (t *Tools) mergeSettings(params map[string]any) map[string]any {
+	// Copy settings into the merged map while holding the lock — SetSetting
+	// mutates t.settings in place under the write lock, so iterating it after
+	// releasing the lock would race.
 	t.mu.RLock()
-	settings := t.settings
-	t.mu.RUnlock()
-
-	if len(settings) == 0 {
+	if len(t.settings) == 0 {
+		t.mu.RUnlock()
 		return params
 	}
-
-	merged := make(map[string]any, len(settings)+len(params))
-	for k, v := range settings {
+	merged := make(map[string]any, len(t.settings)+len(params))
+	for k, v := range t.settings {
 		merged[k] = v
 	}
+	t.mu.RUnlock()
+
 	for k, v := range params {
 		merged[k] = v // user params take precedence
 	}

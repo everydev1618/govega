@@ -440,18 +440,19 @@ func (t *Tools) executeInContainer(ctx context.Context, name string, params map[
 // Schema returns the schemas for all tools.
 // If a skillsRef is set, tools declared by matched skills are also included.
 func (t *Tools) Schema() []llm.ToolSchema {
+	// Iterate t.tools while holding the lock and copy out the values — a
+	// concurrent Register/DisconnectMCPServer mutates the same map under the
+	// write lock, so iterating it after releasing the lock would race.
 	t.mu.RLock()
-	localTools := t.tools
-	sp := t.skillsRef
-	p := t.parent
-	t.mu.RUnlock()
-
-	seen := make(map[string]bool, len(localTools))
-	schemas := make([]llm.ToolSchema, 0, len(localTools))
-	for _, tl := range localTools {
+	seen := make(map[string]bool, len(t.tools))
+	schemas := make([]llm.ToolSchema, 0, len(t.tools))
+	for _, tl := range t.tools {
 		schemas = append(schemas, tl.schema)
 		seen[tl.name] = true
 	}
+	sp := t.skillsRef
+	p := t.parent
+	t.mu.RUnlock()
 
 	// Augment with skill-declared tools from the parent.
 	if sp != nil && p != nil {

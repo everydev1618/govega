@@ -290,7 +290,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	// role definition leads and the norm refines how it writes. The
 	// parser already validates that `norm` resolves to a defined norm.
 	if def.Norm != "" {
-		if n, ok := i.doc.Norms[def.Norm]; ok && strings.TrimSpace(n.System) != "" {
+		if n, ok := i.normDefLocked(def.Norm); ok && strings.TrimSpace(n.System) != "" {
 			systemStr += "\n\n## Writing norm: " + def.Norm + "\n\n" + strings.TrimSpace(n.System)
 		}
 	}
@@ -331,7 +331,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		bbEnabled := def.Delegation != nil && def.Delegation.Blackboard
 		descs := make(map[string]string, len(def.Team))
 		for _, member := range def.Team {
-			if memberDef, ok := i.doc.Agents[member]; ok {
+			if memberDef, ok := i.agentDefLocked(member); ok {
 				if first, _, ok := strings.Cut(strings.TrimSpace(memberDef.System), "\n"); ok {
 					descs[member] = first
 				} else {
@@ -547,7 +547,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 
 	// Handle extends (merge parent config)
 	if def.Extends != "" {
-		parent, ok := i.doc.Agents[def.Extends]
+		parent, ok := i.agentDefLocked(def.Extends)
 		if ok {
 			if agent.Model == "" {
 				agent.Model = parent.Model
@@ -607,7 +607,7 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	}
 
 	// Check if this agent is a team member of another agent and join that group.
-	for leaderName, leaderDef := range i.doc.Agents {
+	for leaderName, leaderDef := range i.snapshotAgents() {
 		for _, member := range leaderDef.Team {
 			if member == name {
 				groupName := "team:" + leaderName
@@ -784,7 +784,7 @@ func (i *Interpreter) ensureAgent(name string) (*vega.Process, error) {
 		i.mu.Unlock()
 	}
 
-	agentDef, exists := i.doc.Agents[name]
+	agentDef, exists := i.agentDefLocked(name)
 	if !exists {
 		return nil, fmt.Errorf("agent '%s' not found", name)
 	}
@@ -1476,6 +1476,37 @@ func (i *Interpreter) HasAgent(name string) bool {
 	defer i.mu.RUnlock()
 	_, ok := i.doc.Agents[name]
 	return ok
+}
+
+// agentDefLocked reads a single agent definition under the read lock. Use this
+// instead of touching i.doc.Agents directly from paths that don't already hold
+// i.mu — AddAgent/RemoveAgent mutate the map concurrently.
+func (i *Interpreter) agentDefLocked(name string) (*Agent, bool) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	def, ok := i.doc.Agents[name]
+	return def, ok
+}
+
+// normDefLocked reads a single norm definition under the read lock.
+func (i *Interpreter) normDefLocked(name string) (*Norm, bool) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	n, ok := i.doc.Norms[name]
+	return n, ok
+}
+
+// snapshotAgents returns a shallow copy of the agent-definition map so callers
+// can iterate without holding i.mu across the loop body (and without racing a
+// concurrent AddAgent/RemoveAgent).
+func (i *Interpreter) snapshotAgents() map[string]*Agent {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	out := make(map[string]*Agent, len(i.doc.Agents))
+	for k, v := range i.doc.Agents {
+		out[k] = v
+	}
+	return out
 }
 
 // augmentReadChannel ensures agents that can post to channels can also read
