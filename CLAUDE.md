@@ -7,12 +7,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 go build ./...                          # Compile all packages (quick check)
 make build                              # Full build: frontend + Go binary → bin/vega
-go test ./...                           # Run all tests
+go test ./...                           # Run all tests (unit + fast e2e)
+go test -short ./serve                  # Skip the slow (~45s) restart e2e scenarios
 go test ./dsl -v                        # Test a specific package
 go test -run TestInterpreter ./dsl      # Run a single test
 ```
 
 The frontend (React 19 + Vite + Tailwind) is embedded via `//go:embed` in `serve/embed.go`. To build it separately: `make frontend-build`.
+
+## Testing
+
+Three tiers. Every change gets unit tests (TDD: write the failing test first, verify it fails, implement, verify pass); the e2e tiers cover what unit tests can't.
+
+**Unit/integration** — colocated `*_test.go` throughout. Store-layer tests that must work on both backends use `forEachStore` (`serve/store_dual_test.go`): SQLite always runs; the Postgres subtest runs only when `VEGA_TEST_POSTGRES_URL` is set, otherwise skips.
+
+**Deterministic full-stack e2e** — `serve/e2e_test.go` boots a real `Server` over HTTP with a scripted LLM (`fullstackLLM`, routed by system-prompt markers) and a real SQLite file. Covers the whole boot path, SSE chat with tool loops (incl. typed-block replay), workflow interruption across a server restart, and a real MCP stdio subprocess (`serve/testdata/mcpecho`) reconnecting from persistence. No tokens, loopback only; the restart scenarios skip under `-short`. Extend these when a change spans layers (handler ↔ interpreter ↔ store) or alters restart/boot behavior.
+
+**Live API smoke** — `live_smoke_test.go` (root package) runs against the real Anthropic API:
+
+```bash
+VEGA_E2E_LIVE=1 go test -run TestLive .   # needs ANTHROPIC_API_KEY; ~6¢ on claude-sonnet-4-6
+```
+
+Validates what fakes cannot: the API *accepting* our wire format — thinking-block replay with signatures during tool loops (sync + streaming), prompt-cache breakpoints, cost accounting from real usage. Run before releases and after any change to `llm/` request building, the model tables, or content-block handling. Not part of default CI.
+
+**Known flake**: the `TestHandleCreateAgent_*` family in `serve/handlers_population_test.go` fails rarely — only in full-suite runs (never isolated), clustering on the first run after a rebuild. A bare re-run passes. Pre-existing timing sensitivity; don't chase it as a regression of your change unless it reproduces in isolation.
 
 ## Architecture
 
