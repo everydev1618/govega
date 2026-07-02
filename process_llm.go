@@ -155,6 +155,99 @@ func sendEvent(ctx context.Context, ch chan<- ChatEvent, ev ChatEvent) bool {
 }
 
 // executeLLMLoop runs the LLM call loop, handling tool calls.
+// blockCollector assembles ordered typed content blocks from stream events
+// so the assistant turn can be replayed to the API with thinking blocks
+// (text + signature) and tool_use blocks intact. handle returns the
+// finalized tool call when a tool_use block closes, nil otherwise.
+type blockCollector struct {
+	blocks    []llm.ContentBlock
+	toolCalls []llm.ToolCall
+	open      string // type of the currently open block, "" when none
+	toolJSON  string
+}
+
+func (c *blockCollector) handle(ev llm.StreamEvent) *llm.ToolCall {
+	switch ev.Type {
+	case llm.StreamEventThinkingStart:
+		c.blocks = append(c.blocks, llm.ContentBlock{Type: llm.BlockThinking})
+		c.open = llm.BlockThinking
+	case llm.StreamEventThinkingDelta:
+		if c.open == llm.BlockThinking {
+			c.blocks[len(c.blocks)-1].Text += ev.Delta
+		}
+	case llm.StreamEventThinkingSignature:
+		if c.open == llm.BlockThinking {
+			c.blocks[len(c.blocks)-1].Signature += ev.Delta
+		}
+	case llm.StreamEventContentStart:
+		c.blocks = append(c.blocks, llm.ContentBlock{Type: llm.BlockText})
+		c.open = llm.BlockText
+	case llm.StreamEventContentDelta:
+		// Some backends emit deltas without a content_start.
+		if c.open != llm.BlockText {
+			c.blocks = append(c.blocks, llm.ContentBlock{Type: llm.BlockText})
+			c.open = llm.BlockText
+		}
+		c.blocks[len(c.blocks)-1].Text += ev.Delta
+	case llm.StreamEventToolStart:
+		if ev.ToolCall != nil {
+			c.blocks = append(c.blocks, llm.ContentBlock{
+				Type: llm.BlockToolUse,
+				ID:   ev.ToolCall.ID,
+				Name: ev.ToolCall.Name,
+			})
+			c.open = llm.BlockToolUse
+			c.toolJSON = ""
+		}
+	case llm.StreamEventToolDelta:
+		if c.open == llm.BlockToolUse {
+			c.toolJSON += ev.Delta
+		}
+	case llm.StreamEventContentEnd:
+		wasTool := c.open == llm.BlockToolUse
+		c.open = ""
+		if wasTool {
+			last := &c.blocks[len(c.blocks)-1]
+			args := make(map[string]any)
+			if c.toolJSON != "" {
+				json.Unmarshal([]byte(c.toolJSON), &args)
+			}
+			c.toolJSON = ""
+			last.Arguments = args
+			call := llm.ToolCall{ID: last.ID, Name: last.Name, Arguments: args}
+			c.toolCalls = append(c.toolCalls, call)
+			return &call
+		}
+	}
+	return nil
+}
+
+// assistantTurnMessage builds the assistant message to replay in the tool
+// loop. Backends with typed block support supply blocks (thinking, text,
+// tool_use); for the rest the turn is synthesized from the flat fields.
+func assistantTurnMessage(content string, blocks []llm.ContentBlock, toolCalls []llm.ToolCall) llm.Message {
+	if len(blocks) == 0 {
+		if strings.TrimSpace(content) != "" {
+			blocks = append(blocks, llm.ContentBlock{Type: llm.BlockText, Text: content})
+		}
+		for _, tc := range toolCalls {
+			blocks = append(blocks, llm.ContentBlock{
+				Type:      llm.BlockToolUse,
+				ID:        tc.ID,
+				Name:      tc.Name,
+				Arguments: tc.Arguments,
+			})
+		}
+	}
+	return llm.Message{Role: llm.RoleAssistant, Content: content, Blocks: blocks}
+}
+
+// toolResultsMessage builds the user message carrying typed tool_result
+// blocks for the executed calls.
+func toolResultsMessage(results []llm.ContentBlock) llm.Message {
+	return llm.Message{Role: llm.RoleUser, Blocks: results}
+}
+
 func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, CallMetrics, error) {
 	metrics := CallMetrics{}
 
@@ -195,24 +288,16 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 			return resp.Content, metrics, nil
 		}
 
-		// Build assistant message with text + tool_use blocks so the API
-		// sees proper tool invocations on the next iteration.
-		assistantContent := resp.Content
-		for _, tc := range resp.ToolCalls {
-			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
-		}
-		if strings.TrimSpace(assistantContent) != "" {
-			messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: assistantContent})
-		}
+		// Replay the assistant turn with typed blocks (thinking, text,
+		// tool_use) so the API sees the exact structure on the next
+		// iteration — no markup round trip.
+		messages = append(messages, assistantTurnMessage(resp.Content, resp.Blocks, resp.ToolCalls))
 
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
 
 		// Execute all tool calls in parallel and collect results.
-		type toolResult struct {
-			id, name, result string
-		}
-		results := make([]toolResult, len(resp.ToolCalls))
+		results := make([]llm.ContentBlock, len(resp.ToolCalls))
 		var wg sync.WaitGroup
 		for i, tc := range resp.ToolCalls {
 			metrics.ToolCalls = append(metrics.ToolCalls, tc.Name)
@@ -223,22 +308,17 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 				if err != nil {
 					result = "Error: " + err.Error()
 				}
-				results[idx] = toolResult{tc.ID, tc.Name, result}
+				results[idx] = llm.ContentBlock{
+					Type:      llm.BlockToolResult,
+					ToolUseID: tc.ID,
+					Content:   result,
+					IsError:   err != nil,
+				}
 			}(i, tc)
 		}
 		wg.Wait()
 
-		var toolResults strings.Builder
-		for _, tr := range results {
-			toolResults.WriteString(formatToolResult(tr.id, tr.name, tr.result))
-			toolResults.WriteString("\n")
-		}
-		if toolResults.Len() > 0 {
-			messages = append(messages, llm.Message{
-				Role:    llm.RoleUser,
-				Content: strings.TrimSpace(toolResults.String()),
-			})
-		}
+		messages = append(messages, toolResultsMessage(results))
 	}
 
 	return "", metrics, ErrMaxIterationsExceeded
@@ -272,76 +352,40 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 			return fullResponse, err
 		}
 
-		// Collect response and tool calls from this iteration
+		// Collect this iteration's typed blocks and tool calls.
 		var iterResponse string
-		var toolCalls []llm.ToolCall
-		var currentToolCall *llm.ToolCall
-		var currentToolJSON string
+		collector := &blockCollector{}
 
 		for event := range eventCh {
 			if event.Error != nil {
 				return fullResponse, event.Error
 			}
 
-			switch event.Type {
-			case llm.StreamEventContentDelta:
-				if event.Delta != "" {
-					if !sendChunk(ctx, chunks, event.Delta) {
-						return fullResponse, ctx.Err()
-					}
-					iterResponse += event.Delta
-					fullResponse += event.Delta
+			collector.handle(event)
+
+			if event.Type == llm.StreamEventContentDelta && event.Delta != "" {
+				if !sendChunk(ctx, chunks, event.Delta) {
+					return fullResponse, ctx.Err()
 				}
-			case llm.StreamEventToolStart:
-				if event.ToolCall != nil {
-					currentToolCall = &llm.ToolCall{
-						ID:        event.ToolCall.ID,
-						Name:      event.ToolCall.Name,
-						Arguments: make(map[string]any),
-					}
-					currentToolJSON = ""
-				}
-			case llm.StreamEventToolDelta:
-				if currentToolCall != nil {
-					currentToolJSON += event.Delta
-				}
-			case llm.StreamEventContentEnd:
-				// If we were building a tool call, finalize it
-				if currentToolCall != nil {
-					if currentToolJSON != "" {
-						json.Unmarshal([]byte(currentToolJSON), &currentToolCall.Arguments)
-					}
-					toolCalls = append(toolCalls, *currentToolCall)
-					currentToolCall = nil
-					currentToolJSON = ""
-				}
+				iterResponse += event.Delta
+				fullResponse += event.Delta
 			}
 		}
 
 		// If no tool calls, we're done
-		if len(toolCalls) == 0 {
+		if len(collector.toolCalls) == 0 {
 			return fullResponse, nil
 		}
 
-		// Build assistant message with text + tool_use blocks.
-		assistantContent := iterResponse
-		for _, tc := range toolCalls {
-			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
-		}
-		if strings.TrimSpace(assistantContent) != "" {
-			messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: assistantContent})
-		}
+		messages = append(messages, assistantTurnMessage(iterResponse, collector.blocks, collector.toolCalls))
 
 		// Create context with process for tool execution
 		toolCtx := ContextWithProcess(ctx, p)
 
 		// Execute all tool calls in parallel and collect results.
-		type streamToolResult struct {
-			id, name, result string
-		}
-		streamResults := make([]streamToolResult, len(toolCalls))
+		streamResults := make([]llm.ContentBlock, len(collector.toolCalls))
 		var wg sync.WaitGroup
-		for i, tc := range toolCalls {
+		for i, tc := range collector.toolCalls {
 			p.mu.Lock()
 			p.metrics.ToolCalls++
 			p.mu.Unlock()
@@ -352,22 +396,17 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 				if err != nil {
 					result = "Error: " + err.Error()
 				}
-				streamResults[idx] = streamToolResult{tc.ID, tc.Name, result}
+				streamResults[idx] = llm.ContentBlock{
+					Type:      llm.BlockToolResult,
+					ToolUseID: tc.ID,
+					Content:   result,
+					IsError:   err != nil,
+				}
 			}(i, tc)
 		}
 		wg.Wait()
 
-		var toolResults strings.Builder
-		for _, tr := range streamResults {
-			toolResults.WriteString(formatToolResult(tr.id, tr.name, tr.result))
-			toolResults.WriteString("\n")
-		}
-		if toolResults.Len() > 0 {
-			messages = append(messages, llm.Message{
-				Role:    llm.RoleUser,
-				Content: strings.TrimSpace(toolResults.String()),
-			})
-		}
+		messages = append(messages, toolResultsMessage(streamResults))
 	}
 
 	return fullResponse, ErrMaxIterationsExceeded
@@ -419,14 +458,14 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		}
 
 		var iterResponse string
-		var toolCalls []llm.ToolCall
-		var currentToolCall *llm.ToolCall
-		var currentToolJSON string
+		collector := &blockCollector{}
 
 		for ev := range eventCh {
 			if ev.Error != nil {
 				return fullResponse, ev.Error
 			}
+
+			finishedTool := collector.handle(ev)
 
 			switch ev.Type {
 			case llm.StreamEventMessageStart:
@@ -443,64 +482,39 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 					iterResponse += ev.Delta
 					fullResponse += ev.Delta
 				}
-			case llm.StreamEventToolStart:
-				if ev.ToolCall != nil {
-					currentToolCall = &llm.ToolCall{
-						ID:        ev.ToolCall.ID,
-						Name:      ev.ToolCall.Name,
-						Arguments: make(map[string]any),
-					}
-					currentToolJSON = ""
-				}
-			case llm.StreamEventToolDelta:
-				if currentToolCall != nil {
-					currentToolJSON += ev.Delta
-				}
 			case llm.StreamEventContentEnd:
-				if currentToolCall != nil {
-					if currentToolJSON != "" {
-						json.Unmarshal([]byte(currentToolJSON), &currentToolCall.Arguments)
-					}
+				if finishedTool != nil {
 					// Emit tool_start with complete arguments.
 					if !sendEvent(ctx, events, ChatEvent{
 						Type:       ChatEventToolStart,
-						ToolCallID: currentToolCall.ID,
-						ToolName:   currentToolCall.Name,
-						Arguments:  currentToolCall.Arguments,
+						ToolCallID: finishedTool.ID,
+						ToolName:   finishedTool.Name,
+						Arguments:  finishedTool.Arguments,
 					}) {
 						return fullResponse, ctx.Err()
 					}
-					toolCalls = append(toolCalls, *currentToolCall)
-					currentToolCall = nil
-					currentToolJSON = ""
 				}
 			}
 		}
 
-		if len(toolCalls) == 0 {
+		if len(collector.toolCalls) == 0 {
 			return fullResponse, nil
 		}
 
-		// Build assistant message with text + tool_use blocks.
-		assistantContent := iterResponse
-		for _, tc := range toolCalls {
-			assistantContent += "\n" + formatToolCall(tc.ID, tc.Name, tc.Arguments)
-		}
-		if strings.TrimSpace(assistantContent) != "" {
-			messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: assistantContent})
-		}
+		messages = append(messages, assistantTurnMessage(iterResponse, collector.blocks, collector.toolCalls))
 
 		toolCtx := ContextWithProcess(ctx, p)
 		toolCtx = ContextWithEventSink(toolCtx, events)
 
 		// Execute all tool calls in parallel and collect results.
 		type richToolResult struct {
-			id, name, result string
-			elapsed          int64
+			block   llm.ContentBlock
+			name    string
+			elapsed int64
 		}
-		richResults := make([]richToolResult, len(toolCalls))
+		richResults := make([]richToolResult, len(collector.toolCalls))
 		var wg sync.WaitGroup
-		for i, tc := range toolCalls {
+		for i, tc := range collector.toolCalls {
 			p.mu.Lock()
 			p.metrics.ToolCalls++
 			p.mu.Unlock()
@@ -513,38 +527,41 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 				if execErr != nil {
 					result = "Error: " + execErr.Error()
 				}
-				richResults[idx] = richToolResult{tc.ID, tc.Name, result, elapsed}
+				richResults[idx] = richToolResult{
+					block: llm.ContentBlock{
+						Type:      llm.BlockToolResult,
+						ToolUseID: tc.ID,
+						Content:   result,
+						IsError:   execErr != nil,
+					},
+					name:    tc.Name,
+					elapsed: elapsed,
+				}
 			}(i, tc)
 		}
 		wg.Wait()
 
-		// Emit tool end events and build result message in order.
-		var toolResults strings.Builder
+		// Emit tool end events and build the result message in order.
+		resultBlocks := make([]llm.ContentBlock, 0, len(richResults))
 		for _, tr := range richResults {
 			if !sendEvent(ctx, events, ChatEvent{
 				Type:       ChatEventToolEnd,
-				ToolCallID: tr.id,
+				ToolCallID: tr.block.ToolUseID,
 				ToolName:   tr.name,
-				Result:     tr.result,
+				Result:     tr.block.Content,
 				DurationMs: tr.elapsed,
 			}) {
 				return fullResponse, ctx.Err()
 			}
-			toolResults.WriteString(formatToolResult(tr.id, tr.name, tr.result))
-			toolResults.WriteString("\n")
+			resultBlocks = append(resultBlocks, tr.block)
 		}
-		if toolResults.Len() > 0 {
-			messages = append(messages, llm.Message{
-				Role:    llm.RoleUser,
-				Content: strings.TrimSpace(toolResults.String()),
-			})
-			// Separate tool results from next LLM response with a newline
-			// so streamed text doesn't concatenate without whitespace.
-			if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: "\n\n"}) {
-				return fullResponse, ctx.Err()
-			}
-			fullResponse += "\n\n"
+		messages = append(messages, toolResultsMessage(resultBlocks))
+		// Separate tool results from the next LLM response with a newline
+		// so streamed text doesn't concatenate without whitespace.
+		if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: "\n\n"}) {
+			return fullResponse, ctx.Err()
 		}
+		fullResponse += "\n\n"
 	}
 
 	return fullResponse, ErrMaxIterationsExceeded

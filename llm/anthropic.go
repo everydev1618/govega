@@ -175,11 +175,14 @@ type anthropicMsg struct {
 type contentBlock struct {
 	Type      string         `json:"type"`
 	Text      string         `json:"text,omitempty"`
+	Thinking  string         `json:"thinking,omitempty"`
+	Signature string         `json:"signature,omitempty"`
 	ID        string         `json:"id,omitempty"`
 	Name      string         `json:"name,omitempty"`
 	Input     map[string]any `json:"input,omitempty"`
 	ToolUseID string         `json:"tool_use_id,omitempty"`
 	Content   string         `json:"content,omitempty"`
+	IsError   bool           `json:"is_error,omitempty"`
 }
 
 
@@ -416,8 +419,20 @@ func (a *AnthropicLLM) buildRequestCtx(ctx context.Context, messages []Message, 
 			continue
 		}
 
-		// Messages containing <tool_use> or <tool_result> XML need to be
-		// converted into structured content blocks for the Anthropic API.
+		// Typed content blocks convert directly — no markup round trip.
+		if len(msg.Blocks) > 0 {
+			if blocks := blocksToAnthropic(msg.Blocks); len(blocks) > 0 {
+				anthropicMsgs = append(anthropicMsgs, anthropicMsg{
+					Role:    string(msg.Role),
+					Content: blocks,
+				})
+			}
+			continue
+		}
+
+		// Legacy path: messages containing <tool_use> or <tool_result> XML
+		// (persisted history from older versions) are re-parsed into
+		// structured content blocks.
 		if strings.Contains(msg.Content, "<tool_use ") || strings.Contains(msg.Content, "<tool_result ") {
 			blocks := parseToolBlocks(msg.Content)
 			if len(blocks) > 0 {
@@ -492,6 +507,55 @@ func markTrailingMessageForCache(msg *anthropicMsg) {
 		}
 		last["cache_control"] = map[string]any{"type": "ephemeral"}
 	}
+}
+
+// blocksToAnthropic converts typed ContentBlocks into Anthropic API content
+// blocks. API-invalid blocks are dropped: empty text blocks are rejected by
+// the API, and thinking blocks without a signature cannot be replayed.
+// Returns []any of maps so markTrailingMessageForCache can annotate the
+// trailing block.
+func blocksToAnthropic(blocks []ContentBlock) []any {
+	out := make([]any, 0, len(blocks))
+	for _, b := range blocks {
+		switch b.Type {
+		case BlockText:
+			if b.Text == "" {
+				continue
+			}
+			out = append(out, map[string]any{"type": "text", "text": b.Text})
+		case BlockThinking:
+			if b.Signature == "" {
+				continue
+			}
+			out = append(out, map[string]any{
+				"type":      "thinking",
+				"thinking":  b.Text,
+				"signature": b.Signature,
+			})
+		case BlockToolUse:
+			args := b.Arguments
+			if args == nil {
+				args = map[string]any{}
+			}
+			out = append(out, map[string]any{
+				"type":  "tool_use",
+				"id":    b.ID,
+				"name":  b.Name,
+				"input": args,
+			})
+		case BlockToolResult:
+			blk := map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": b.ToolUseID,
+				"content":     b.Content,
+			}
+			if b.IsError {
+				blk["is_error"] = true
+			}
+			out = append(out, blk)
+		}
+	}
+	return out
 }
 
 // parseToolBlocks converts message text containing XML tool_use/tool_result
@@ -772,20 +836,32 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 		result.StopReason = StopReasonContextExceeded
 	}
 
-	// Parse content blocks
+	// Parse content blocks — kept both as the legacy flat fields and as
+	// ordered typed Blocks so callers can replay the turn losslessly.
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "text":
 			result.Content += block.Text
+			result.Blocks = append(result.Blocks, ContentBlock{Type: BlockText, Text: block.Text})
 		case "tool_use":
 			result.ToolCalls = append(result.ToolCalls, ToolCall{
 				ID:        block.ID,
 				Name:      block.Name,
 				Arguments: block.Input,
 			})
+			result.Blocks = append(result.Blocks, ContentBlock{
+				Type:      BlockToolUse,
+				ID:        block.ID,
+				Name:      block.Name,
+				Arguments: block.Input,
+			})
 		case "thinking":
-			// Extended thinking block — logged but not included in response content.
-			slog.Debug("thinking block", "length", len(block.Text))
+			slog.Debug("thinking block", "length", len(block.Thinking))
+			result.Blocks = append(result.Blocks, ContentBlock{
+				Type:      BlockThinking,
+				Text:      block.Thinking,
+				Signature: block.Signature,
+			})
 		}
 	}
 
@@ -882,7 +958,7 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 				},
 			}
 		case "thinking":
-			// Thinking block start — silently consumed.
+			eventCh <- StreamEvent{Type: StreamEventThinkingStart}
 		default:
 			eventCh <- StreamEvent{Type: StreamEventContentStart}
 		}
@@ -893,6 +969,7 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 				Type        string `json:"type"`
 				Text        string `json:"text"`
 				Thinking    string `json:"thinking"`
+				Signature   string `json:"signature"`
 				PartialJSON string `json:"partial_json"`
 			} `json:"delta"`
 		}
@@ -909,7 +986,17 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 				Delta: delta.Delta.PartialJSON,
 			}
 		case "thinking_delta":
-			// Thinking deltas — silently consumed (not shown to user).
+			// Forwarded (not shown to users) so callers can replay the
+			// thinking block on the next request of the turn.
+			eventCh <- StreamEvent{
+				Type:  StreamEventThinkingDelta,
+				Delta: delta.Delta.Thinking,
+			}
+		case "signature_delta":
+			eventCh <- StreamEvent{
+				Type:  StreamEventThinkingSignature,
+				Delta: delta.Delta.Signature,
+			}
 		}
 
 	case "content_block_stop":

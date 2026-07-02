@@ -241,7 +241,14 @@ func (o *OpenAILLM) buildRequest(messages []Message, tools []ToolSchema, stream 
 			continue
 		}
 
-		// Parse tool XML blocks in messages, same as the Anthropic backend.
+		// Typed content blocks convert directly to native OpenAI shapes.
+		if len(msg.Blocks) > 0 {
+			req.Messages = append(req.Messages, blocksToOpenAI(string(msg.Role), msg.Blocks)...)
+			continue
+		}
+
+		// Legacy path: messages containing tool XML (persisted history from
+		// older versions) are re-parsed, same as the Anthropic backend.
 		if strings.Contains(msg.Content, "<tool_use ") || strings.Contains(msg.Content, "<tool_result ") {
 			oaiMsgs := convertToolXMLToOpenAI(string(msg.Role), msg.Content)
 			if len(oaiMsgs) > 0 {
@@ -268,6 +275,67 @@ func (o *OpenAILLM) buildRequest(messages []Message, tools []ToolSchema, stream 
 	}
 
 	return req
+}
+
+// blocksToOpenAI converts typed ContentBlocks into OpenAI-format messages.
+// Text and tool_use blocks merge into a single message per run (OpenAI
+// carries text and tool_calls together); each tool_result becomes its own
+// role:"tool" message. Thinking blocks have no OpenAI representation and
+// are dropped.
+func blocksToOpenAI(role string, blocks []ContentBlock) []openaiMsg {
+	var msgs []openaiMsg
+	var text string
+	var calls []openaiToolCall
+
+	flush := func() {
+		if text == "" && len(calls) == 0 {
+			return
+		}
+		msgs = append(msgs, openaiMsg{Role: role, Content: text, ToolCalls: calls})
+		text = ""
+		calls = nil
+	}
+
+	for _, b := range blocks {
+		switch b.Type {
+		case BlockText:
+			if b.Text == "" {
+				continue
+			}
+			if text != "" {
+				text += "\n"
+			}
+			text += b.Text
+		case BlockToolUse:
+			args := b.Arguments
+			if args == nil {
+				args = map[string]any{}
+			}
+			argsJSON, _ := json.Marshal(args)
+			calls = append(calls, openaiToolCall{
+				ID:   b.ID,
+				Type: "function",
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{
+					Name:      b.Name,
+					Arguments: string(argsJSON),
+				},
+			})
+		case BlockToolResult:
+			flush()
+			msgs = append(msgs, openaiMsg{
+				Role:       "tool",
+				Content:    b.Content,
+				ToolCallID: b.ToolUseID,
+			})
+		case BlockThinking:
+			// Not representable in the OpenAI chat format.
+		}
+	}
+	flush()
+	return msgs
 }
 
 // convertToolXMLToOpenAI converts messages containing tool XML into proper

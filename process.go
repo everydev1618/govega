@@ -2,9 +2,7 @@ package vega
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"html"
 	"strings"
 	"sync"
 	"time"
@@ -717,27 +715,14 @@ func (p *Process) buildMessages() []llm.Message {
 		p.mu.RUnlock()
 	}
 
-	// Filter out any messages with empty content to prevent API errors
+	// Filter out messages with no content at all to prevent API errors.
+	// Messages carrying typed Blocks are kept regardless of Content.
 	filtered := make([]llm.Message, 0, len(messages))
 	for _, msg := range messages {
-		if strings.TrimSpace(msg.Content) != "" {
+		if len(msg.Blocks) > 0 || strings.TrimSpace(msg.Content) != "" {
 			filtered = append(filtered, msg)
 		}
 	}
 
 	return filtered
-}
-
-// formatToolResult formats a tool result for the LLM. The result payload is
-// HTML-escaped so a tool returning literal <tool_result>/<tool_use> markup
-// (e.g. fetched web content or MCP output) can't forge blocks in the
-// conversation history; the llm backend unescapes it before sending to the API.
-func formatToolResult(id, name, result string) string {
-	return "<tool_result tool_use_id=\"" + id + "\" name=\"" + name + "\">\n" + html.EscapeString(result) + "\n</tool_result>"
-}
-
-// formatToolCall formats a tool call for the assistant message.
-func formatToolCall(id, name string, args map[string]any) string {
-	argsJSON, _ := json.Marshal(args)
-	return "<tool_use id=\"" + id + "\" name=\"" + name + "\">\n" + string(argsJSON) + "\n</tool_use>"
 }

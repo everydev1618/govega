@@ -575,13 +575,17 @@ func TestAgenticToolExecution(t *testing.T) {
 		lastCall := callingLLM.calls[1]
 		foundErrorResult := false
 		for _, msg := range lastCall {
-			if msg.Role == llm.RoleUser && contains(msg.Content, "Error:") {
-				foundErrorResult = true
-				break
+			if msg.Role != llm.RoleUser {
+				continue
+			}
+			for _, b := range msg.Blocks {
+				if b.Type == llm.BlockToolResult && b.IsError && contains(b.Content, "Error:") {
+					foundErrorResult = true
+				}
 			}
 		}
 		if !foundErrorResult {
-			t.Error("Tool error was not sent back to LLM")
+			t.Error("Tool error was not sent back to LLM as an is_error tool_result block")
 		}
 	})
 

@@ -16,9 +16,51 @@ type LLM interface {
 }
 
 // Message represents a conversation message.
+//
+// Content carries plain text. Blocks, when non-empty, carries the full
+// typed structure of the turn (text, thinking, tool_use, tool_result) and
+// takes precedence over Content when building API requests — backends
+// convert Blocks directly instead of round-tripping tool activity through
+// XML markup in Content.
 type Message struct {
 	Role    Role
 	Content string
+	Blocks  []ContentBlock `json:"Blocks,omitempty"`
+}
+
+// Content block types.
+const (
+	BlockText       = "text"
+	BlockThinking   = "thinking"
+	BlockToolUse    = "tool_use"
+	BlockToolResult = "tool_result"
+)
+
+// ContentBlock is one typed unit of message content. Exactly one group of
+// fields is meaningful per Type:
+//
+//   - BlockText:       Text
+//   - BlockThinking:   Text (the reasoning), Signature (required for replay)
+//   - BlockToolUse:    ID, Name, Arguments
+//   - BlockToolResult: ToolUseID, Content, IsError
+type ContentBlock struct {
+	Type string `json:"type"`
+
+	// Text carries text and thinking content.
+	Text string `json:"text,omitempty"`
+	// Signature authenticates a thinking block so it can be replayed to
+	// the API on the next request of the same turn.
+	Signature string `json:"signature,omitempty"`
+
+	// Tool use fields.
+	ID        string         `json:"id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+
+	// Tool result fields.
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	Content   string `json:"content,omitempty"`
+	IsError   bool   `json:"is_error,omitempty"`
 }
 
 // Role identifies the message sender.
@@ -34,6 +76,12 @@ const (
 type LLMResponse struct {
 	// Content is the text response
 	Content string
+
+	// Blocks is the ordered, typed content of the response (thinking,
+	// text, tool_use). Callers replaying the assistant turn should attach
+	// these to the next Message so thinking blocks and tool invocations
+	// survive the round trip. Empty on backends without block support.
+	Blocks []ContentBlock
 
 	// ToolCalls are any tool calls the model wants to make
 	ToolCalls []ToolCall
@@ -133,6 +181,13 @@ const (
 	StreamEventToolEnd      StreamEventType = "tool_end"
 	StreamEventMessageEnd   StreamEventType = "message_end"
 	StreamEventError        StreamEventType = "error"
+
+	// Thinking block lifecycle. Delta carries the thinking text for
+	// ThinkingDelta and the signature chunk for ThinkingSignature; the
+	// block closes with the generic ContentEnd.
+	StreamEventThinkingStart     StreamEventType = "thinking_start"
+	StreamEventThinkingDelta     StreamEventType = "thinking_delta"
+	StreamEventThinkingSignature StreamEventType = "thinking_signature"
 )
 
 // ToolSchema describes a tool for the LLM.
