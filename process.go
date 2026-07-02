@@ -82,6 +82,10 @@ type Process struct {
 	// iteration count
 	iteration int
 
+	// maxIterations overrides the agent's per-turn tool-loop cap when > 0
+	// (set via WithMaxIterations at spawn time).
+	maxIterations int
+
 	// llm is the backend to use
 	llm llm.LLM
 
@@ -198,6 +202,19 @@ func (p *Process) isTerminal() bool {
 // isTerminalStatus reports whether a status is terminal (no further work).
 func isTerminalStatus(s Status) bool {
 	return s == StatusCompleted || s == StatusFailed || s == StatusTimeout
+}
+
+// effectiveMaxIterations returns the per-turn tool-loop cap, honoring a
+// spawn-level override (WithMaxIterations), then the agent's setting, then
+// the package default.
+func (p *Process) effectiveMaxIterations() int {
+	if p.maxIterations > 0 {
+		return p.maxIterations
+	}
+	if p.Agent != nil && p.Agent.MaxIterations > 0 {
+		return p.Agent.MaxIterations
+	}
+	return DefaultMaxIterations
 }
 
 // Metrics returns the current process metrics.

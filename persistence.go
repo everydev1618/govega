@@ -2,6 +2,7 @@ package vega
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -104,10 +105,19 @@ func (o *Orchestrator) recoverProcesses() {
 		return
 	}
 
+	recoverable := 0
 	for _, state := range states {
 		if state.Status == StatusRunning || state.Status == StatusPending {
-			// Mark as needing restart
-			// In a real implementation, we'd need agent definitions to respawn
+			recoverable++
 		}
+	}
+	if recoverable > 0 {
+		// Respawning requires registered agent definitions, which aren't
+		// available at construction time. Surface the gap rather than
+		// silently dropping the work; durable resume is planned.
+		slog.Warn("process recovery: in-flight processes found but respawn is not implemented",
+			"recoverable", recoverable,
+			"total_loaded", len(states),
+		)
 	}
 }

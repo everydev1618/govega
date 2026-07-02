@@ -149,7 +149,13 @@ func WithPersistence(p Persistence) OrchestratorOption {
 	}
 }
 
-// WithRecovery enables process recovery on startup.
+// WithRecovery enables loading persisted process state on startup.
+//
+// NOTE: recovery currently loads persisted state and logs what it finds but
+// does not yet respawn in-flight processes — durable restart requires the
+// agent registry to be populated before recovery runs, which is planned
+// durability work. Until then this option is effectively diagnostic; do not
+// rely on it to resume interrupted work.
 func WithRecovery(enabled bool) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.recovery = enabled
@@ -241,11 +247,13 @@ func WithTimeout(d time.Duration) SpawnOption {
 	}
 }
 
-// WithMaxIterations sets the maximum iteration count.
+// WithMaxIterations overrides the agent's per-turn tool-loop iteration cap
+// for this process. Values <= 0 are ignored (the agent default applies).
 func WithMaxIterations(n int) SpawnOption {
 	return func(p *Process) {
-		// Store in process for checking
-		// This is checked in the LLM loop
+		if n > 0 {
+			p.maxIterations = n
+		}
 	}
 }
 
@@ -656,6 +664,13 @@ func newRateLimiter(config RateLimitConfig) *rateLimiter {
 		tokens:   float64(config.RequestsPerMinute),
 		lastTime: time.Now(),
 	}
+}
+
+// rateLimiterFor returns the configured per-model rate limiter, or nil if none.
+// o.rateLimits is populated only at construction (WithRateLimits) and never
+// mutated afterward, so a lock-free read is safe.
+func (o *Orchestrator) rateLimiterFor(model string) *rateLimiter {
+	return o.rateLimits[model]
 }
 
 func (r *rateLimiter) allow() bool {

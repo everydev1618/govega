@@ -146,10 +146,7 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 	}
 
 	// Main loop - keep calling LLM until we get a final response (no tool calls)
-	maxIterations := DefaultMaxIterations
-	if p.Agent.MaxIterations > 0 {
-		maxIterations = p.Agent.MaxIterations
-	}
+	maxIterations := p.effectiveMaxIterations()
 	for i := 0; i < maxIterations; i++ {
 		select {
 		case <-ctx.Done():
@@ -235,10 +232,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 	}
 
 	var fullResponse string
-	maxIterations := DefaultMaxIterations
-	if p.Agent.MaxIterations > 0 {
-		maxIterations = p.Agent.MaxIterations
-	}
+	maxIterations := p.effectiveMaxIterations()
 
 	for i := 0; i < maxIterations; i++ {
 		select {
@@ -382,10 +376,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		p.mu.Unlock()
 	}()
 
-	maxIterations := DefaultMaxIterations
-	if p.Agent.MaxIterations > 0 {
-		maxIterations = p.Agent.MaxIterations
-	}
+	maxIterations := p.effectiveMaxIterations()
 
 	for i := 0; i < maxIterations; i++ {
 		select {
@@ -608,6 +599,18 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 
 	stepType := p.stepTypeFor(messages)
 	chosenModel := p.Agent.ModelFor(stepType)
+
+	// Per-model rate limiting (orchestrator WithRateLimits). Reject when the
+	// model's token bucket is empty rather than silently ignoring the config.
+	if p.orchestrator != nil {
+		if rl := p.orchestrator.rateLimiterFor(chosenModel); rl != nil && !rl.allow() {
+			return nil, &ProcessError{
+				ProcessID: p.ID,
+				AgentName: p.Agent.Name,
+				Err:       ErrRateLimited,
+			}
+		}
+	}
 
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
