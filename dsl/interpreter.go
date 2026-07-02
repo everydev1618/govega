@@ -973,6 +973,14 @@ func (i *Interpreter) executeForEach(ctx context.Context, step *Step, execCtx *E
 
 	var results []any
 	for idx, item := range items {
+		// Honor cancellation between iterations.
+		select {
+		case <-ctx.Done():
+			execCtx.LoopState = nil
+			return results, ctx.Err()
+		default:
+		}
+
 		execCtx.LoopState = &LoopState{
 			Index: idx,
 			Count: idx + 1,
@@ -982,9 +990,21 @@ func (i *Interpreter) executeForEach(ctx context.Context, step *Step, execCtx *E
 		}
 		execCtx.Variables[itemVar] = item
 
-		// Execute nested steps (from Raw)
-		// TODO: Parse nested steps from Raw
-		results = append(results, item)
+		// Execute the loop body once per item.
+		var iterResult any
+		for bi := range step.Steps {
+			s := &step.Steps[bi]
+			res, err := i.executeStep(ctx, s, execCtx)
+			if err != nil {
+				execCtx.LoopState = nil
+				return results, fmt.Errorf("for-each item %d: %w", idx, err)
+			}
+			if s.Save != "" && res != nil {
+				execCtx.Variables[s.Save] = res
+			}
+			iterResult = res
+		}
+		results = append(results, iterResult)
 	}
 
 	execCtx.LoopState = nil

@@ -222,7 +222,8 @@ type Step struct {
 	Else      []Step  `yaml:"else"`
 
 	// Loop fields
-	ForEach   string  `yaml:"for"` // "item in items"
+	ForEach   string  `yaml:"for"`   // "item in items"
+	Steps     []Step  `yaml:"steps"` // for-each body
 	Repeat    *Repeat `yaml:"repeat"`
 
 	// Parallel fields

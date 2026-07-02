@@ -515,6 +515,24 @@ func (p *Parser) parseStep(raw any) (*Step, error) {
 		return step, nil
 	}
 
+	// Check for for-each loop
+	if forExpr, ok := m["for"].(string); ok {
+		step.ForEach = forExpr
+		if steps, ok := m["steps"].([]any); ok {
+			for _, s := range steps {
+				parsed, err := p.parseStep(s)
+				if err != nil {
+					return nil, err
+				}
+				step.Steps = append(step.Steps, *parsed)
+			}
+		}
+		if save, ok := m["save"].(string); ok {
+			step.Save = save
+		}
+		return step, nil
+	}
+
 	// Check for workflow call
 	if wf, ok := m["workflow"].(string); ok {
 		step.Workflow = wf
@@ -953,7 +971,7 @@ func (p *Parser) validateStep(doc *Document, wfName string, stepIndex int, step 
 func isKnownKey(key string) bool {
 	known := map[string]bool{
 		"if": true, "then": true, "else": true,
-		"parallel": true, "repeat": true, "for": true,
+		"parallel": true, "repeat": true, "for": true, "steps": true,
 		"workflow": true, "with": true,
 		"set": true, "return": true,
 		"try": true, "catch": true,
