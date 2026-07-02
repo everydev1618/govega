@@ -253,6 +253,27 @@ func (p *Process) SetExtraSystem(content string) {
 	p.extraSystem = content
 }
 
+// withProcessCancel derives a context from the caller's ctx that is also
+// cancelled when the process itself is cancelled — via Stop/Complete/Fail/Kill,
+// a linked-process death cascade, or orchestrator Shutdown. This makes those
+// lifecycle events actually abort in-flight LLM calls, tool execution, and
+// retry/backoff sleeps instead of letting them run to completion. The returned
+// cancel must be called (defer) to release the watcher goroutine.
+func (p *Process) withProcessCancel(ctx context.Context) (context.Context, context.CancelFunc) {
+	if p.ctx == nil {
+		return context.WithCancel(ctx)
+	}
+	merged, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-p.ctx.Done():
+			cancel()
+		case <-merged.Done():
+		}
+	}()
+	return merged, cancel
+}
+
 // Send sends a message and waits for a response.
 func (p *Process) Send(ctx context.Context, message string) (string, error) {
 	p.mu.Lock()
@@ -264,6 +285,10 @@ func (p *Process) Send(ctx context.Context, message string) (string, error) {
 	p.iteration++
 	p.metrics.LastActiveAt = time.Now()
 	p.mu.Unlock()
+
+	// Abort the loop if the process itself is cancelled, not just the caller.
+	ctx, cancel := p.withProcessCancel(ctx)
+	defer cancel()
 
 	// Add user message to context
 	p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
@@ -354,6 +379,8 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 
 	// Execute streaming in goroutine
 	go func() {
+		ctx, cancel := p.withProcessCancel(ctx)
+		defer cancel()
 		defer close(stream.chunks)
 		defer close(stream.done)
 
@@ -390,6 +417,8 @@ func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStre
 	stream := newChatStream()
 
 	go func() {
+		ctx, cancel := p.withProcessCancel(ctx)
+		defer cancel()
 		defer close(stream.events)
 		defer close(stream.done)
 

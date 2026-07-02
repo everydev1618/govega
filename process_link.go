@@ -285,6 +285,11 @@ func (p *Process) handleLinkedExit(dead *Process, signal ExitSignal) {
 	}
 	p.status = StatusFailed
 	p.metrics.CompletedAt = time.Now()
+	// Cancel the process context so a cascade death aborts in-flight work,
+	// matching Fail()/Stop(); otherwise the killed process keeps running.
+	if p.cancel != nil {
+		p.cancel()
+	}
 	p.mu.Unlock()
 
 	// Propagate with ExitLinked reason
