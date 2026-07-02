@@ -191,10 +191,13 @@ func (c *blockCollector) handle(ev llm.StreamEvent) *llm.ToolCall {
 		c.blocks[len(c.blocks)-1].Text += ev.Delta
 	case llm.StreamEventToolStart:
 		if ev.ToolCall != nil {
+			// Some backends (OpenAI) deliver complete arguments on the
+			// start event and never send deltas — seed them here.
 			c.blocks = append(c.blocks, llm.ContentBlock{
-				Type: llm.BlockToolUse,
-				ID:   ev.ToolCall.ID,
-				Name: ev.ToolCall.Name,
+				Type:      llm.BlockToolUse,
+				ID:        ev.ToolCall.ID,
+				Name:      ev.ToolCall.Name,
+				Arguments: ev.ToolCall.Arguments,
 			})
 			c.open = llm.BlockToolUse
 			c.toolJSON = ""
@@ -208,13 +211,17 @@ func (c *blockCollector) handle(ev llm.StreamEvent) *llm.ToolCall {
 		c.open = ""
 		if wasTool {
 			last := &c.blocks[len(c.blocks)-1]
-			args := make(map[string]any)
+			// Streamed JSON deltas, when present, carry the full
+			// arguments and win over any seed from the start event.
 			if c.toolJSON != "" {
+				args := make(map[string]any)
 				json.Unmarshal([]byte(c.toolJSON), &args)
+				last.Arguments = args
+			} else if last.Arguments == nil {
+				last.Arguments = make(map[string]any)
 			}
 			c.toolJSON = ""
-			last.Arguments = args
-			call := llm.ToolCall{ID: last.ID, Name: last.Name, Arguments: args}
+			call := llm.ToolCall{ID: last.ID, Name: last.Name, Arguments: last.Arguments}
 			c.toolCalls = append(c.toolCalls, call)
 			return &call
 		}
@@ -425,11 +432,14 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 	var fullResponse string
 	var totalInputTokens, totalOutputTokens int
 	var totalCacheCreationTokens, totalCacheReadTokens int
+	var totalCostUSD float64
 
-	// Update process metrics when the function returns.
+	// Update process metrics when the function returns. Cost comes from
+	// the backend's MessageEnd events — the backend knows its pricing;
+	// recomputing from the agent's model name here mis-billed non-Anthropic
+	// models at Anthropic rates.
 	defer func() {
-		costUSD := llm.CalculateCost(p.Agent.Model, totalInputTokens, totalOutputTokens,
-			totalCacheCreationTokens, totalCacheReadTokens)
+		costUSD := totalCostUSD
 		p.mu.Lock()
 		p.metrics.InputTokens += totalInputTokens
 		p.metrics.OutputTokens += totalOutputTokens
@@ -474,6 +484,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 				totalCacheReadTokens += ev.CacheReadInputTokens
 			case llm.StreamEventMessageEnd:
 				totalOutputTokens += ev.OutputTokens
+				totalCostUSD += ev.CostUSD
 			case llm.StreamEventContentDelta:
 				if ev.Delta != "" {
 					if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: ev.Delta}) {

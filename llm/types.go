@@ -163,6 +163,11 @@ type StreamEvent struct {
 	// OutputTokens after message end
 	OutputTokens int
 
+	// CostUSD is the request cost, set on MessageEnd by backends that
+	// know their pricing. Callers should prefer this over recomputing
+	// from the model name.
+	CostUSD float64
+
 	// Cache token counts (Anthropic prompt caching)
 	CacheCreationInputTokens int
 	CacheReadInputTokens     int

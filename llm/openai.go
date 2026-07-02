@@ -22,6 +22,14 @@ type OpenAILLM struct {
 	httpClient *http.Client
 	model      string
 	semaphore  chan struct{}
+	// Per-1M-token pricing for cost accounting. Zero (the default) means
+	// free — appropriate for local models; hosted deployments configure
+	// their rates via WithOpenAIPricing.
+	inputPer1M  float64
+	outputPer1M float64
+	// retryBase is the exponential-backoff base for retries (default 5s
+	// when zero). Tests shrink it.
+	retryBase time.Duration
 }
 
 // OpenAIOption configures the OpenAI-compatible client.
@@ -40,6 +48,21 @@ func WithOpenAIModel(model string) OpenAIOption {
 // WithOpenAIBaseURL sets the API base URL.
 func WithOpenAIBaseURL(url string) OpenAIOption {
 	return func(o *OpenAILLM) { o.baseURL = url }
+}
+
+// WithOpenAIPricing sets per-1M-token USD rates used for cost accounting.
+// Unset (zero) rates report $0 — the right answer for local models.
+func WithOpenAIPricing(inputPer1M, outputPer1M float64) OpenAIOption {
+	return func(o *OpenAILLM) {
+		o.inputPer1M = inputPer1M
+		o.outputPer1M = outputPer1M
+	}
+}
+
+// cost computes the request cost from the configured rates.
+func (o *OpenAILLM) cost(inputTokens, outputTokens int) float64 {
+	return float64(inputTokens)/1_000_000*o.inputPer1M +
+		float64(outputTokens)/1_000_000*o.outputPer1M
 }
 
 const (
@@ -87,12 +110,18 @@ func NewOpenAI(opts ...OpenAIOption) *OpenAILLM {
 // OpenAI request/response types
 
 type openaiRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openaiMsg     `json:"messages"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature *float64        `json:"temperature,omitempty"`
-	Tools       []openaiTool    `json:"tools,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
+	Model         string               `json:"model"`
+	Messages      []openaiMsg          `json:"messages"`
+	MaxTokens     int                  `json:"max_tokens,omitempty"`
+	Temperature   *float64             `json:"temperature,omitempty"`
+	Tools         []openaiTool         `json:"tools,omitempty"`
+	Stream        bool                 `json:"stream,omitempty"`
+	StreamOptions *openaiStreamOptions `json:"stream_options,omitempty"`
+}
+
+// openaiStreamOptions requests usage reporting on the final stream chunk.
+type openaiStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type openaiMsg struct {
@@ -221,6 +250,11 @@ func (o *OpenAILLM) buildRequest(messages []Message, tools []ToolSchema, stream 
 		Model:     o.model,
 		MaxTokens: 8192,
 		Stream:    stream,
+	}
+	if stream {
+		// Ask for usage on the final chunk so token/cost accounting works
+		// on the streaming path too.
+		req.StreamOptions = &openaiStreamOptions{IncludeUsage: true}
 	}
 
 	// When tools are available, prepend an instruction that nudges
@@ -447,23 +481,54 @@ func (o *OpenAILLM) doRequest(ctx context.Context, req *openaiRequest) (*openaiR
 		return nil, ctx.Err()
 	}
 
-	httpReq, err := o.createHTTPRequest(ctx, req)
-	if err != nil {
-		return nil, err
-	}
+	const maxRetries = 5
+	var body []byte
+	for attempt := 0; ; attempt++ {
+		httpReq, err := o.createHTTPRequest(ctx, req)
+		if err != nil {
+			return nil, err
+		}
 
-	httpResp, err := o.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
-	}
+		httpResp, err := o.httpClient.Do(httpReq)
+		if err != nil {
+			// Transport-level failure — transient, retry.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if attempt < maxRetries {
+				wait := retryAfterDelay(nil, attempt, o.retryBase)
+				slog.Warn("openai request failed, retrying", "error", err, "attempt", attempt+1, "wait", wait)
+				select {
+				case <-time.After(wait):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return nil, fmt.Errorf("http request: %w", err)
+		}
 
-	body, err := io.ReadAll(httpResp.Body)
-	httpResp.Body.Close()
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
+		body, err = io.ReadAll(httpResp.Body)
+		httpResp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read response: %w", err)
+		}
 
-	if httpResp.StatusCode != http.StatusOK {
+		if httpResp.StatusCode == http.StatusOK {
+			break
+		}
+
+		if isRetryableStatus(httpResp.StatusCode) && attempt < maxRetries {
+			wait := retryAfterDelay(httpResp, attempt, o.retryBase)
+			slog.Warn("openai API transient error, retrying", "status", httpResp.StatusCode, "attempt", attempt+1, "wait", wait)
+			select {
+			case <-time.After(wait):
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
 		slog.Error("openai API error", "status", httpResp.StatusCode, "body", string(body))
 		return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
 	}
@@ -479,6 +544,7 @@ func (o *OpenAILLM) parseResponse(resp *openaiResponse, latency time.Duration) (
 	result := &LLMResponse{
 		InputTokens:  resp.Usage.PromptTokens,
 		OutputTokens: resp.Usage.CompletionTokens,
+		CostUSD:      o.cost(resp.Usage.PromptTokens, resp.Usage.CompletionTokens),
 		LatencyMs:    latency.Milliseconds(),
 	}
 
@@ -693,6 +759,7 @@ func (o *OpenAILLM) parseStreamSSE(reader io.Reader, eventCh chan<- StreamEvent)
 				eventCh <- StreamEvent{
 					Type:         StreamEventMessageEnd,
 					OutputTokens: chunk.Usage.CompletionTokens,
+					CostUSD:      o.cost(chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens),
 				}
 			}
 			continue
@@ -744,6 +811,7 @@ func (o *OpenAILLM) parseStreamSSE(reader io.Reader, eventCh chan<- StreamEvent)
 				eventCh <- StreamEvent{
 					Type:         StreamEventMessageEnd,
 					OutputTokens: chunk.Usage.CompletionTokens,
+					CostUSD:      o.cost(chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens),
 				}
 			}
 		}

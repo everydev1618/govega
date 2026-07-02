@@ -306,7 +306,7 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 			}
 
 			if httpResp.StatusCode == http.StatusOK {
-				parseErr := a.parseSSE(httpResp.Body, eventCh)
+				parseErr := a.parseSSE(httpResp.Body, eventCh, req.Model)
 				httpResp.Body.Close()
 				if parseErr != nil {
 					eventCh <- StreamEvent{Type: StreamEventError, Error: parseErr}
@@ -922,12 +922,13 @@ const maxSSELineBytes = 10 * 1024 * 1024
 // timeout) or a connection that closed before the server's message_stop —
 // so the caller can surface truncation instead of returning a partial
 // answer as if it were complete.
-func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent) error {
+func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent, model string) error {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), maxSSELineBytes)
 	var currentEvent string
 	var currentData strings.Builder
 	sawMessageStop := false
+	st := &sseState{model: model}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -947,7 +948,7 @@ func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent) er
 			if currentEvent == "message_stop" {
 				sawMessageStop = true
 			}
-			a.processSSEEvent(currentEvent, currentData.String(), eventCh)
+			a.processSSEEvent(currentEvent, currentData.String(), eventCh, st)
 			currentEvent = ""
 			currentData.Reset()
 		}
@@ -962,7 +963,16 @@ func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent) er
 	return nil
 }
 
-func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- StreamEvent) {
+// sseState carries per-stream accounting so the message_end event can
+// report cost computed from the model actually used for the request.
+type sseState struct {
+	model                    string
+	inputTokens              int
+	cacheCreationInputTokens int
+	cacheReadInputTokens     int
+}
+
+func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- StreamEvent, st *sseState) {
 	switch eventType {
 	case "message_start":
 		var msg struct {
@@ -975,6 +985,9 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 			} `json:"message"`
 		}
 		json.Unmarshal([]byte(data), &msg)
+		st.inputTokens = msg.Message.Usage.InputTokens
+		st.cacheCreationInputTokens = msg.Message.Usage.CacheCreationInputTokens
+		st.cacheReadInputTokens = msg.Message.Usage.CacheReadInputTokens
 		eventCh <- StreamEvent{
 			Type:                     StreamEventMessageStart,
 			InputTokens:              msg.Message.Usage.InputTokens,
@@ -1056,6 +1069,8 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 		eventCh <- StreamEvent{
 			Type:         StreamEventMessageEnd,
 			OutputTokens: delta.Usage.OutputTokens,
+			CostUSD: CalculateCost(st.model, st.inputTokens, delta.Usage.OutputTokens,
+				st.cacheCreationInputTokens, st.cacheReadInputTokens),
 		}
 
 	case "message_stop":

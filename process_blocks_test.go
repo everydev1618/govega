@@ -127,6 +127,45 @@ func assertStructuredToolTurn(t *testing.T, msgs []llm.Message, wantThinking boo
 	}
 }
 
+// TestBlockCollectorToolStartArguments covers the OpenAI-style event shape:
+// ToolStart arrives with complete Arguments and no ToolDelta events follow.
+// The collector must use those arguments instead of executing with empty
+// params (the audit's OpenAI empty-args bug).
+func TestBlockCollectorToolStartArguments(t *testing.T) {
+	c := &blockCollector{}
+	c.handle(llm.StreamEvent{Type: llm.StreamEventToolStart, ToolCall: &llm.ToolCall{
+		ID: "tu-1", Name: "echo", Arguments: map[string]any{"text": "hi"},
+	}})
+	finished := c.handle(llm.StreamEvent{Type: llm.StreamEventContentEnd})
+
+	if finished == nil {
+		t.Fatal("tool call not finalized at content end")
+	}
+	if finished.Arguments["text"] != "hi" {
+		t.Errorf("ToolStart-provided arguments dropped: %+v", finished.Arguments)
+	}
+	if len(c.toolCalls) != 1 || c.toolCalls[0].Arguments["text"] != "hi" {
+		t.Errorf("collector toolCalls wrong: %+v", c.toolCalls)
+	}
+}
+
+// TestBlockCollectorToolDeltaOverridesStart covers the Anthropic shape —
+// deltas stream the full JSON and win over any seed arguments.
+func TestBlockCollectorToolDeltaOverridesStart(t *testing.T) {
+	c := &blockCollector{}
+	c.handle(llm.StreamEvent{Type: llm.StreamEventToolStart, ToolCall: &llm.ToolCall{ID: "tu-2", Name: "op"}})
+	c.handle(llm.StreamEvent{Type: llm.StreamEventToolDelta, Delta: `{"n":`})
+	c.handle(llm.StreamEvent{Type: llm.StreamEventToolDelta, Delta: `42}`})
+	finished := c.handle(llm.StreamEvent{Type: llm.StreamEventContentEnd})
+
+	if finished == nil {
+		t.Fatal("tool call not finalized")
+	}
+	if finished.Arguments["n"] != float64(42) {
+		t.Errorf("delta-streamed arguments wrong: %+v", finished.Arguments)
+	}
+}
+
 // TestToolLoopReplaysStructuredBlocks covers the non-streaming Send path.
 func TestToolLoopReplaysStructuredBlocks(t *testing.T) {
 	mock := &blockRecordingLLM{
