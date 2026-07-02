@@ -3,10 +3,12 @@ package serve
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/llm"
 )
 
 // newSchedulerTestServer builds the minimum Server needed to exercise the
@@ -294,5 +296,77 @@ func mustUpsert(t *testing.T, store *SQLiteStore, job ScheduledJob) {
 	t.Helper()
 	if err := store.UpsertScheduledJob(job); err != nil {
 		t.Fatalf("UpsertScheduledJob(%s): %v", job.Name, err)
+	}
+}
+
+// gateLLM blocks inside Generate until released, counting calls.
+type gateLLM struct {
+	entered chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (g *gateLLM) Generate(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
+	g.calls.Add(1)
+	g.entered <- struct{}{}
+	<-g.release
+	return &llm.LLMResponse{Content: "ok"}, nil
+}
+
+func (g *gateLLM) GenerateStream(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent)
+	close(ch)
+	return ch, nil
+}
+
+// TestSchedulerSkipsOverlappingFirings verifies a firing that arrives while
+// the previous run of the same job is still executing is skipped rather
+// than queued — a slow agent turn must not stack a backlog of cron firings.
+func TestSchedulerSkipsOverlappingFirings(t *testing.T) {
+	g := &gateLLM{entered: make(chan struct{}, 2), release: make(chan struct{})}
+
+	doc, err := dsl.NewParser().Parse([]byte(`
+name: overlap-test
+agents:
+  worker:
+    model: claude-sonnet-4-6
+    system: worker
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	interp, err := dsl.NewInterpreter(doc, dsl.WithLLM(g))
+	if err != nil {
+		t.Fatalf("NewInterpreter: %v", err)
+	}
+
+	sch := NewScheduler(interp, nil, nil)
+	fn := sch.makeFunc(dsl.ScheduledJob{Name: "tick", AgentName: "worker", Message: "go"})
+
+	first := make(chan struct{})
+	go func() {
+		fn()
+		close(first)
+	}()
+	<-g.entered // first firing is now blocked mid-turn
+
+	second := make(chan struct{})
+	go func() {
+		fn()
+		close(second)
+	}()
+
+	select {
+	case <-second:
+		// Skipped promptly — correct.
+	case <-time.After(2 * time.Second):
+		t.Error("second firing queued behind the first instead of being skipped")
+	}
+
+	close(g.release)
+	<-first
+
+	if got := g.calls.Load(); got != 1 {
+		t.Errorf("LLM called %d times for overlapping firings, want 1", got)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/everydev1618/govega/dsl"
@@ -175,7 +176,18 @@ func (s *Scheduler) ListJobs() []dsl.ScheduledJob {
 
 // makeFunc returns the cron callback for a job.
 func (s *Scheduler) makeFunc(job dsl.ScheduledJob) func() {
+	// Overlap guard: a firing that arrives while the previous run of this
+	// job is still executing is skipped, not queued. A slow agent turn
+	// (or a wedged tool) must not stack a backlog of cron firings that
+	// all replay the same message when the agent recovers.
+	var inFlight atomic.Bool
 	return func() {
+		if !inFlight.CompareAndSwap(false, true) {
+			slog.Warn("scheduler: skipping firing — previous run still in flight", "name", job.Name)
+			return
+		}
+		defer inFlight.Store(false)
+
 		// For heartbeat jobs, skip the LLM call entirely if the inbox
 		// is empty — saves tokens when the system is idle. Matches any
 		// "*-heartbeat" so tenants with renamed orchestrators (knox,
