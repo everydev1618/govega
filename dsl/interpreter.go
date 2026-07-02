@@ -1711,6 +1711,13 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 		}
 	}
 
+	// Bound runaway delegation: depth cap + cycle rejection, carried on
+	// the context so it survives async dispatch detaches.
+	if err := checkDelegation(ctx, agentName); err != nil {
+		return "", err
+	}
+	ctx = contextWithDelegationHop(ctx, agentName)
+
 	useEphemeral := ephemeralDelegationEnabled() && vega.ProcessFromContext(ctx) != nil
 
 	var (
@@ -1841,6 +1848,14 @@ func (i *Interpreter) SetChannelBackend(b ChannelBackend, onPost func(channelNam
 // downstream layers (e.g. serve.Server) can route the result back to the
 // originating conversation — not just to the base orchestrator.
 func (i *Interpreter) DispatchToAgent(ctx context.Context, agentName string, message string) (string, error) {
+	// Depth/cycle guard runs synchronously so the delegating agent gets
+	// the refusal as its tool result immediately. The hop itself is
+	// appended by SendToAgent/StreamToAgent in the dispatch goroutine —
+	// appending here too would double-count each dispatch.
+	if err := checkDelegation(ctx, agentName); err != nil {
+		return "", err
+	}
+
 	// Validate agent exists synchronously so callers get immediate errors.
 	if _, err := i.ensureAgent(agentName); err != nil {
 		return "", err
@@ -2000,6 +2015,11 @@ func truncateStr(s string, max int) string {
 // StreamToAgent sends a message to a specific agent and returns a ChatStream
 // with structured events for real-time streaming and tool call visibility.
 func (i *Interpreter) StreamToAgent(ctx context.Context, agentName string, message string) (*vega.ChatStream, error) {
+	if err := checkDelegation(ctx, agentName); err != nil {
+		return nil, err
+	}
+	ctx = contextWithDelegationHop(ctx, agentName)
+
 	proc, err := i.ensureAgent(agentName)
 	if err != nil {
 		return nil, err
