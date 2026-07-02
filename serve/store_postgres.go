@@ -288,6 +288,60 @@ func (s *PostgresStore) ListWorkflowRuns(limit int) ([]WorkflowRun, error) {
 	return runs, rows.Err()
 }
 
+// --- MCP servers ---
+
+// UpsertMCPServer persists an MCP server connection config.
+func (s *PostgresStore) UpsertMCPServer(name, configJSON string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO mcp_servers (name, config, created_at)
+		 VALUES ($1, $2, CURRENT_TIMESTAMP)
+		 ON CONFLICT (name)
+		 DO UPDATE SET config = EXCLUDED.config`,
+		name, configJSON,
+	)
+	return err
+}
+
+// DeleteMCPServer removes a persisted MCP server connection.
+func (s *PostgresStore) DeleteMCPServer(name string) error {
+	_, err := s.db.Exec(`DELETE FROM mcp_servers WHERE name = $1`, name)
+	return err
+}
+
+// ListMCPServers returns all persisted MCP server configs.
+func (s *PostgresStore) ListMCPServers() ([]MCPServerConfig, error) {
+	rows, err := s.db.Query(
+		`SELECT name, config, disabled FROM mcp_servers ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var servers []MCPServerConfig
+	for rows.Next() {
+		var sc MCPServerConfig
+		if err := rows.Scan(&sc.Name, &sc.ConfigJSON, &sc.Disabled); err != nil {
+			return nil, err
+		}
+		servers = append(servers, sc)
+	}
+	return servers, rows.Err()
+}
+
+// SetMCPServerDisabled enables or disables a persisted MCP server.
+func (s *PostgresStore) SetMCPServerDisabled(name string, disabled bool) error {
+	res, err := s.db.Exec(`UPDATE mcp_servers SET disabled = $1 WHERE name = $2`, disabled, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("server %q not found", name)
+	}
+	return nil
+}
+
 // --- Composed agents ---
 
 func (s *PostgresStore) InsertComposedAgent(a ComposedAgent) error {

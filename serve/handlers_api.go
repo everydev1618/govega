@@ -1062,11 +1062,9 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 	// auto-connected servers (e.g. composio via COMPOSIO_API_KEY) have none, so
 	// the FE hides Edit for them rather than 404ing on getMCPServerConfig.
 	editable := make(map[string]bool)
-	if sqlStore, ok := s.store.(*SQLiteStore); ok {
-		if servers, err := sqlStore.ListMCPServers(); err == nil {
-			for _, sc := range servers {
-				editable[sc.Name] = true
-			}
+	if servers, err := s.store.ListMCPServers(); err == nil {
+		for _, sc := range servers {
+			editable[sc.Name] = true
 		}
 	}
 
@@ -1107,16 +1105,14 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Include disabled servers from persistence (not connected, but should be visible).
-	if sqlStore, ok := s.store.(*SQLiteStore); ok {
-		if servers, err := sqlStore.ListMCPServers(); err == nil {
-			for _, sc := range servers {
-				if sc.Disabled && !listed[sc.Name] {
-					resp = append(resp, MCPServerResponse{
-						Name:     sc.Name,
-						Disabled: true,
-						Editable: true,
-					})
-				}
+	if servers, err := s.store.ListMCPServers(); err == nil {
+		for _, sc := range servers {
+			if sc.Disabled && !listed[sc.Name] {
+				resp = append(resp, MCPServerResponse{
+					Name:     sc.Name,
+					Disabled: true,
+					Editable: true,
+				})
 			}
 		}
 	}
@@ -1319,9 +1315,7 @@ func (s *Server) handleDisconnectMCPServer(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Remove from persistence so it won't auto-reconnect on restart.
-	if sqlStore, ok := s.store.(*SQLiteStore); ok {
-		sqlStore.DeleteMCPServer(name)
-	}
+	s.store.DeleteMCPServer(name)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }
@@ -1336,13 +1330,7 @@ func (s *Server) handleRefreshMCPServer(w http.ResponseWriter, r *http.Request) 
 	t := s.interp.Tools()
 
 	// Load persisted config so we can reconnect after disconnect.
-	sqlStore, ok := s.store.(*SQLiteStore)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
-		return
-	}
-
-	servers, err := sqlStore.ListMCPServers()
+	servers, err := s.store.ListMCPServers()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
 		return
@@ -1480,13 +1468,7 @@ func (s *Server) handleGetMCPServerConfig(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	sqlStore, ok := s.store.(*SQLiteStore)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
-		return
-	}
-
-	servers, err := sqlStore.ListMCPServers()
+	servers, err := s.store.ListMCPServers()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
 		return
@@ -1627,27 +1609,23 @@ func (s *Server) handleUpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if sqlStore, ok := s.store.(*SQLiteStore); ok {
-			if err := sqlStore.DeleteMCPServer(name); err != nil {
-				slog.Error("update: delete old server config failed", "server", name, "error", err)
-			}
+		if err := s.store.DeleteMCPServer(name); err != nil {
+			slog.Error("update: delete old server config failed", "server", name, "error", err)
 		}
 	}
 
 	// Load persisted config to get all known env keys (the request only has changed values).
 	envKeySet := make(map[string]bool)
-	if sqlStore, ok := s.store.(*SQLiteStore); ok {
-		if servers, err := sqlStore.ListMCPServers(); err == nil {
-			for _, sc := range servers {
-				if sc.Name == name {
-					var persisted ConnectMCPRequest
-					if err := json.Unmarshal([]byte(sc.ConfigJSON), &persisted); err == nil {
-						for k := range persisted.Env {
-							envKeySet[k] = true
-						}
+	if servers, err := s.store.ListMCPServers(); err == nil {
+		for _, sc := range servers {
+			if sc.Name == name {
+				var persisted ConnectMCPRequest
+				if err := json.Unmarshal([]byte(sc.ConfigJSON), &persisted); err == nil {
+					for k := range persisted.Env {
+						envKeySet[k] = true
 					}
-					break
 				}
+				break
 			}
 		}
 	}
@@ -1817,13 +1795,7 @@ func (s *Server) handleDuplicateMCPServer(w http.ResponseWriter, r *http.Request
 	}
 
 	// Load persisted config of the source server.
-	sqlStore, ok := s.store.(*SQLiteStore)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
-		return
-	}
-
-	servers, err := sqlStore.ListMCPServers()
+	servers, err := s.store.ListMCPServers()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
 		return
@@ -1946,13 +1918,7 @@ func (s *Server) handleToggleMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sqlStore, ok := s.store.(*SQLiteStore)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "persistence not available"})
-		return
-	}
-
-	if err := sqlStore.SetMCPServerDisabled(name, body.Disabled); err != nil {
+	if err := s.store.SetMCPServerDisabled(name, body.Disabled); err != nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -1972,7 +1938,7 @@ func (s *Server) handleToggleMCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-enable: reconnect the server.
-	servers, err := sqlStore.ListMCPServers()
+	servers, err := s.store.ListMCPServers()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to load server configs"})
 		return
@@ -2150,10 +2116,6 @@ func (s *Server) buildMCPEnvMap(serverName string, reqEnv map[string]string) map
 
 // persistMCPServer saves the MCP server connect request so it auto-reconnects on restart.
 func (s *Server) persistMCPServer(req ConnectMCPRequest) {
-	sqlStore, ok := s.store.(*SQLiteStore)
-	if !ok {
-		return
-	}
 	// Strip env values — they're already saved as sensitive settings.
 	// We keep the keys so we know which settings to load on reconnect.
 	stripped := req
@@ -2166,7 +2128,7 @@ func (s *Server) persistMCPServer(req ConnectMCPRequest) {
 		slog.Error("failed to marshal MCP server config", "name", req.Name, "error", err)
 		return
 	}
-	if err := sqlStore.UpsertMCPServer(req.Name, string(configJSON)); err != nil {
+	if err := s.store.UpsertMCPServer(req.Name, string(configJSON)); err != nil {
 		slog.Error("failed to persist MCP server", "name", req.Name, "error", err)
 	}
 }

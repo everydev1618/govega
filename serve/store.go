@@ -79,6 +79,20 @@ type Store interface {
 	// the number of rows deleted per table.
 	SweepRetention(policy RetentionPolicy) (RetentionSweepResult, error)
 
+	// UpsertMCPServer persists an MCP server connection config so it
+	// auto-reconnects on restart.
+	UpsertMCPServer(name, configJSON string) error
+
+	// DeleteMCPServer removes a persisted MCP server connection.
+	DeleteMCPServer(name string) error
+
+	// ListMCPServers returns all persisted MCP server configs.
+	ListMCPServers() ([]MCPServerConfig, error)
+
+	// SetMCPServerDisabled enables or disables a persisted MCP server.
+	// Errors when no server with that name exists.
+	SetMCPServerDisabled(name string, disabled bool) error
+
 	// UpsertMemoryPage creates a page if absent, or overwrites Content +
 	// Frontmatter + advances UpdatedAt on conflict (PK = scope, scope_id,
 	// user_id, path). CreatedAt is preserved across updates. Refs govega#71.

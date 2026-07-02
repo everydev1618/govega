@@ -276,8 +276,6 @@ func (s *Server) handleGmailDisable(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.DeleteSetting(mcpSettingKey("gmail", k))
 	}
 	// Drop the persisted server entry.
-	if sqlStore, ok := s.store.(*SQLiteStore); ok {
-		_ = sqlStore.DeleteMCPServer("gmail")
-	}
+	_ = s.store.DeleteMCPServer("gmail")
 	writeJSON(w, http.StatusOK, s.gmailSnapshot())
 }

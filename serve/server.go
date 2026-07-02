@@ -1471,11 +1471,7 @@ func (s *Server) autoConnectHTTPServers(ctx context.Context) {
 // autoConnectPersistedServers reconnects MCP servers that were previously
 // connected and persisted in the mcp_servers table.
 func (s *Server) autoConnectPersistedServers(ctx context.Context) {
-	sqlStore, ok := s.store.(*SQLiteStore)
-	if !ok {
-		return
-	}
-	servers, err := sqlStore.ListMCPServers()
+	servers, err := s.store.ListMCPServers()
 	if err != nil {
 		slog.Warn("failed to load persisted MCP servers", "error", err)
 		return
@@ -1593,13 +1589,9 @@ func (s *Server) autoConnectPersistedServers(ctx context.Context) {
 	}
 }
 
-// persistYAMLMCPServers ensures YAML-configured MCP servers are persisted to
-// SQLite so the Connections page can display and edit them.
+// persistYAMLMCPServers ensures YAML-configured MCP servers are persisted
+// so the Connections page can display and edit them.
 func (s *Server) persistYAMLMCPServers() {
-	sqlStore, ok := s.store.(*SQLiteStore)
-	if !ok {
-		return
-	}
 	doc := s.interp.Document()
 	if doc == nil || doc.Settings == nil || doc.Settings.MCP == nil {
 		return
@@ -1623,7 +1615,7 @@ func (s *Server) persistYAMLMCPServers() {
 			slog.Warn("failed to marshal YAML MCP server config", "server", serverDef.Name, "error", err)
 			continue
 		}
-		if err := sqlStore.UpsertMCPServer(serverDef.Name, string(configJSON)); err != nil {
+		if err := s.store.UpsertMCPServer(serverDef.Name, string(configJSON)); err != nil {
 			slog.Warn("failed to persist YAML MCP server config", "server", serverDef.Name, "error", err)
 			continue
 		}
