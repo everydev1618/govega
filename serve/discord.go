@@ -30,6 +30,11 @@ type DiscordBotConfig struct {
 	Token string `json:"token"`
 	Agent string `json:"agent"`
 	Label string `json:"label,omitempty"`
+	// AllowedUsers restricts which Discord user IDs may talk to the bot.
+	// Empty means open access (backward compatible). Set it to lock the bot
+	// to its owner so strangers in shared guilds can't share the owner's
+	// conversation.
+	AllowedUsers []string `json:"allowed_users,omitempty"`
 }
 
 // runningDiscordBot ties a configured bot to its live gateway session.
@@ -162,6 +167,7 @@ func (s *Server) startDiscordBot(parent context.Context, cfg DiscordBotConfig) (
 	if s.callerResolver != nil {
 		bot.SetCallerResolver(s.callerResolver)
 	}
+	bot.SetAllowedUsers(cfg.AllowedUsers)
 
 	// Open the gateway session synchronously so token/auth errors surface here.
 	if err := bot.Open(); err != nil {
@@ -334,6 +340,16 @@ type DiscordBot struct {
 	// resolver, when set, enriches the dispatch ctx with caller identity +
 	// per-user credentials before hitting the LLM (apexvega#24).
 	resolver CallerResolver
+
+	// allowedUsers, when non-empty, restricts which user IDs may talk to the
+	// bot. Empty means open access.
+	allowedUsers map[string]bool
+}
+
+// SetAllowedUsers restricts which Discord user IDs the bot will respond to.
+// An empty list means open access.
+func (d *DiscordBot) SetAllowedUsers(ids []string) {
+	d.allowedUsers = newAllowSet(ids)
 }
 
 // SetCallerResolver registers a CallerResolver applied to the dispatch context
@@ -501,6 +517,12 @@ func (d *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, text string) {
 	userID := m.Author.ID
 	channelID := m.ChannelID
+
+	// Enforce the owner allowlist (if configured). Silently ignore strangers.
+	if !userAllowed(d.allowedUsers, userID) {
+		slog.Debug("discord: ignoring message from unlisted user", "user_id", userID)
+		return
+	}
 
 	// Escape hatch: address a specific agent inline with "!agent rest".
 	// Unknown names pass through to the base agent (see telegram.go).

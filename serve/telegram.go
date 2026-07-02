@@ -29,6 +29,10 @@ type TelegramBotConfig struct {
 	Token string `json:"token"`
 	Agent string `json:"agent"`
 	Label string `json:"label,omitempty"`
+	// AllowedUsers restricts which Telegram numeric user IDs may talk to the
+	// bot. Empty means open access (backward compatible). Set it to lock the
+	// bot to its owner so strangers can't share the owner's conversation.
+	AllowedUsers []string `json:"allowed_users,omitempty"`
 }
 
 // runningTelegramBot ties a configured bot to its live polling loop.
@@ -150,6 +154,7 @@ func (s *Server) startTelegramBot(parent context.Context, cfg TelegramBotConfig)
 	if s.callerResolver != nil {
 		bot.SetCallerResolver(s.callerResolver)
 	}
+	bot.SetAllowedUsers(cfg.AllowedUsers)
 
 	s.telegramMu.Lock()
 	// Replace any existing bot under the same id (atomic reconfigure).
@@ -308,6 +313,16 @@ type TelegramBot struct {
 	// (apexvega#24). Without it, background paths like Telegram inbound
 	// would hit the LLM with no BYOK key attached.
 	resolver CallerResolver
+
+	// allowedUsers, when non-empty, restricts which numeric user IDs may
+	// talk to the bot. Empty means open access.
+	allowedUsers map[string]bool
+}
+
+// SetAllowedUsers restricts which Telegram user IDs the bot will respond to.
+// An empty list means open access.
+func (t *TelegramBot) SetAllowedUsers(ids []string) {
+	t.allowedUsers = newAllowSet(ids)
 }
 
 // SetCallerResolver registers a CallerResolver applied to the dispatch
@@ -433,6 +448,13 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 
 	userID := strconv.FormatInt(update.Message.From.ID, 10)
 	chatID := update.Message.Chat.ID
+
+	// Enforce the owner allowlist (if configured). Silently ignore strangers
+	// so an unauthorized user gets no engagement and no info leak.
+	if !userAllowed(t.allowedUsers, userID) {
+		slog.Debug("telegram: ignoring message from unlisted user", "user_id", userID)
+		return
+	}
 
 	text := update.Message.Text
 	if text == "" {
