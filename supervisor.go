@@ -2,6 +2,7 @@ package vega
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 )
@@ -199,8 +200,28 @@ func (s *Supervisor) monitorChild(child *supervisedChild) {
 	}()
 }
 
+// isCurrentChildLocked reports whether child is still tracked by the
+// supervisor. Caller must hold childrenMu (read or write).
+func (s *Supervisor) isCurrentChildLocked(child *supervisedChild) bool {
+	return slices.Contains(s.children, child)
+}
+
+// isCurrentChild is the locking variant of isCurrentChildLocked.
+func (s *Supervisor) isCurrentChild(child *supervisedChild) bool {
+	s.childrenMu.RLock()
+	defer s.childrenMu.RUnlock()
+	return s.isCurrentChildLocked(child)
+}
+
 // handleChildExit is called when a supervised child exits.
 func (s *Supervisor) handleChildExit(child *supervisedChild, status Status) {
+	// Ignore exits the supervisor itself caused: a child that is no longer
+	// tracked was stopped and replaced by a restart round, or deleted. Treating
+	// those exits as failures re-triggers restarts in an endless storm.
+	if !s.isCurrentChild(child) {
+		return
+	}
+
 	// Determine if we should restart
 	shouldRestart := false
 	switch child.spec.Restart {
@@ -238,7 +259,7 @@ func (s *Supervisor) handleChildExit(child *supervisedChild, status Status) {
 	case OneForOne:
 		s.restartChild(child)
 	case OneForAll:
-		s.restartAllChildren()
+		s.restartAllChildren(child)
 	case RestForOne:
 		s.restartChildAndFollowing(child)
 	}
@@ -318,10 +339,14 @@ func (s *Supervisor) restartChild(child *supervisedChild) {
 	s.childrenMu.Lock()
 	defer s.childrenMu.Unlock()
 
-	// Stop old process if still running
-	if child.process.Status() == StatusRunning {
-		child.process.Stop()
+	// A concurrent restart round or delete may have already replaced or
+	// removed this child while we waited for the lock (or slept in backoff).
+	if !s.isCurrentChildLocked(child) {
+		return
 	}
+
+	// Stop old process; Stop is a no-op on already-terminal processes.
+	child.process.Stop()
 
 	// Unregister old name
 	if child.spec.Name != "" {
@@ -345,16 +370,20 @@ func (s *Supervisor) restartChild(child *supervisedChild) {
 }
 
 // restartAllChildren stops and restarts all children (OneForAll).
-func (s *Supervisor) restartAllChildren() {
+// failed is the child whose exit triggered the round; if it is no longer
+// tracked, another round already handled it and this one is skipped.
+func (s *Supervisor) restartAllChildren(failed *supervisedChild) {
 	s.childrenMu.Lock()
 	defer s.childrenMu.Unlock()
+
+	if !s.isCurrentChildLocked(failed) {
+		return
+	}
 
 	// Stop all children in reverse order
 	for i := len(s.children) - 1; i >= 0; i-- {
 		child := s.children[i]
-		if child.process.Status() == StatusRunning {
-			child.process.Stop()
-		}
+		child.process.Stop()
 		if child.spec.Name != "" {
 			s.orchestrator.Unregister(child.spec.Name)
 		}
@@ -379,15 +408,17 @@ func (s *Supervisor) restartChildAndFollowing(failed *supervisedChild) {
 	s.childrenMu.Lock()
 	defer s.childrenMu.Unlock()
 
+	if !s.isCurrentChildLocked(failed) {
+		return
+	}
+
 	// Find the index of the failed child
 	failedIndex := failed.index
 
 	// Stop all children from failedIndex onwards in reverse order
 	for i := len(s.children) - 1; i >= failedIndex; i-- {
 		child := s.children[i]
-		if child.process.Status() == StatusRunning {
-			child.process.Stop()
-		}
+		child.process.Stop()
 		if child.spec.Name != "" {
 			s.orchestrator.Unregister(child.spec.Name)
 		}
@@ -421,9 +452,7 @@ func (s *Supervisor) stopAllChildrenLocked() {
 	// Stop in reverse order
 	for i := len(s.children) - 1; i >= 0; i-- {
 		child := s.children[i]
-		if child.process.Status() == StatusRunning {
-			child.process.Stop()
-		}
+		child.process.Stop()
 		if child.spec.Name != "" {
 			s.orchestrator.Unregister(child.spec.Name)
 		}
@@ -511,9 +540,7 @@ func (s *Supervisor) TerminateChild(name string) error {
 
 	for _, child := range s.children {
 		if child.spec.Name == name {
-			if child.process.Status() == StatusRunning {
-				child.process.Stop()
-			}
+			child.process.Stop()
 			return nil
 		}
 	}
@@ -541,9 +568,7 @@ func (s *Supervisor) RestartChild(name string) error {
 	}
 
 	// Stop the current process
-	if targetChild.process.Status() == StatusRunning {
-		targetChild.process.Stop()
-	}
+	targetChild.process.Stop()
 
 	// Unregister name
 	if targetChild.spec.Name != "" {
@@ -558,10 +583,30 @@ func (s *Supervisor) RestartChild(name string) error {
 		return err
 	}
 
-	// Update the children slice
+	// Re-locate the old child by pointer: while the lock was dropped, a
+	// concurrent DeleteChild/StartChild/restart round may have shifted,
+	// replaced, or removed it — the remembered index can point past the
+	// end of the slice.
 	s.childrenMu.Lock()
-	s.children[targetIndex] = newChild
+	replaced := false
+	for i, c := range s.children {
+		if c == targetChild {
+			newChild.index = i
+			s.children[i] = newChild
+			replaced = true
+			break
+		}
+	}
 	s.childrenMu.Unlock()
+
+	if !replaced {
+		// The child was removed while its replacement spawned — undo.
+		newChild.process.Stop()
+		if newChild.spec.Name != "" {
+			s.orchestrator.Unregister(newChild.spec.Name)
+		}
+		return ErrProcessNotFound
+	}
 
 	return nil
 }
@@ -574,10 +619,8 @@ func (s *Supervisor) DeleteChild(name string) error {
 
 	for i, child := range s.children {
 		if child.spec.Name == name {
-			// Stop if running
-			if child.process.Status() == StatusRunning {
-				child.process.Stop()
-			}
+			// Stop if not already terminal
+			child.process.Stop()
 
 			// Unregister name
 			if child.spec.Name != "" {
