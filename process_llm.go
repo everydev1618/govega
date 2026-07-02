@@ -247,6 +247,10 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 		default:
 		}
 
+		if err := p.checkBudget(); err != nil {
+			return fullResponse, err
+		}
+
 		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, p.stepTypeFor(messages)), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
@@ -390,6 +394,10 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		default:
 		}
 
+		if err := p.checkBudget(); err != nil {
+			return fullResponse, err
+		}
+
 		eventCh, err := p.llm.GenerateStream(p.llmCallContext(ctx, p.stepTypeFor(messages)), messages, toolSchemas)
 		if err != nil {
 			return fullResponse, err
@@ -521,7 +529,45 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 
 // callLLMWithRetry calls the LLM with retry logic based on agent's RetryPolicy.
 // It also enforces per-agent rate limits and circuit breaker state.
+// checkBudget enforces the agent's cost limit before another LLM call.
+// It returns ErrBudgetExceeded (BudgetBlock) once accumulated cost reaches the
+// limit, logs and allows (BudgetWarn), or is a no-op (BudgetAllow / no budget).
+func (p *Process) checkBudget() error {
+	b := p.Agent.Budget
+	if b == nil || b.Limit <= 0 {
+		return nil
+	}
+	spent := p.Metrics().CostUSD
+	if spent < b.Limit {
+		return nil
+	}
+	switch b.OnExceed {
+	case BudgetBlock:
+		return &ProcessError{
+			ProcessID: p.ID,
+			AgentName: p.Agent.Name,
+			Err:       ErrBudgetExceeded,
+		}
+	case BudgetWarn:
+		slog.Warn("agent budget exceeded (allowing)",
+			"process_id", p.ID,
+			"agent", p.Agent.Name,
+			"spent_usd", spent,
+			"limit_usd", b.Limit,
+		)
+	case BudgetAllow:
+		// Silently allow.
+	}
+	return nil
+}
+
 func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, tools []llm.ToolSchema) (*llm.LLMResponse, error) {
+	// Budget check: enforce the agent's cost limit before spending more.
+	// Checked first so a blocked budget doesn't consume a rate-limit token.
+	if err := p.checkBudget(); err != nil {
+		return nil, err
+	}
+
 	// Circuit breaker check
 	if p.circuitBreaker != nil && !p.circuitBreaker.Allow() {
 		return nil, &ProcessError{
