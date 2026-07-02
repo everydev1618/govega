@@ -724,8 +724,55 @@ func (i *Interpreter) RunWorkflow(ctx context.Context, name string, inputs map[s
 	return execCtx.Variables["result"], nil
 }
 
-// executeStep executes a single workflow step.
+// executeStep runs a single workflow step, enforcing the step's declared
+// timeout (per attempt) and retry count. Both fields used to parse and do
+// nothing — a lying DSL is worse than a smaller one (govega#114).
 func (i *Interpreter) executeStep(ctx context.Context, step *Step, execCtx *ExecutionContext) (any, error) {
+	if step.Budget != "" {
+		slog.Warn("step budget is not enforced yet — use agent-level budget instead", "budget", step.Budget)
+	}
+
+	var stepTimeout time.Duration
+	if step.Timeout != "" {
+		d, err := time.ParseDuration(step.Timeout)
+		if err != nil || d <= 0 {
+			slog.Warn("invalid step timeout ignored", "timeout", step.Timeout, "error", err)
+		} else {
+			stepTimeout = d
+		}
+	}
+
+	attempts := 1
+	if step.Retry > 0 {
+		attempts += step.Retry
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		stepCtx := ctx
+		cancel := context.CancelFunc(func() {})
+		if stepTimeout > 0 {
+			stepCtx, cancel = context.WithTimeout(ctx, stepTimeout)
+		}
+		result, err := i.executeStepOnce(stepCtx, step, execCtx)
+		cancel()
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			break // parent cancelled/timed out — retrying can't help
+		}
+		if attempt < attempts-1 {
+			slog.Warn("workflow step failed, retrying",
+				"agent", step.Agent, "attempt", attempt+1, "of", attempts, "error", err)
+		}
+	}
+	return nil, lastErr
+}
+
+// executeStepOnce executes a single attempt of a workflow step.
+func (i *Interpreter) executeStepOnce(ctx context.Context, step *Step, execCtx *ExecutionContext) (any, error) {
 	// Check condition
 	if step.If != "" {
 		result, err := i.evaluateCondition(step.If, execCtx)
