@@ -994,7 +994,8 @@ func (s *Server) Start(ctx context.Context) error {
 		if agent == "" {
 			agent = s.cfg.Orchestrator.Name
 		}
-		if _, err := s.AddDiscordBot(ctx, token, agent, "env"); err != nil {
+		allowed := parseAllowedUsers(os.Getenv("DISCORD_ALLOWED_USERS"))
+		if _, err := s.AddDiscordBot(ctx, token, agent, "env", allowed); err != nil {
 			slog.Warn("env-configured discord bot init failed", "error", err)
 		}
 	}

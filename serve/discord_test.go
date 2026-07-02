@@ -97,6 +97,30 @@ func TestStripBotMention(t *testing.T) {
 	}
 }
 
+func TestParseAllowedUsers(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"   ", nil},
+		{"123", []string{"123"}},
+		{"123,456", []string{"123", "456"}},
+		{" 123 , 456 ,, ", []string{"123", "456"}},
+	}
+	for _, tc := range tests {
+		got := parseAllowedUsers(tc.in)
+		if len(got) != len(tc.want) {
+			t.Fatalf("parseAllowedUsers(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Fatalf("parseAllowedUsers(%q)[%d] = %q, want %q", tc.in, i, got[i], tc.want[i])
+			}
+		}
+	}
+}
+
 func TestDiscordShouldRespond(t *testing.T) {
 	if !discordShouldRespond(true, false) {
 		t.Fatal("should respond to all DMs")
@@ -178,7 +202,7 @@ func TestAddDiscordBotValidation(t *testing.T) {
 	s := discordTestServer(t, map[string]*dsl.Agent{"iris": {Name: "iris"}})
 
 	// Malformed token → error before any network/session work.
-	if _, err := s.AddDiscordBot(nil, "not-a-valid-token", "iris", ""); err == nil {
+	if _, err := s.AddDiscordBot(nil, "not-a-valid-token", "iris", "", nil); err == nil {
 		t.Fatal("expected error for malformed token")
 	}
 
@@ -186,7 +210,7 @@ func TestAddDiscordBotValidation(t *testing.T) {
 	// (rolled back). The agent-existence check runs before the session opens.
 	seg := base64.RawStdEncoding.EncodeToString([]byte("999"))
 	token := seg + ".ts.hmac"
-	if _, err := s.AddDiscordBot(nil, token, "ghost", ""); err == nil {
+	if _, err := s.AddDiscordBot(nil, token, "ghost", "", nil); err == nil {
 		t.Fatal("expected error for unknown agent")
 	}
 	if loaded, _ := s.loadPersistedDiscordBots(); len(loaded) != 0 {

@@ -84,9 +84,10 @@ func (s *Server) handleTelegramRemove(w http.ResponseWriter, r *http.Request) {
 // --- Discord (multi-bot) ---
 
 type discordConfigureRequest struct {
-	Token string `json:"token"`
-	Agent string `json:"agent"`
-	Label string `json:"label,omitempty"`
+	Token        string   `json:"token"`
+	Agent        string   `json:"agent"`
+	Label        string   `json:"label,omitempty"`
+	AllowedUsers []string `json:"allowed_users,omitempty"`
 }
 
 // handleDiscordStatus returns the list of configured bots (running or not).
@@ -131,7 +132,7 @@ func (s *Server) handleDiscordConfigure(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if _, err := s.AddDiscordBot(nil, req.Token, agentName, req.Label); err != nil {
+	if _, err := s.AddDiscordBot(nil, req.Token, agentName, req.Label, req.AllowedUsers); err != nil {
 		writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: "discord: " + err.Error()})
 		return
 	}

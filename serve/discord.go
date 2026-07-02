@@ -196,12 +196,15 @@ func (s *Server) startDiscordBot(parent context.Context, cfg DiscordBotConfig) (
 	return entry, nil
 }
 
-// AddDiscordBot validates and persists a new bot, then starts it.
-func (s *Server) AddDiscordBot(parent context.Context, token, agent, label string) (*DiscordBotConfig, error) {
+// AddDiscordBot validates and persists a new bot, then starts it. allowedUsers
+// (may be nil) restricts which Discord user IDs the bot responds to; nil/empty
+// means open access.
+func (s *Server) AddDiscordBot(parent context.Context, token, agent, label string, allowedUsers []string) (*DiscordBotConfig, error) {
 	cfg := DiscordBotConfig{
-		Token: strings.TrimSpace(token),
-		Agent: strings.TrimSpace(agent),
-		Label: strings.TrimSpace(label),
+		Token:        strings.TrimSpace(token),
+		Agent:        strings.TrimSpace(agent),
+		Label:        strings.TrimSpace(label),
+		AllowedUsers: allowedUsers,
 	}
 	cfg.ID = discordBotIDFromToken(cfg.Token)
 	if cfg.ID == "" {
@@ -471,6 +474,23 @@ func stripBotMention(content, botID string) string {
 	return strings.TrimSpace(content)
 }
 
+// parseAllowedUsers splits a comma-separated list of Discord user IDs (as set
+// via the DISCORD_ALLOWED_USERS env var / portal field) into a trimmed slice,
+// dropping blanks. Returns nil for empty input — meaning open access.
+func parseAllowedUsers(csv string) []string {
+	csv = strings.TrimSpace(csv)
+	if csv == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(csv, ",") {
+		if id := strings.TrimSpace(part); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // discordShouldRespond decides whether an inbound message warrants a reply:
 // always in DMs, and only when mentioned in a guild channel (so the bot stays
 // quiet in busy shared channels).
@@ -529,7 +549,7 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	name := d.agentName
 	if target, body := parseAgentPrefix(text, d.interp.HasAgent); target != "" {
 		if body == "" {
-			_, _ = d.session.ChannelMessageSend(channelID, "What would you like to ask "+target+"?")
+			d.replyThreaded(m.Reference(), channelID, "What would you like to ask "+target+"?")
 			return
 		}
 		name = target
@@ -579,19 +599,34 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("discord: SendToAgent failed", "error", err)
-		_, _ = d.session.ChannelMessageSend(channelID, "Error: "+err.Error())
+		d.replyThreaded(m.Reference(), channelID, "Error: "+err.Error())
 		return
 	}
 
 	// Persist assistant response and reply. Discord renders markdown natively,
-	// so the agent's output is sent as-is (chunked to the 2000-char limit).
+	// so the agent's output is sent as-is (chunked to the 2000-char limit) and
+	// threaded as a reply to the triggering message.
 	if err := d.store.InsertChatMessage(name, "assistant", resp, nil); err != nil {
 		slog.Warn("discord: failed to insert assistant message", "error", err)
 	}
-	for _, chunk := range splitDiscordMessage(resp) {
-		if _, err := d.session.ChannelMessageSend(channelID, chunk); err != nil {
+	d.replyThreaded(m.Reference(), channelID, resp)
+}
+
+// replyThreaded sends content back to the channel as a reply to the triggering
+// message so it threads visually in Discord. The first chunk carries the reply
+// reference; overflow chunks continue as plain follow-ups. A nil ref falls back
+// to a plain message (used where there's no triggering message to reply to).
+func (d *DiscordBot) replyThreaded(ref *discordgo.MessageReference, channelID, content string) {
+	for i, chunk := range splitDiscordMessage(content) {
+		var err error
+		if i == 0 && ref != nil {
+			_, err = d.session.ChannelMessageSendReply(channelID, chunk, ref)
+		} else {
+			_, err = d.session.ChannelMessageSend(channelID, chunk)
+		}
+		if err != nil {
 			slog.Warn("discord: reply failed", "error", err)
-			break
+			return
 		}
 	}
 }
