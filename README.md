@@ -193,6 +193,17 @@ vega repl assistant.vega.yaml
 > What is the capital of France?
 ```
 
+### Option 3: The dashboard playground
+
+The fastest way to *experience* Vega — orchestrator chat, agent building,
+MCP connections, workflows — is the web dashboard:
+
+```bash
+vega serve --addr 127.0.0.1:4200 --db ~/vega-playground.db
+```
+
+Then follow the guided tour in [docs/PLAYGROUND.md](docs/PLAYGROUND.md).
+
 ---
 
 ## ⚠️ Important: Process Lifecycle
