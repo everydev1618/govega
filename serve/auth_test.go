@@ -76,6 +76,53 @@ func downstream() http.HandlerFunc {
 	}
 }
 
+// TestAuthMiddleware_AccessTokenQueryOnlyOnGet verifies the ?access_token=
+// fallback is honored for GET (EventSource can't set headers) but rejected for
+// other methods, so tokens don't leak into logs on non-streaming requests
+// that could have used the Authorization header. Regression test for P2-5.
+func TestAuthMiddleware_AccessTokenQueryOnlyOnGet(t *testing.T) {
+	f := newTestAuth(t, "acme")
+	mw := authMiddleware(f.cfg)
+	srv := httptest.NewServer(mw(downstream()))
+	defer srv.Close()
+
+	token := f.mintToken(t, validClaims("acme"))
+
+	// GET with ?access_token= is accepted (EventSource case).
+	getReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/events?access_token="+token, nil)
+	getRes, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	if getRes.StatusCode != http.StatusOK {
+		t.Errorf("GET with query token: status %d, want 200", getRes.StatusCode)
+	}
+	getRes.Body.Close()
+
+	// POST with ?access_token= (and no header) must be rejected.
+	postReq, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/agents/x/chat?access_token="+token, nil)
+	postRes, err := http.DefaultClient.Do(postReq)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	if postRes.StatusCode == http.StatusOK {
+		t.Errorf("POST with query token: status 200, want rejection (token should not be read from query on POST)")
+	}
+	postRes.Body.Close()
+
+	// POST with the Authorization header still works.
+	postHdr, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/agents/x/chat", nil)
+	postHdr.Header.Set("Authorization", "Bearer "+token)
+	hdrRes, err := http.DefaultClient.Do(postHdr)
+	if err != nil {
+		t.Fatalf("POST header: %v", err)
+	}
+	if hdrRes.StatusCode != http.StatusOK {
+		t.Errorf("POST with header: status %d, want 200", hdrRes.StatusCode)
+	}
+	hdrRes.Body.Close()
+}
+
 func TestAuthMiddleware_SelfHostedMode_PassThrough(t *testing.T) {
 	// When TenantID is empty, middleware is a no-op. Every path passes through
 	// without auth — preserves the existing self-hosted experience.

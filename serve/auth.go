@@ -189,10 +189,12 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			}
 
 			raw := bearerFrom(r.Header.Get("Authorization"))
-			if raw == "" {
-				// EventSource can't send custom headers; allow the token via
-				// ?access_token=... per RFC 6750 §2.3. Header-bearer is preferred
-				// when present.
+			if raw == "" && r.Method == http.MethodGet {
+				// EventSource can't send custom headers, so allow the token via
+				// ?access_token=... per RFC 6750 §2.3 — but only for GET, which
+				// is the sole method EventSource uses. Every other method can
+				// send the Authorization header, so we don't accept the token in
+				// the query there (it would leak into proxy/access logs).
 				raw = r.URL.Query().Get("access_token")
 			}
 			if raw == "" {

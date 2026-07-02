@@ -1041,6 +1041,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// WithClaims are immediately visible to handlers' ClaimsFrom calls.
 	srv := &http.Server{
 		Handler: corsMiddleware(LoadCORSConfig())(authMiddleware(authCfg)(composeMiddleware(s.cfg.Middleware, mux))),
+		// Bound the time to read request headers to blunt Slowloris-style
+		// slow-header attacks. WriteTimeout is intentionally left unset because
+		// SSE responses are long-lived.
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Start server in goroutine.
