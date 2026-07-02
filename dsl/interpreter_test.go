@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -245,6 +246,9 @@ func TestValidationError(t *testing.T) {
 	errStr := err.Error()
 	if errStr == "" {
 		t.Error("ValidationError.Error() should not be empty")
+	}
+	if !strings.Contains(errStr, "line 10") {
+		t.Errorf("ValidationError.Error() = %q, want the decimal line number, not a rune cast", errStr)
 	}
 }
 

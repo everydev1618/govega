@@ -3,6 +3,7 @@ package vega
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -92,7 +93,7 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string {
 	if e.Line > 0 {
-		return e.Field + " at line " + string(rune(e.Line)) + ": " + e.Message
+		return e.Field + " at line " + strconv.Itoa(e.Line) + ": " + e.Message
 	}
 	return e.Field + ": " + e.Message
 }

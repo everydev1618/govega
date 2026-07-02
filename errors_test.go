@@ -104,7 +104,7 @@ func TestValidationError(t *testing.T) {
 				Message: "invalid model name",
 				Line:    15,
 			},
-			want: "agents.coder at line \x0f: invalid model name",
+			want: "agents.coder at line 15: invalid model name",
 		},
 	}
 

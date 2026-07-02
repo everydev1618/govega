@@ -1,7 +1,10 @@
 // Package dsl provides the Vega DSL parser and interpreter.
 package dsl
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 // CompanySibling represents a sibling Vega instance for company switching.
 type CompanySibling struct {
@@ -386,7 +389,7 @@ func (e *ValidationError) Error() string {
 		msg = e.Field + ": " + msg
 	}
 	if e.Line > 0 {
-		msg = msg + " (line " + string(rune(e.Line+'0')) + ")"
+		msg = msg + " (line " + strconv.Itoa(e.Line) + ")"
 	}
 	if e.Hint != "" {
 		msg = msg + "\n  → " + e.Hint
