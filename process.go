@@ -125,9 +125,14 @@ type Process struct {
 	rateLimiter    *agentRateLimiter
 	circuitBreaker *circuitBreakerState
 
-	// Automatic restart support
-	restartPolicy ChildRestart
-	spawnOpts     []SpawnOption
+	// Automatic restart support. restartPolicySet distinguishes an
+	// explicitly configured policy from the zero value — ChildRestart's
+	// zero value is Permanent, and treating "unset" as Permanent would
+	// auto-restart every failed process whose agent is registered
+	// (double-restarting children a Supervisor already manages).
+	restartPolicy    ChildRestart
+	restartPolicySet bool
+	spawnOpts        []SpawnOption
 
 	// extraSystem is additional system prompt content injected per-process.
 	extraSystem string

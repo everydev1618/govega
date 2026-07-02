@@ -697,6 +697,7 @@ func (o *Orchestrator) SpawnSupervised(agent Agent, restart ChildRestart, opts .
 	// Store restart policy on process
 	proc.mu.Lock()
 	proc.restartPolicy = restart
+	proc.restartPolicySet = true
 	proc.spawnOpts = opts
 	proc.mu.Unlock()
 
@@ -708,6 +709,7 @@ func (o *Orchestrator) SpawnSupervised(agent Agent, restart ChildRestart, opts .
 func (o *Orchestrator) handleAutoRestart(p *Process, err error) {
 	p.mu.RLock()
 	restartPolicy := p.restartPolicy
+	restartPolicySet := p.restartPolicySet
 	spawnOpts := p.spawnOpts
 	agentName := ""
 	if p.Agent != nil {
@@ -715,6 +717,14 @@ func (o *Orchestrator) handleAutoRestart(p *Process, err error) {
 	}
 	procName := p.name
 	p.mu.RUnlock()
+
+	// Only processes spawned via SpawnSupervised carry a restart policy.
+	// ChildRestart's zero value is Permanent, so an unset policy must be
+	// detected explicitly — otherwise every failed process whose agent is
+	// registered would be restarted here, fighting Supervisor restarts.
+	if !restartPolicySet {
+		return
+	}
 
 	// Check if we should restart
 	shouldRestart := false
@@ -726,9 +736,6 @@ func (o *Orchestrator) handleAutoRestart(p *Process, err error) {
 		shouldRestart = true
 	case Temporary:
 		shouldRestart = false
-	default:
-		// No restart policy set
-		return
 	}
 
 	if !shouldRestart {
@@ -764,6 +771,7 @@ func (o *Orchestrator) handleAutoRestart(p *Process, err error) {
 		// Copy restart settings to new process
 		newProc.mu.Lock()
 		newProc.restartPolicy = restartPolicy
+		newProc.restartPolicySet = true
 		newProc.spawnOpts = spawnOpts
 		newProc.Supervision = p.Supervision
 		newProc.mu.Unlock()
