@@ -11,6 +11,7 @@ import (
 
 	"github.com/everydev1618/govega/internal/v39a"
 	"github.com/everydev1618/govega/llm"
+	"github.com/everydev1618/govega/memory"
 )
 
 // v39aReporter is the lazily-initialised reporter used by callLLMWithRetry
@@ -255,6 +256,23 @@ func toolResultsMessage(results []llm.ContentBlock) llm.Message {
 	return llm.Message{Role: llm.RoleUser, Blocks: results}
 }
 
+// tryCompactContext compacts the agent's context manager after a
+// context-window overflow. Returns false when the agent has no compactable
+// context (or compaction failed) — the caller should surface
+// ErrContextWindowExceeded instead of retrying.
+func (p *Process) tryCompactContext() bool {
+	cc, ok := p.Agent.Context.(memory.CompactableContext)
+	if !ok || p.llm == nil {
+		return false
+	}
+	if err := cc.Compact(p.llm); err != nil {
+		slog.Warn("context compaction failed", "process_id", p.ID, "error", err)
+		return false
+	}
+	slog.Info("context compacted after window overflow", "process_id", p.ID)
+	return true
+}
+
 func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, CallMetrics, error) {
 	metrics := CallMetrics{}
 
@@ -269,6 +287,7 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 
 	// Main loop - keep calling LLM until we get a final response (no tool calls)
 	maxIterations := p.effectiveMaxIterations()
+	compacted := false
 	for i := 0; i < maxIterations; i++ {
 		select {
 		case <-ctx.Done():
@@ -289,6 +308,27 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 		metrics.CacheReadInputTokens += resp.CacheReadInputTokens
 		metrics.CostUSD += resp.CostUSD
 		metrics.LatencyMs += resp.LatencyMs
+
+		switch resp.StopReason {
+		case llm.StopReasonRefusal:
+			// Safety decline — not an answer. Do not retry the same prompt.
+			return "", metrics, ErrLLMRefusal
+		case llm.StopReasonPause:
+			// Server-side work paused; re-send the assistant turn unchanged
+			// and the API resumes where it left off.
+			messages = append(messages, assistantTurnMessage(resp.Content, resp.Blocks, resp.ToolCalls))
+			continue
+		case llm.StopReasonContextExceeded:
+			// The conversation no longer fits the model's context window.
+			// Compact once if the agent has a compactable context, else fail
+			// with a clear error instead of returning a truncated answer.
+			if !compacted && p.tryCompactContext() {
+				compacted = true
+				messages = p.buildMessages()
+				continue
+			}
+			return "", metrics, ErrContextWindowExceeded
+		}
 
 		// If no tool calls, we're done
 		if len(resp.ToolCalls) == 0 {
@@ -342,6 +382,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 
 	var fullResponse string
 	maxIterations := p.effectiveMaxIterations()
+	compacted := false
 
 	for i := 0; i < maxIterations; i++ {
 		select {
@@ -361,6 +402,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 
 		// Collect this iteration's typed blocks and tool calls.
 		var iterResponse string
+		var stopReason llm.StopReason
 		collector := &blockCollector{}
 
 		for event := range eventCh {
@@ -370,13 +412,35 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 
 			collector.handle(event)
 
-			if event.Type == llm.StreamEventContentDelta && event.Delta != "" {
-				if !sendChunk(ctx, chunks, event.Delta) {
-					return fullResponse, ctx.Err()
+			switch event.Type {
+			case llm.StreamEventContentDelta:
+				if event.Delta != "" {
+					if !sendChunk(ctx, chunks, event.Delta) {
+						return fullResponse, ctx.Err()
+					}
+					iterResponse += event.Delta
+					fullResponse += event.Delta
 				}
-				iterResponse += event.Delta
-				fullResponse += event.Delta
+			case llm.StreamEventMessageEnd:
+				if event.StopReason != "" {
+					stopReason = event.StopReason
+				}
 			}
+		}
+
+		switch stopReason {
+		case llm.StopReasonRefusal:
+			return fullResponse, ErrLLMRefusal
+		case llm.StopReasonPause:
+			messages = append(messages, assistantTurnMessage(iterResponse, collector.blocks, collector.toolCalls))
+			continue
+		case llm.StopReasonContextExceeded:
+			if !compacted && p.tryCompactContext() {
+				compacted = true
+				messages = p.buildMessages()
+				continue
+			}
+			return fullResponse, ErrContextWindowExceeded
 		}
 
 		// If no tool calls, we're done
@@ -450,6 +514,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 	}()
 
 	maxIterations := p.effectiveMaxIterations()
+	compacted := false
 
 	for i := 0; i < maxIterations; i++ {
 		select {
@@ -468,6 +533,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 		}
 
 		var iterResponse string
+		var stopReason llm.StopReason
 		collector := &blockCollector{}
 
 		for ev := range eventCh {
@@ -485,6 +551,9 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 			case llm.StreamEventMessageEnd:
 				totalOutputTokens += ev.OutputTokens
 				totalCostUSD += ev.CostUSD
+				if ev.StopReason != "" {
+					stopReason = ev.StopReason
+				}
 			case llm.StreamEventContentDelta:
 				if ev.Delta != "" {
 					if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: ev.Delta}) {
@@ -506,6 +575,21 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 					}
 				}
 			}
+		}
+
+		switch stopReason {
+		case llm.StopReasonRefusal:
+			return fullResponse, ErrLLMRefusal
+		case llm.StopReasonPause:
+			messages = append(messages, assistantTurnMessage(iterResponse, collector.blocks, collector.toolCalls))
+			continue
+		case llm.StopReasonContextExceeded:
+			if !compacted && p.tryCompactContext() {
+				compacted = true
+				messages = p.buildMessages()
+				continue
+			}
+			return fullResponse, ErrContextWindowExceeded
 		}
 
 		if len(collector.toolCalls) == 0 {

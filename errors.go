@@ -35,6 +35,16 @@ var (
 	// ErrProcessNotFound is returned when process ID is not found
 	ErrProcessNotFound = errors.New("process not found")
 
+	// ErrLLMRefusal is returned when the model declined the request for
+	// safety reasons (stop_reason "refusal"). Do not retry the same
+	// prompt — surface to the user.
+	ErrLLMRefusal = errors.New("model refused the request")
+
+	// ErrContextWindowExceeded is returned when the model's context
+	// window was exhausted and no compactable context is available to
+	// shrink the conversation.
+	ErrContextWindowExceeded = errors.New("model context window exceeded")
+
 	// ErrAgentNotFound is returned when agent name is not found
 	ErrAgentNotFound = errors.New("agent not found")
 

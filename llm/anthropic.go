@@ -862,23 +862,7 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 	result.CostUSD = CalculateCost(resp.Model, result.InputTokens, result.OutputTokens,
 		result.CacheCreationInputTokens, result.CacheReadInputTokens)
 
-	// Parse stop reason
-	switch resp.StopReason {
-	case "end_turn":
-		result.StopReason = StopReasonEnd
-	case "tool_use":
-		result.StopReason = StopReasonToolUse
-	case "max_tokens":
-		result.StopReason = StopReasonLength
-	case "stop_sequence":
-		result.StopReason = StopReasonStop
-	case "pause_turn":
-		result.StopReason = StopReasonPause
-	case "refusal":
-		result.StopReason = StopReasonRefusal
-	case "model_context_window_exceeded":
-		result.StopReason = StopReasonContextExceeded
-	}
+	result.StopReason = mapAnthropicStopReason(resp.StopReason)
 
 	// Parse content blocks — kept both as the legacy flat fields and as
 	// ordered typed Blocks so callers can replay the turn losslessly.
@@ -961,6 +945,27 @@ func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent, mo
 		return fmt.Errorf("stream truncated: connection closed before message_stop")
 	}
 	return nil
+}
+
+// mapAnthropicStopReason converts the wire stop_reason into a StopReason.
+func mapAnthropicStopReason(s string) StopReason {
+	switch s {
+	case "end_turn":
+		return StopReasonEnd
+	case "tool_use":
+		return StopReasonToolUse
+	case "max_tokens":
+		return StopReasonLength
+	case "stop_sequence":
+		return StopReasonStop
+	case "pause_turn":
+		return StopReasonPause
+	case "refusal":
+		return StopReasonRefusal
+	case "model_context_window_exceeded":
+		return StopReasonContextExceeded
+	}
+	return ""
 }
 
 // sseState carries per-stream accounting so the message_end event can
@@ -1061,6 +1066,9 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 
 	case "message_delta":
 		var delta struct {
+			Delta struct {
+				StopReason string `json:"stop_reason"`
+			} `json:"delta"`
 			Usage struct {
 				OutputTokens int `json:"output_tokens"`
 			} `json:"usage"`
@@ -1069,6 +1077,7 @@ func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- St
 		eventCh <- StreamEvent{
 			Type:         StreamEventMessageEnd,
 			OutputTokens: delta.Usage.OutputTokens,
+			StopReason:   mapAnthropicStopReason(delta.Delta.StopReason),
 			CostUSD: CalculateCost(st.model, st.inputTokens, delta.Usage.OutputTokens,
 				st.cacheCreationInputTokens, st.cacheReadInputTokens),
 		}

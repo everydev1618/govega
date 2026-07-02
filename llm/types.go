@@ -168,6 +168,11 @@ type StreamEvent struct {
 	// from the model name.
 	CostUSD float64
 
+	// StopReason, set on MessageEnd, indicates why generation stopped.
+	// Callers must handle refusal and pause_turn instead of treating
+	// every stream end as a completed answer.
+	StopReason StopReason
+
 	// Cache token counts (Anthropic prompt caching)
 	CacheCreationInputTokens int
 	CacheReadInputTokens     int
