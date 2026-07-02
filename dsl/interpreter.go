@@ -1539,6 +1539,13 @@ func (i *Interpreter) AddAgent(name string, def *Agent) error {
 // RemoveAgent stops and removes an agent at runtime.
 func (i *Interpreter) RemoveAgent(name string) error {
 	i.mu.Lock()
+	// System (meta) agents like Hera and Iris must never be removed or
+	// rewritten via the agent tools — that would be a privilege-escalation
+	// path for a prompt-injected composed agent.
+	if def, ok := i.doc.Agents[name]; ok && def.IsMeta {
+		i.mu.Unlock()
+		return fmt.Errorf("agent '%s' is a system agent and cannot be removed or modified", name)
+	}
 	proc, ok := i.agents[name]
 	if !ok {
 		i.mu.Unlock()
@@ -1649,6 +1656,22 @@ func (i *Interpreter) spawnEphemeralProcess(name string) (*vega.Process, error) 
 // VEGA_EPHEMERAL_DELEGATION=false to opt back into the legacy
 // shared-process behavior.
 func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message string) (string, error) {
+	// Block privilege escalation: a non-meta agent must not be able to invoke a
+	// system (meta) agent like Hera/Iris via delegation. Top-level calls (no
+	// caller process in context) are unaffected, so the user can still talk to
+	// the orchestrator directly.
+	if caller := vega.ProcessFromContext(ctx); caller != nil && caller.Agent != nil {
+		i.mu.RLock()
+		callerDef, callerOK := i.doc.Agents[caller.Agent.Name]
+		targetDef, targetOK := i.doc.Agents[agentName]
+		i.mu.RUnlock()
+		callerIsMeta := callerOK && callerDef.IsMeta
+		targetIsMeta := targetOK && targetDef.IsMeta
+		if targetIsMeta && !callerIsMeta {
+			return "", fmt.Errorf("agent %q cannot delegate to system agent %q", caller.Agent.Name, agentName)
+		}
+	}
+
 	useEphemeral := ephemeralDelegationEnabled() && vega.ProcessFromContext(ctx) != nil
 
 	var (
