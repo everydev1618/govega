@@ -130,7 +130,8 @@ func (s *SQLiteStore) Init() error {
 		inputs     TEXT NOT NULL DEFAULT '{}',
 		status     TEXT NOT NULL DEFAULT 'running',
 		result     TEXT NOT NULL DEFAULT '',
-		started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		steps      TEXT NOT NULL DEFAULT '[]'
 	);
 
 	CREATE TABLE IF NOT EXISTS composed_agents (
@@ -395,6 +396,9 @@ func (s *SQLiteStore) Init() error {
 	// Migrate: add mode column to channels if missing.
 	s.db.Exec(`ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT ''`)
 
+	// Migrate: per-step checkpoints on workflow runs (govega#114 Phase 5).
+	s.db.Exec(`ALTER TABLE workflow_runs ADD COLUMN steps TEXT NOT NULL DEFAULT '[]'`)
+
 	// Migrate: add updated_at column. Backfill from created_at so existing
 	// rows surface a sensible value rather than null/epoch.
 	if _, err := s.db.Exec(`ALTER TABLE channels ADD COLUMN updated_at DATETIME`); err == nil {
@@ -543,6 +547,30 @@ func (s *SQLiteStore) UpdateWorkflowRun(runID string, status string, result stri
 	return err
 }
 
+// UpdateWorkflowRunSteps replaces the per-step checkpoint JSON on a run.
+func (s *SQLiteStore) UpdateWorkflowRunSteps(runID string, stepsJSON string) error {
+	_, err := s.db.Exec(
+		`UPDATE workflow_runs SET steps = ? WHERE run_id = ?`,
+		stepsJSON, runID,
+	)
+	return err
+}
+
+// ReconcileOrphanedWorkflowRuns marks runs stuck at 'running' as
+// interrupted — at boot, any 'running' row died with the previous server.
+func (s *SQLiteStore) ReconcileOrphanedWorkflowRuns() (int64, error) {
+	r, err := s.db.Exec(
+		`UPDATE workflow_runs SET status = 'interrupted',
+		        result = 'interrupted: server restarted while the run was in flight'
+		 WHERE status = 'running'`,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := r.RowsAffected()
+	return n, nil
+}
+
 // ListEvents returns recent events, newest first.
 func (s *SQLiteStore) ListEvents(limit int) ([]StoreEvent, error) {
 	rows, err := s.db.Query(
@@ -604,7 +632,7 @@ func (s *SQLiteStore) ListProcessSnapshots() ([]ProcessSnapshot, error) {
 // ListWorkflowRuns returns recent workflow runs.
 func (s *SQLiteStore) ListWorkflowRuns(limit int) ([]WorkflowRun, error) {
 	rows, err := s.db.Query(
-		`SELECT id, run_id, workflow, inputs, status, result, started_at
+		`SELECT id, run_id, workflow, inputs, status, result, started_at, steps
 		 FROM workflow_runs ORDER BY id DESC LIMIT ?`, limit,
 	)
 	if err != nil {
@@ -615,7 +643,7 @@ func (s *SQLiteStore) ListWorkflowRuns(limit int) ([]WorkflowRun, error) {
 	var runs []WorkflowRun
 	for rows.Next() {
 		var r WorkflowRun
-		if err := rows.Scan(&r.ID, &r.RunID, &r.Workflow, &r.Inputs, &r.Status, &r.Result, &r.StartedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.RunID, &r.Workflow, &r.Inputs, &r.Status, &r.Result, &r.StartedAt, &r.Steps); err != nil {
 			return nil, err
 		}
 		runs = append(runs, r)

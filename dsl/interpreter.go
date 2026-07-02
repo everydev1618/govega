@@ -66,6 +66,7 @@ type Interpreter struct {
 	onDispatchEvent    func(agentName string, ev vega.ChatEvent)                        // fires for each ChatEvent from a dispatched run, so the serve layer can stream tool calls / text deltas back to the user via SSE
 	serverBaseURL      string                 // set by serve package so agents know their public URL
 	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
+	stepObserver       StepObserver           // set by SetStepObserver; receives workflow step lifecycle events
 
 	// dispatchSem caps the number of simultaneously-running dispatched
 	// agent goroutines. Each dispatch holds its own conversation history
@@ -689,15 +690,19 @@ func (i *Interpreter) RunWorkflow(ctx context.Context, name string, inputs map[s
 	// Execute steps
 	for idx, step := range wf.Steps {
 		execCtx.CurrentStep = idx
+		label := stepLabel(&step)
 
+		i.observeStep(ctx, name, StepEvent{Index: idx, Name: label, Status: StepStatusRunning})
 		result, err := i.executeStep(ctx, &step, execCtx)
 		if err != nil {
+			i.observeStep(ctx, name, StepEvent{Index: idx, Name: label, Status: StepStatusFailed, Error: err.Error()})
 			if step.ContinueOnError {
 				execCtx.Variables["error"] = err.Error()
 				continue
 			}
 			return nil, fmt.Errorf("step %d: %w", idx, err)
 		}
+		i.observeStep(ctx, name, StepEvent{Index: idx, Name: label, Status: StepStatusCompleted})
 
 		// Handle early return
 		if step.Return != "" {

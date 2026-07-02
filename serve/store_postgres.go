@@ -244,9 +244,33 @@ func (s *PostgresStore) UpdateWorkflowRun(runID, status, result string) error {
 	return err
 }
 
+// UpdateWorkflowRunSteps replaces the per-step checkpoint JSON on a run.
+func (s *PostgresStore) UpdateWorkflowRunSteps(runID string, stepsJSON string) error {
+	_, err := s.db.Exec(
+		`UPDATE workflow_runs SET steps = $1 WHERE run_id = $2`,
+		stepsJSON, runID,
+	)
+	return err
+}
+
+// ReconcileOrphanedWorkflowRuns marks runs stuck at 'running' as
+// interrupted — at boot, any 'running' row died with the previous server.
+func (s *PostgresStore) ReconcileOrphanedWorkflowRuns() (int64, error) {
+	r, err := s.db.Exec(
+		`UPDATE workflow_runs SET status = 'interrupted',
+		        result = 'interrupted: server restarted while the run was in flight'
+		 WHERE status = 'running'`,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := r.RowsAffected()
+	return n, nil
+}
+
 func (s *PostgresStore) ListWorkflowRuns(limit int) ([]WorkflowRun, error) {
 	rows, err := s.db.Query(
-		`SELECT id, run_id, workflow, inputs, status, result, started_at
+		`SELECT id, run_id, workflow, inputs, status, result, started_at, steps
 		 FROM workflow_runs ORDER BY id DESC LIMIT $1`, limit,
 	)
 	if err != nil {
@@ -256,7 +280,7 @@ func (s *PostgresStore) ListWorkflowRuns(limit int) ([]WorkflowRun, error) {
 	var runs []WorkflowRun
 	for rows.Next() {
 		var r WorkflowRun
-		if err := rows.Scan(&r.ID, &r.RunID, &r.Workflow, &r.Inputs, &r.Status, &r.Result, &r.StartedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.RunID, &r.Workflow, &r.Inputs, &r.Status, &r.Result, &r.StartedAt, &r.Steps); err != nil {
 			return nil, err
 		}
 		runs = append(runs, r)

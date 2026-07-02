@@ -28,6 +28,16 @@ type Store interface {
 	// UpdateWorkflowRun updates a workflow run status.
 	UpdateWorkflowRun(runID string, status string, result string) error
 
+	// UpdateWorkflowRunSteps replaces the per-step checkpoint JSON on a
+	// workflow run so interrupted runs show where they died.
+	UpdateWorkflowRunSteps(runID string, stepsJSON string) error
+
+	// ReconcileOrphanedWorkflowRuns marks runs stuck at status='running'
+	// as 'interrupted'. Called at boot: runs execute in-process, so any
+	// 'running' row at startup died with the previous server. Returns
+	// the number of runs reconciled.
+	ReconcileOrphanedWorkflowRuns() (int64, error)
+
 	// ListEvents returns recent events, newest first.
 	ListEvents(limit int) ([]StoreEvent, error)
 
@@ -653,4 +663,7 @@ type WorkflowRun struct {
 	Status    string    `json:"status"`
 	Result    string    `json:"result,omitempty"`
 	StartedAt time.Time `json:"started_at"`
+	// Steps is a JSON array of per-step checkpoints ([]dsl.StepEvent),
+	// updated as the run progresses.
+	Steps string `json:"steps,omitempty"`
 }

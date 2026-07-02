@@ -233,6 +233,11 @@ type Server struct {
 	blobs     BlobStore
 	popClient *population.Client
 
+	// stepCheckpoints folds workflow step lifecycle events into per-run
+	// checkpoint lists persisted on workflow_runs.steps (govega#114
+	// Phase 5). Zero value ready to use.
+	stepCheckpoints stepCheckpointer
+
 	// Telegram bots. Multi-bot — keyed by bot ID (the numeric prefix of
 	// the API token). Each bot has its own polling loop and cancel func.
 	// telegramCtx is the server's Start ctx, used as parent for every
@@ -516,6 +521,19 @@ func (s *Server) Start(ctx context.Context) error {
 	} else {
 		s.popClient = popClient
 	}
+
+	// Reconcile workflow runs orphaned by the previous shutdown: runs
+	// execute in-process, so any row still 'running' at boot died with
+	// the old server. Mark them interrupted so they don't read as live
+	// forever (govega#114 Phase 5).
+	if n, err := s.store.ReconcileOrphanedWorkflowRuns(); err != nil {
+		slog.Warn("workflow run reconciliation failed", "error", err)
+	} else if n > 0 {
+		slog.Info("marked orphaned workflow runs interrupted", "count", n)
+	}
+
+	// Persist workflow step checkpoints + publish step lifecycle events.
+	s.wireStepObserver()
 
 	// Auto-connect MCP servers BEFORE restoring agents so that MCP tools
 	// are registered in the global tool collection when agents spawn.

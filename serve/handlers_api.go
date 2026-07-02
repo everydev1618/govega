@@ -1019,6 +1019,9 @@ func (s *Server) handleRunWorkflow(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		ctx = carryRequestValues(reqCtx, ctx)
+		// Correlate step lifecycle events with the persisted run so per-
+		// step checkpoints land on this run's row.
+		ctx = dsl.ContextWithWorkflowRunID(ctx, runID)
 
 		result, err := s.interp.Execute(ctx, name, req.Inputs)
 
@@ -1030,6 +1033,7 @@ func (s *Server) handleRunWorkflow(w http.ResponseWriter, r *http.Request) {
 		}
 
 		s.store.UpdateWorkflowRun(runID, status, resultStr)
+		s.stepCheckpoints.forget(runID)
 
 		s.broker.Publish(BrokerEvent{
 			Type:      "workflow." + status,
