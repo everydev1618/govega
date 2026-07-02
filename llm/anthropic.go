@@ -25,9 +25,14 @@ type AnthropicLLM struct {
 	apiKey     string
 	baseURL    string
 	httpClient *http.Client
-	model      string
-	effort     string        // "" | "low" | "medium" | "high" | "xhigh" | "max"
-	semaphore  chan struct{} // limits concurrent API requests
+	// streamClient serves the streaming path. It carries no overall
+	// Timeout: http.Client.Timeout spans the entire response body, so a
+	// fixed timeout silently cuts long streams mid-answer. Stream
+	// cancellation is the caller's context.
+	streamClient *http.Client
+	model        string
+	effort       string        // "" | "low" | "medium" | "high" | "xhigh" | "max"
+	semaphore    chan struct{} // limits concurrent API requests
 }
 
 // AnthropicOption configures the Anthropic client.
@@ -54,10 +59,13 @@ func WithBaseURL(url string) AnthropicOption {
 	}
 }
 
-// WithHTTPClient sets a custom HTTP client.
+// WithHTTPClient sets a custom HTTP client. It is used for both the
+// non-streaming and streaming paths — callers overriding it own the
+// timeout trade-off (a non-zero Timeout will cut streams that outlive it).
 func WithHTTPClient(client *http.Client) AnthropicOption {
 	return func(a *AnthropicLLM) {
 		a.httpClient = client
+		a.streamClient = client
 	}
 }
 
@@ -100,8 +108,10 @@ func NewAnthropic(opts ...AnthropicOption) *AnthropicLLM {
 		httpClient: &http.Client{
 			Timeout: DefaultAnthropicTimeout,
 		},
-		model:     DefaultAnthropicModel,
-		semaphore: make(chan struct{}, DefaultMaxConcurrent),
+		// No Timeout on the streaming client — see the field comment.
+		streamClient: &http.Client{},
+		model:        DefaultAnthropicModel,
+		semaphore:    make(chan struct{}, DefaultMaxConcurrent),
 	}
 
 	for _, opt := range opts {
@@ -269,15 +279,22 @@ func (a *AnthropicLLM) GenerateStream(ctx context.Context, messages []Message, t
 				return
 			}
 
-			httpResp, err := a.httpClient.Do(httpReq)
+			client := a.streamClient
+			if client == nil {
+				client = a.httpClient
+			}
+			httpResp, err := client.Do(httpReq)
 			if err != nil {
 				eventCh <- StreamEvent{Type: StreamEventError, Error: err}
 				return
 			}
 
 			if httpResp.StatusCode == http.StatusOK {
-				a.parseSSE(httpResp.Body, eventCh)
+				parseErr := a.parseSSE(httpResp.Body, eventCh)
 				httpResp.Body.Close()
+				if parseErr != nil {
+					eventCh <- StreamEvent{Type: StreamEventError, Error: parseErr}
+				}
 				return
 			}
 
@@ -775,10 +792,22 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 	return result, nil
 }
 
-func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent) {
+// maxSSELineBytes bounds a single SSE line. bufio.Scanner's 64KB default
+// is too small for large data payloads (big tool inputs, long documents);
+// exceeding it used to abort the stream silently.
+const maxSSELineBytes = 10 * 1024 * 1024
+
+// parseSSE consumes the SSE body and emits StreamEvents. It returns an
+// error when the stream ends abnormally — a read error (network cut,
+// timeout) or a connection that closed before the server's message_stop —
+// so the caller can surface truncation instead of returning a partial
+// answer as if it were complete.
+func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent) error {
 	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64*1024), maxSSELineBytes)
 	var currentEvent string
 	var currentData strings.Builder
+	sawMessageStop := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -795,11 +824,22 @@ func (a *AnthropicLLM) parseSSE(reader io.Reader, eventCh chan<- StreamEvent) {
 
 		if line == "" && currentEvent != "" {
 			// Process complete event
+			if currentEvent == "message_stop" {
+				sawMessageStop = true
+			}
 			a.processSSEEvent(currentEvent, currentData.String(), eventCh)
 			currentEvent = ""
 			currentData.Reset()
 		}
 	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("stream read failed: %w", err)
+	}
+	if !sawMessageStop {
+		return fmt.Errorf("stream truncated: connection closed before message_stop")
+	}
+	return nil
 }
 
 func (a *AnthropicLLM) processSSEEvent(eventType, data string, eventCh chan<- StreamEvent) {
