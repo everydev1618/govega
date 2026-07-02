@@ -429,7 +429,11 @@ func composeMiddleware(mw []func(http.Handler) http.Handler, inner http.Handler)
 
 func resolveAddr(addr string) (net.Listener, string, error) {
 	if addr == "" {
-		addr = ":0"
+		// Security default: bind loopback only so an unconfigured self-hosted
+		// instance isn't reachable (and RCE-exploitable via the MCP endpoint)
+		// from the LAN. To expose it, pass an explicit address such as
+		// ":8080" or "0.0.0.0:8080".
+		addr = "127.0.0.1:0"
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

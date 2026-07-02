@@ -30,6 +30,25 @@ func TestAutoPortAllocation(t *testing.T) {
 	}
 }
 
+func TestEmptyAddrBindsLoopback(t *testing.T) {
+	// Security default (P2-1): an unspecified address must bind loopback only,
+	// never all interfaces, so self-hosted instances aren't LAN-reachable.
+	ln, resolvedAddr, err := resolveAddr("")
+	if err != nil {
+		t.Fatalf("resolveAddr(\"\") error: %v", err)
+	}
+	defer ln.Close()
+
+	host, _, err := net.SplitHostPort(resolvedAddr)
+	if err != nil {
+		t.Fatalf("SplitHostPort(%q): %v", resolvedAddr, err)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		t.Errorf("empty addr bound to %q, want a loopback address", resolvedAddr)
+	}
+}
+
 func TestExplicitAddr(t *testing.T) {
 	// When Addr is provided, resolveAddr should bind to that exact address.
 	ln, resolvedAddr, err := resolveAddr(":0") // use :0 so test doesn't clash
