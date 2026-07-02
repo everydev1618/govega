@@ -18,6 +18,20 @@ import (
 // Stops at whitespace and common shell meta-characters.
 var absPathRe = regexp.MustCompile(`(/[^\s"'<>|&;(){}\[\]\\]+)`)
 
+// requireString extracts a required string parameter, returning a clear error
+// the model can self-correct on instead of panicking on a bad type assertion.
+func requireString(params map[string]any, key string) (string, error) {
+	v, ok := params[key]
+	if !ok {
+		return "", fmt.Errorf("missing required parameter %q", key)
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("parameter %q must be a string, got %T", key, v)
+	}
+	return s, nil
+}
+
 // backgroundService tracks a long-running background process started by an agent.
 type backgroundService struct {
 	Name    string    `json:"name"`
@@ -100,8 +114,14 @@ func (t *Tools) RegisterBuiltins() {
 	t.Register("write_file", ToolDef{
 		Description: "Write content to a file",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
-			path := params["path"].(string)
-			content := params["content"].(string)
+			path, err := requireString(params, "path")
+			if err != nil {
+				return "", err
+			}
+			content, err := requireString(params, "content")
+			if err != nil {
+				return "", err
+			}
 			desc, _ := params["description"].(string)
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				return "", err
@@ -146,8 +166,14 @@ func (t *Tools) RegisterBuiltins() {
 	t.Register("append_file", ToolDef{
 		Description: "Append content to a file",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
-			path := params["path"].(string)
-			content := params["content"].(string)
+			path, err := requireString(params, "path")
+			if err != nil {
+				return "", err
+			}
+			content, err := requireString(params, "content")
+			if err != nil {
+				return "", err
+			}
 			desc, _ := params["description"].(string)
 			f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
@@ -172,7 +198,10 @@ func (t *Tools) RegisterBuiltins() {
 	t.Register("exec", ToolDef{
 		Description: "Execute a shell command inside the workspace sandbox. The working directory is always the sandbox. Use this to run build tools, start servers, install dependencies, etc.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
-			command := params["command"].(string)
+			command, err := requireString(params, "command")
+			if err != nil {
+				return "", err
+			}
 
 			// Determine working directory: effective sandbox (includes project subdir) if set, else cwd.
 			sandbox := t.effectiveSandbox()
@@ -232,7 +261,7 @@ func (t *Tools) RegisterBuiltins() {
 			cmd.Stdout = &buf
 			cmd.Stderr = &buf
 
-			err := cmd.Run()
+			err = cmd.Run()
 			output := buf.String()
 			if len(output) > 8000 {
 				output = output[:8000] + "\n... (truncated)"

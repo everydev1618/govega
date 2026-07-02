@@ -365,12 +365,27 @@ func (t *Tools) Execute(ctx context.Context, name string, params map[string]any)
 		exec = middleware[i](exec)
 	}
 
-	result, err := exec(ctx, params)
+	// Recover from panics in tool functions or middleware. A malformed
+	// model-supplied argument (e.g. a missing/mistyped param that a built-in
+	// type-asserts) must degrade to a tool error the model can self-correct
+	// on, never crash the whole server process.
+	result, err := safeExec(ctx, exec, params)
 	if err != nil {
 		return "", &ToolError{ToolName: name, Err: err}
 	}
 
 	return result, nil
+}
+
+// safeExec runs exec and converts any panic into an error.
+func safeExec(ctx context.Context, exec func(context.Context, map[string]any) (string, error), params map[string]any) (result string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = ""
+			err = fmt.Errorf("tool panic: %v", r)
+		}
+	}()
+	return exec(ctx, params)
 }
 
 // executeInContainer runs a tool in the project container.
