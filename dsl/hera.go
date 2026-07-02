@@ -696,6 +696,9 @@ func newUpdateAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 			if name == cfg.Name {
 				return "", fmt.Errorf("cannot update %s", cfg.DisplayName)
 			}
+			if interp.IsMetaAgent(name) {
+				return "", fmt.Errorf("agent %q is a system agent and cannot be modified", name)
+			}
 
 			// Look up current definition.
 			doc := interp.Document()
@@ -842,6 +845,9 @@ func newDeleteAgentTool(interp *Interpreter, cfg HeraConfig, cb *HeraCallbacks) 
 			}
 			if name == cfg.Name {
 				return "", fmt.Errorf("cannot delete %s", cfg.DisplayName)
+			}
+			if interp.IsMetaAgent(name) {
+				return "", fmt.Errorf("agent %q is a system agent and cannot be deleted", name)
 			}
 
 			if err := interp.RemoveAgent(name); err != nil {

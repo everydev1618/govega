@@ -1539,13 +1539,6 @@ func (i *Interpreter) AddAgent(name string, def *Agent) error {
 // RemoveAgent stops and removes an agent at runtime.
 func (i *Interpreter) RemoveAgent(name string) error {
 	i.mu.Lock()
-	// System (meta) agents like Hera and Iris must never be removed or
-	// rewritten via the agent tools — that would be a privilege-escalation
-	// path for a prompt-injected composed agent.
-	if def, ok := i.doc.Agents[name]; ok && def.IsMeta {
-		i.mu.Unlock()
-		return fmt.Errorf("agent '%s' is a system agent and cannot be removed or modified", name)
-	}
 	proc, ok := i.agents[name]
 	if !ok {
 		i.mu.Unlock()
@@ -1557,6 +1550,16 @@ func (i *Interpreter) RemoveAgent(name string) error {
 
 	// Kill the process via orchestrator.
 	return i.orch.Kill(proc.ID)
+}
+
+// IsMetaAgent reports whether the named agent is a system (meta) agent such as
+// Hera or Iris. Used to gate LLM-invokable agent-management tools so a
+// prompt-injected agent can't have them delete or rewrite system agents.
+func (i *Interpreter) IsMetaAgent(name string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	def, ok := i.doc.Agents[name]
+	return ok && def.IsMeta
 }
 
 // ResetAgent kills the agent process and removes it from the active map,

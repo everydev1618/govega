@@ -48,18 +48,22 @@ agents:
 	return interp
 }
 
-// TestRemoveAgentRejectsMeta verifies system agents cannot be removed (which
-// also blocks update_agent, since it removes then re-adds).
-func TestRemoveAgentRejectsMeta(t *testing.T) {
+// TestIsMetaAgent verifies the meta-agent predicate that gates the Hera
+// delete_agent/update_agent tools. RemoveAgent itself stays unguarded so
+// authenticated admin flows (e.g. renaming the orchestrator) still work.
+func TestIsMetaAgent(t *testing.T) {
 	interp := newMetaGuardInterp(t)
 
-	if err := interp.RemoveAgent("charlie"); err == nil {
-		t.Fatal("RemoveAgent(meta) returned nil, want error")
+	if !interp.IsMetaAgent("charlie") {
+		t.Error("IsMetaAgent(charlie) = false, want true (marked IsMeta)")
+	}
+	if interp.IsMetaAgent("worker") {
+		t.Error("IsMetaAgent(worker) = true, want false")
 	}
 
-	// A non-meta agent can still be removed.
-	if err := interp.RemoveAgent("worker"); err != nil {
-		t.Errorf("RemoveAgent(worker) error = %v, want nil", err)
+	// RemoveAgent remains usable for meta agents by admin callers.
+	if err := interp.RemoveAgent("charlie"); err != nil {
+		t.Errorf("RemoveAgent(charlie) error = %v, want nil (admin path unguarded)", err)
 	}
 }
 
