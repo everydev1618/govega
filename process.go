@@ -188,6 +188,18 @@ func (p *Process) Status() Status {
 	return p.status
 }
 
+// isTerminal reports whether the process has reached a terminal state.
+func (p *Process) isTerminal() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return isTerminalStatus(p.status)
+}
+
+// isTerminalStatus reports whether a status is terminal (no further work).
+func isTerminalStatus(s Status) bool {
+	return s == StatusCompleted || s == StatusFailed || s == StatusTimeout
+}
+
 // Metrics returns the current process metrics.
 func (p *Process) Metrics() ProcessMetrics {
 	p.mu.RLock()

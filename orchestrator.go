@@ -36,6 +36,13 @@ type Orchestrator struct {
 	healthMonitor *HealthMonitor
 	recovery      bool
 
+	// Terminal-process retention. Completed/failed processes are kept in the
+	// registry for short-lived introspection, but only up to maxTerminalRetained;
+	// the oldest are evicted FIFO so the registry never grows without bound.
+	// terminalOrder is guarded by mu (same lock as processes).
+	maxTerminalRetained int
+	terminalOrder       []string
+
 	// Rate limiting
 	rateLimits map[string]*rateLimiter
 
@@ -84,14 +91,15 @@ func NewOrchestrator(opts ...OrchestratorOption) *Orchestrator {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	o := &Orchestrator{
-		processes:    make(map[string]*Process),
-		names:        make(map[string]*Process),
-		agents:       make(map[string]Agent),
-		groups:       make(map[string]*ProcessGroup),
-		maxProcesses: 100,
-		rateLimits:   make(map[string]*rateLimiter),
-		ctx:          ctx,
-		cancel:       cancel,
+		processes:           make(map[string]*Process),
+		names:               make(map[string]*Process),
+		agents:              make(map[string]Agent),
+		groups:              make(map[string]*ProcessGroup),
+		maxProcesses:        100,
+		maxTerminalRetained: 256,
+		rateLimits:          make(map[string]*rateLimiter),
+		ctx:                 ctx,
+		cancel:              cancel,
 	}
 
 	for _, opt := range opts {
@@ -115,6 +123,15 @@ func NewOrchestrator(opts ...OrchestratorOption) *Orchestrator {
 func WithMaxProcesses(n int) OrchestratorOption {
 	return func(o *Orchestrator) {
 		o.maxProcesses = n
+	}
+}
+
+// WithMaxRetainedTerminal sets how many completed/failed processes the registry
+// keeps for introspection before evicting the oldest. A value <= 0 disables
+// retention (terminal processes are removed as soon as they finish).
+func WithMaxRetainedTerminal(n int) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.maxTerminalRetained = n
 	}
 }
 
@@ -294,8 +311,9 @@ func (o *Orchestrator) Spawn(agent Agent, opts ...SpawnOption) (*Process, error)
 
 	o.mu.Lock()
 
-	// Check capacity
-	if len(o.processes) >= o.maxProcesses {
+	// Check capacity — only live (non-terminal) processes count against the cap.
+	// Retained terminal processes must not starve new spawns.
+	if o.activeCountLocked() >= o.maxProcesses {
 		o.mu.Unlock()
 		return nil, ErrMaxProcessesReached
 	}
@@ -364,6 +382,43 @@ func (o *Orchestrator) Spawn(agent Agent, opts ...SpawnOption) (*Process, error)
 	return p, nil
 }
 
+// activeCountLocked returns the number of non-terminal processes.
+// Caller must hold o.mu.
+func (o *Orchestrator) activeCountLocked() int {
+	n := 0
+	for _, p := range o.processes {
+		if !p.isTerminal() {
+			n++
+		}
+	}
+	return n
+}
+
+// retireProcess records a now-terminal process for bounded retention and evicts
+// the oldest terminal processes once the retention limit is exceeded. This is the
+// mechanism that frees completed/failed processes from the registry so it never
+// grows without bound. Safe to call more than once for the same process.
+func (o *Orchestrator) retireProcess(p *Process) {
+	if p == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// With retention disabled, drop the process immediately.
+	if o.maxTerminalRetained <= 0 {
+		delete(o.processes, p.ID)
+		return
+	}
+
+	o.terminalOrder = append(o.terminalOrder, p.ID)
+	for len(o.terminalOrder) > o.maxTerminalRetained {
+		oldest := o.terminalOrder[0]
+		o.terminalOrder = o.terminalOrder[1:]
+		delete(o.processes, oldest) // no-op if already removed (e.g. by Kill)
+	}
+}
+
 // Get returns a process by ID.
 func (o *Orchestrator) Get(id string) *Process {
 	o.mu.RLock()
@@ -423,14 +478,15 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	// Cancel all processes
 	o.cancel()
 
-	// Wait for processes to stop or context to expire
+	// Wait for processes to stop or context to expire.
+	// Snapshot the process list first and release the lock before stopping:
+	// p.Stop() runs completion callbacks and retires the process, both of which
+	// re-acquire o.mu — holding it here would deadlock.
 	done := make(chan struct{})
 	go func() {
-		o.mu.RLock()
-		for _, p := range o.processes {
+		for _, p := range o.List() {
 			p.Stop()
 		}
-		o.mu.RUnlock()
 		close(done)
 	}()
 
@@ -524,6 +580,9 @@ func (o *Orchestrator) emitComplete(p *Process, result string) {
 
 	// Leave all groups
 	o.LeaveAllGroups(p)
+
+	// Free the process from the registry (bounded retention).
+	o.retireProcess(p)
 }
 
 // emitFailed notifies all failed callbacks.
@@ -562,6 +621,10 @@ func (o *Orchestrator) emitFailed(p *Process, err error) {
 
 	// Leave all groups
 	o.LeaveAllGroups(p)
+
+	// Free the process from the registry (bounded retention). Any restart
+	// creates a fresh process; the failed one is dead and must not linger.
+	o.retireProcess(p)
 
 	// Handle automatic restart if configured
 	go o.handleAutoRestart(p, err)

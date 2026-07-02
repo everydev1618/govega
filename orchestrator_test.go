@@ -151,6 +151,57 @@ func TestSpawnMaxProcesses(t *testing.T) {
 	}
 }
 
+func TestSpawnCapacityFreedAfterCompletion(t *testing.T) {
+	llm := &mockLLM{response: "test"}
+	o := NewOrchestrator(WithLLM(llm), WithMaxProcesses(2))
+
+	agent := Agent{Name: "test"}
+
+	// Fill capacity, then complete both processes.
+	p1, err := o.Spawn(agent)
+	if err != nil {
+		t.Fatalf("first Spawn() error: %v", err)
+	}
+	p2, err := o.Spawn(agent)
+	if err != nil {
+		t.Fatalf("second Spawn() error: %v", err)
+	}
+
+	// At capacity, a third spawn must fail.
+	if _, err := o.Spawn(agent); err != ErrMaxProcessesReached {
+		t.Fatalf("third Spawn() error = %v, want ErrMaxProcessesReached", err)
+	}
+
+	// Completing frees capacity — dead processes must not count against the cap.
+	p1.Complete("done")
+	p2.Complete("done")
+
+	if _, err := o.Spawn(agent); err != nil {
+		t.Errorf("Spawn() after completions error = %v, want nil (capacity should be freed)", err)
+	}
+}
+
+func TestSpawnTerminalRetentionBounded(t *testing.T) {
+	llm := &mockLLM{response: "test"}
+	// Small retention so the test is fast and deterministic.
+	o := NewOrchestrator(WithLLM(llm), WithMaxProcesses(1000), WithMaxRetainedTerminal(8))
+
+	agent := Agent{Name: "test"}
+
+	for i := 0; i < 200; i++ {
+		p, err := o.Spawn(agent)
+		if err != nil {
+			t.Fatalf("Spawn() #%d error: %v", i, err)
+		}
+		p.Complete("done")
+	}
+
+	// The registry must not retain every terminal process forever.
+	if got := len(o.List()); got > 8 {
+		t.Errorf("orchestrator retained %d processes, want <= 8 (bounded terminal retention)", got)
+	}
+}
+
 func TestSpawnWithoutLLM(t *testing.T) {
 	o := NewOrchestrator() // No LLM configured
 
