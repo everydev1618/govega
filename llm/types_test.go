@@ -1,7 +1,10 @@
 package llm
 
 import (
+	"bytes"
+	"log/slog"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -11,6 +14,8 @@ func TestCalculateCostCurrentModels(t *testing.T) {
 		inputPer1M   float64
 		outputPer1M  float64
 	}{
+		{"claude-fable-5", 10.00, 50.00},
+		{"claude-opus-4-8", 5.00, 25.00},
 		{"claude-opus-4-7", 5.00, 25.00},
 		{"claude-opus-4-6", 5.00, 25.00},
 		{"claude-opus-4-5", 5.00, 25.00},
@@ -38,6 +43,66 @@ func TestCalculateCostUnknownModelFallsBack(t *testing.T) {
 	got := CalculateCost("not-a-real-model", 1_000_000, 0, 0, 0)
 	if got <= 0 {
 		t.Errorf("expected non-zero fallback cost, got %.4f", got)
+	}
+}
+
+// TestCalculateCostUnknownModelWarnsLoudly verifies an unknown model logs a
+// warning (instead of silently billing at stale fallback rates) and that the
+// fallback never under-prices relative to the most expensive known model.
+func TestCalculateCostUnknownModelWarnsLoudly(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	got := CalculateCost("mystery-model-9000", 1_000_000, 1_000_000, 0, 0)
+
+	if !strings.Contains(buf.String(), "mystery-model-9000") {
+		t.Errorf("expected a warning naming the unknown model, log output: %q", buf.String())
+	}
+	// Fallback must be conservative: at least Fable 5 rates ($10 + $50),
+	// so budgets over-estimate rather than under-estimate unknown models.
+	if want := 60.0; got < want-0.0001 {
+		t.Errorf("unknown-model cost = %.4f, want >= %.4f (conservative fallback)", got, want)
+	}
+}
+
+// TestCapabilitiesCurrentModels verifies the top current models are present
+// with the right feature gates — a missing entry silently disables adaptive
+// thinking and caps output for that model.
+func TestCapabilitiesCurrentModels(t *testing.T) {
+	tests := []struct {
+		model string
+		want  ModelCapabilities
+	}{
+		// Fable 5: thinking always on (adaptive accepted), effort supported,
+		// sampling params removed, structured outputs, 128K output.
+		{"claude-fable-5", ModelCapabilities{AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000}},
+		// Opus 4.8: same request surface as 4.7.
+		{"claude-opus-4-8", ModelCapabilities{AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			if got := CapabilitiesFor(tt.model); got != tt.want {
+				t.Errorf("CapabilitiesFor(%q) = %+v, want %+v", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCapabilitiesUnknownModelWarns verifies an unknown model logs a warning
+// so misconfigured model IDs surface instead of silently running degraded.
+func TestCapabilitiesUnknownModelWarns(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	_ = CapabilitiesFor("mystery-model-9001")
+
+	if !strings.Contains(buf.String(), "mystery-model-9001") {
+		t.Errorf("expected a warning naming the unknown model, log output: %q", buf.String())
 	}
 }
 

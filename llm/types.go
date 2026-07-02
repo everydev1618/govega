@@ -1,6 +1,10 @@
 package llm
 
-import "context"
+import (
+	"context"
+	"log/slog"
+	"sync"
+)
 
 // LLM is the interface for language model backends.
 type LLM interface {
@@ -149,6 +153,9 @@ var modelPricing = map[string]struct {
 	OutputPer1M float64
 }{
 	// Current generation
+	"claude-fable-5":      {10.00, 50.00},
+	"claude-mythos-5":     {10.00, 50.00},
+	"claude-opus-4-8":     {5.00, 25.00},
 	"claude-opus-4-7":     {5.00, 25.00},
 	"claude-opus-4-6":     {5.00, 25.00},
 	"claude-opus-4-5":     {5.00, 25.00},
@@ -200,6 +207,12 @@ type ModelCapabilities struct {
 // resolve to the zero value (no thinking, no effort, conservative max
 // tokens) — safe default.
 var modelCapabilities = map[string]ModelCapabilities{
+	// Fable 5 / Mythos 5: thinking is always on (an explicit adaptive block
+	// is accepted); sampling params removed; 128K output, 1M context.
+	"claude-fable-5":    {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	"claude-mythos-5":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	// Opus 4.8 keeps the same request surface as 4.7.
+	"claude-opus-4-8":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
 	"claude-opus-4-7":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
 	"claude-opus-4-6":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
 	"claude-opus-4-5":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: true, SupportsStructuredOutputs: true, MaxOutputTokens: 64000},
@@ -209,10 +222,27 @@ var modelCapabilities = map[string]ModelCapabilities{
 	// don't support them — leave at zero value.
 }
 
+// unknownModelWarned dedupes unknown-model warnings so a busy loop on a
+// misconfigured model logs once per model, not once per request.
+var unknownModelWarned sync.Map
+
+func warnUnknownModel(model, table string) {
+	if _, loaded := unknownModelWarned.LoadOrStore(table+"|"+model, true); !loaded {
+		slog.Warn("unknown model — update the model tables in llm/types.go",
+			"model", model, "table", table)
+	}
+}
+
 // CapabilitiesFor returns the capabilities for the given model. Unknown
-// models return the zero value (everything disabled).
+// models return the zero value (everything disabled: no adaptive thinking,
+// no effort, conservative output cap) and log a warning so a stale table
+// or a typo'd model ID surfaces instead of silently running degraded.
 func CapabilitiesFor(model string) ModelCapabilities {
-	return modelCapabilities[model]
+	caps, ok := modelCapabilities[model]
+	if !ok {
+		warnUnknownModel(model, "capabilities")
+	}
+	return caps
 }
 
 // CalculateCost calculates the cost of a request including prompt cache tokens.
@@ -220,8 +250,11 @@ func CapabilitiesFor(model string) ModelCapabilities {
 func CalculateCost(model string, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int) float64 {
 	pricing, ok := modelPricing[model]
 	if !ok {
-		// Default pricing if model not found
-		pricing = modelPricing["claude-sonnet-4-20250514"]
+		// Unknown model: warn and bill at the most expensive current rate
+		// so budget enforcement over-estimates rather than silently
+		// under-charging (which would let spend blow past Agent.Budget).
+		warnUnknownModel(model, "pricing")
+		pricing = modelPricing["claude-fable-5"]
 	}
 
 	inputCost := float64(inputTokens) / 1_000_000 * pricing.InputPer1M
