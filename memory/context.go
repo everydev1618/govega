@@ -31,21 +31,47 @@ func estimateTokens(content string) int {
 }
 
 // Add appends a message to the context.
-// If the new message would exceed the budget, oldest messages are removed.
+// If the new message would exceed the budget, oldest messages are removed —
+// but only at user-message boundaries (see trimToBudgetLocked).
 func (c *TokenBudgetContext) Add(msg llm.Message) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	msgTokens := estimateTokens(msg.Content)
 	c.messages = append(c.messages, msg)
-	c.tokenCount += msgTokens
+	c.tokenCount += estimateTokens(msg.Content)
 
-	// Trim oldest messages until we're under budget
-	for c.tokenCount > c.maxTokens && len(c.messages) > 1 {
-		removed := c.messages[0]
-		c.messages = c.messages[1:]
-		c.tokenCount -= estimateTokens(removed.Content)
+	c.trimToBudgetLocked()
+}
+
+// trimToBudgetLocked drops oldest messages until the context fits the
+// budget, cutting only at user-message boundaries: history handed to the
+// API must start a fresh turn, and a window that opens on an assistant
+// message (or mid tool exchange) is an unrecoverable 400. If no safe
+// boundary exists, the context is left over budget — validity beats the
+// token target. Caller must hold c.mu.
+func (c *TokenBudgetContext) trimToBudgetLocked() {
+	if c.tokenCount <= c.maxTokens || len(c.messages) <= 1 {
+		return
 	}
+
+	// Walk from the front: the smallest prefix whose removal gets us
+	// under budget, then extend the cut to the next user message.
+	dropped := 0
+	cut := 0
+	for cut < len(c.messages)-1 && c.tokenCount-dropped > c.maxTokens {
+		dropped += estimateTokens(c.messages[cut].Content)
+		cut++
+	}
+	for cut < len(c.messages) && c.messages[cut].Role != llm.RoleUser {
+		dropped += estimateTokens(c.messages[cut].Content)
+		cut++
+	}
+	if cut == 0 || cut >= len(c.messages) {
+		return // no safe trim point — try again on the next append
+	}
+
+	c.messages = append([]llm.Message(nil), c.messages[cut:]...)
+	c.tokenCount -= dropped
 }
 
 // RemoveLastIf removes the most recent message if it matches the given role
@@ -81,17 +107,30 @@ func (c *TokenBudgetContext) Messages(maxTokens int) []llm.Message {
 		effectiveMax = maxTokens
 	}
 
-	// Return messages from newest to oldest until we hit the limit
-	result := make([]llm.Message, 0, len(c.messages))
+	// Find the earliest start index whose suffix fits the limit.
+	start := len(c.messages)
 	tokens := 0
 	for i := len(c.messages) - 1; i >= 0; i-- {
 		msgTokens := estimateTokens(c.messages[i].Content)
 		if tokens+msgTokens > effectiveMax {
 			break
 		}
-		result = append([]llm.Message{c.messages[i]}, result...)
 		tokens += msgTokens
+		start = i
 	}
+
+	// Advance to a user-message boundary so the window starts a fresh
+	// turn — a window opening on an assistant message is API-invalid.
+	boundary := start
+	for boundary < len(c.messages) && c.messages[boundary].Role != llm.RoleUser {
+		boundary++
+	}
+	if boundary >= len(c.messages) {
+		boundary = start // degenerate: no user turn fits — better than empty
+	}
+
+	result := make([]llm.Message, len(c.messages)-boundary)
+	copy(result, c.messages[boundary:])
 	return result
 }
 
@@ -124,12 +163,8 @@ func (c *TokenBudgetContext) Load(messages []llm.Message) {
 		c.tokenCount += estimateTokens(msg.Content)
 	}
 
-	// Trim if loaded messages exceed budget
-	for c.tokenCount > c.maxTokens && len(c.messages) > 1 {
-		removed := c.messages[0]
-		c.messages = c.messages[1:]
-		c.tokenCount -= estimateTokens(removed.Content)
-	}
+	// Trim if loaded messages exceed budget — at user boundaries only.
+	c.trimToBudgetLocked()
 }
 
 // Snapshot returns a copy of all messages for persistence.

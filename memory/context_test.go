@@ -220,3 +220,105 @@ func TestTokenBudgetContext_ImplementsContextManager(t *testing.T) {
 	// Compile-time check that TokenBudgetContext implements ContextManager
 	var _ ContextManager = (*TokenBudgetContext)(nil)
 }
+
+// --- Turn-boundary-aware trimming (P4-7) ---
+// History sent to the API must start at a user turn: trimming that leaves an
+// assistant message first (or splits a tool exchange) produces unrecoverable
+// 400s. Trims must cut at user-message boundaries.
+
+func TestTokenBudgetContext_AddTrimsAtUserBoundary(t *testing.T) {
+	ctx := NewTokenBudgetContext(70)
+
+	big := func(s string) string { // ~40 tokens
+		out := s
+		for len(out) < 160 {
+			out += " " + s
+		}
+		return out
+	}
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: big("first question")})
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: big("first answer")})
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "second question"})
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "second answer"})
+
+	msgs := ctx.Snapshot()
+	if len(msgs) == 0 {
+		t.Fatal("context is empty after trimming")
+	}
+	if msgs[0].Role != llm.RoleUser {
+		t.Errorf("history starts with role %q after trim, want %q (API-invalid conversation)", msgs[0].Role, llm.RoleUser)
+	}
+}
+
+func TestTokenBudgetContext_LoadTrimsAtUserBoundary(t *testing.T) {
+	ctx := NewTokenBudgetContext(70)
+
+	big := func(s string) string {
+		out := s
+		for len(out) < 160 {
+			out += " " + s
+		}
+		return out
+	}
+	ctx.Load([]llm.Message{
+		{Role: llm.RoleUser, Content: big("first question")},
+		{Role: llm.RoleAssistant, Content: big("first answer")},
+		{Role: llm.RoleUser, Content: "second question"},
+		{Role: llm.RoleAssistant, Content: "second answer"},
+	})
+
+	msgs := ctx.Snapshot()
+	if len(msgs) == 0 {
+		t.Fatal("context is empty after trimming")
+	}
+	if msgs[0].Role != llm.RoleUser {
+		t.Errorf("history starts with role %q after Load trim, want %q", msgs[0].Role, llm.RoleUser)
+	}
+}
+
+func TestTokenBudgetContext_MessagesStartAtUserBoundary(t *testing.T) {
+	ctx := NewTokenBudgetContext(10000)
+
+	big := func(s string) string { // ~40 tokens
+		out := s
+		for len(out) < 160 {
+			out += " " + s
+		}
+		return out
+	}
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "first question q1"})       // ~5 tokens
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: big("first answer")}) // ~40 tokens
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "second question here"})   // ~5 tokens
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "second answer ok"})  // ~4 tokens
+
+	// A budget that fits the last three messages but not all four: the
+	// naive backward walk would start the window on the assistant answer.
+	msgs := ctx.Messages(55)
+	if len(msgs) == 0 {
+		t.Fatal("Messages returned nothing")
+	}
+	if msgs[0].Role != llm.RoleUser {
+		t.Errorf("Messages window starts with role %q, want %q", msgs[0].Role, llm.RoleUser)
+	}
+	if msgs[len(msgs)-1].Content != "second answer ok" {
+		t.Errorf("newest message missing from window")
+	}
+}
+
+func TestTokenBudgetContext_MessagesFallsBackWhenNoUserFits(t *testing.T) {
+	// Degenerate case: only the trailing assistant message fits the budget.
+	// Returning nothing would break the LLM call entirely — fall back to the
+	// unadjusted window.
+	ctx := NewTokenBudgetContext(10000)
+	long := ""
+	for len(long) < 400 {
+		long += "user context that is quite large "
+	}
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: long})                       // ~100 tokens
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "short answer here"})   // ~5 tokens
+
+	msgs := ctx.Messages(15)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message in degenerate window, got %d", len(msgs))
+	}
+}
