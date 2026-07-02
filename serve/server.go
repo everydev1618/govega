@@ -1702,17 +1702,10 @@ func (s *Server) injectHera() {
 				CreatedAt:      now,
 				UpdatedAt:      now,
 			}
-			// Retry up to 3 times on SQLITE_BUSY.
-			var err error
-			for attempt := 0; attempt < 3; attempt++ {
-				err = s.store.InsertComposedAgent(ca)
-				if err == nil {
-					break
-				}
-				slog.Warn("retrying agent persist", "agent", agent.Name, "attempt", attempt+1, "error", err)
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-			}
-			if err != nil {
+			// No SQLITE_BUSY retry needed: busy_timeout is DSN-encoded
+			// pool-wide, so concurrent writers wait for the lock instead
+			// of erroring (govega#114 P5-2).
+			if err := s.store.InsertComposedAgent(ca); err != nil {
 				slog.Error("failed to persist composed agent", "agent", agent.Name, "error", err)
 				return fmt.Errorf("persist agent: %w", err)
 			}
