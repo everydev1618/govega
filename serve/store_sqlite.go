@@ -25,21 +25,40 @@ func (s *SQLiteStore) PeeringStore() peering.Store {
 	return peering.NewSQLiteStorage(s.db)
 }
 
+// sqliteDSN builds a DSN that applies the pragmas on every pooled
+// connection. Exec("PRAGMA ...") only configures the single connection
+// that happens to run it — any other connection in database/sql's pool
+// keeps busy_timeout=0 and fails immediately with SQLITE_BUSY under
+// write concurrency. DSN-encoded pragmas are applied by the driver at
+// connection setup, pool-wide.
+//
+//   - busy_timeout: writers wait up to 30s for the lock instead of erroring
+//   - journal_mode=WAL: concurrent readers during writes (persistent, but
+//     repeated per-connection is harmless and covers fresh files)
+//   - foreign_keys: enforce FK constraints (off by default in SQLite)
+func sqliteDSN(path string) string {
+	pragmas := "_pragma=busy_timeout(30000)" +
+		"&_pragma=journal_mode(WAL)" +
+		"&_pragma=foreign_keys(1)"
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + pragmas
+}
+
 // NewSQLiteStore opens or creates a SQLite database at the given path.
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, err
 	}
-	// Enable WAL mode for concurrent reads and set busy timeout
-	// so concurrent writers wait instead of returning SQLITE_BUSY.
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+	// Verify the DSN pragmas took effect (a typo'd pragma fails silently
+	// on some driver versions) — one probe query forces a connection.
+	var busy int
+	if err := db.QueryRow("PRAGMA busy_timeout").Scan(&busy); err != nil || busy <= 0 {
 		db.Close()
-		return nil, err
-	}
-	if _, err := db.Exec("PRAGMA busy_timeout=30000"); err != nil {
-		db.Close()
-		return nil, err
+		return nil, fmt.Errorf("sqlite busy_timeout pragma not applied (got %d): %v", busy, err)
 	}
 	return &SQLiteStore{db: db}, nil
 }
