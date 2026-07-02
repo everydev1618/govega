@@ -3,6 +3,7 @@ package vega
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -402,6 +403,46 @@ func TestProcessMonitor(t *testing.T) {
 	}
 	if p1.exitSignals == nil {
 		t.Error("p1 should have exitSignals channel created")
+	}
+}
+
+// TestMonitorConcurrentCrossNoDeadlock guards against the A<->B lock-ordering
+// deadlock: two goroutines calling a.Monitor(b) and b.Monitor(a) at the same
+// time must never deadlock. Monitor must lock in ID order like Link does.
+// Regression test for H1.
+func TestMonitorConcurrentCrossNoDeadlock(t *testing.T) {
+	// Shared processes so the two directions contend on the same locks.
+	a := &Process{ID: "aaa"}
+	b := &Process{ID: "bbb"}
+
+	done := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		// Many goroutines hammering the SAME two processes in opposite
+		// directions maximizes the AB/BA contention window.
+		for g := 0; g < 32; g++ {
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < 2000; i++ {
+					a.Monitor(b)
+				}
+			}()
+			go func() {
+				defer wg.Done()
+				for i := 0; i < 2000; i++ {
+					b.Monitor(a)
+				}
+			}()
+		}
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Monitor deadlocked on concurrent cross-monitoring (H1)")
 	}
 }
 

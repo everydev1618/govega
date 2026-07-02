@@ -111,11 +111,17 @@ func (p *Process) Monitor(other *Process) MonitorRef {
 		return MonitorRef{}
 	}
 
-	p.linkMu.Lock()
-	defer p.linkMu.Unlock()
-
-	other.linkMu.Lock()
-	defer other.linkMu.Unlock()
+	// Lock both processes in consistent (ID) order to avoid an A<->B deadlock
+	// when a.Monitor(b) and b.Monitor(a) run concurrently. We hold both locks
+	// while mutating p/other fields regardless of which is first.
+	first, second := p, other
+	if p.ID > other.ID {
+		first, second = other, p
+	}
+	first.linkMu.Lock()
+	defer first.linkMu.Unlock()
+	second.linkMu.Lock()
+	defer second.linkMu.Unlock()
 
 	// Initialize maps if needed
 	if p.monitors == nil {
