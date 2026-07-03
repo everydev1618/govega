@@ -2,6 +2,7 @@ package vega
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -60,6 +61,39 @@ func TestStopAbortsInFlightSend(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Send did not abort after Stop — p.ctx not observed by the LLM loop (H2)")
+	}
+}
+
+// TestTurnTimesOutOnStalledLLMWithoutDeadline verifies a turn on a
+// non-cancellable, no-deadline context (exactly what the Discord/Telegram bots
+// pass — context.Background()) still terminates on the per-turn timeout instead
+// of hanging forever. Regression test for the "TonyVega is typing… forever"
+// hang: a stalled LLM stream or tool call, with nobody to Stop the process,
+// must self-abort on the turn deadline.
+func TestTurnTimesOutOnStalledLLMWithoutDeadline(t *testing.T) {
+	ll := &blockingLLM{entered: make(chan struct{}, 1)}
+	o := NewOrchestrator(WithLLM(ll))
+	p, err := o.Spawn(Agent{Name: "x"})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	p.SetTurnTimeout(150 * time.Millisecond)
+
+	errc := make(chan error, 1)
+	go func() {
+		// Background caller ctx never cancels and has no deadline; nobody
+		// calls Stop. Only the per-turn timeout can end this.
+		_, e := p.Send(context.Background(), "hi")
+		errc <- e
+	}()
+
+	select {
+	case e := <-errc:
+		if !errors.Is(e, context.DeadlineExceeded) {
+			t.Fatalf("Send returned %v, want context.DeadlineExceeded", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Send hung on a no-deadline context — per-turn timeout not applied (infinite-typing bug)")
 	}
 }
 

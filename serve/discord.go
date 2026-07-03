@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -599,7 +600,14 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("discord: SendToAgent failed", "error", err)
-		d.replyThreaded(m.Reference(), channelID, "Error: "+err.Error())
+		reply := "Error: " + err.Error()
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			// The per-turn deadline fired (or the turn was cancelled). Say so
+			// plainly instead of leaking a raw context error — and never leave
+			// the user staring at a "typing…" indicator that goes nowhere.
+			reply = "That took too long and I had to stop working on it. Try again, or break it into smaller steps."
+		}
+		d.replyThreaded(m.Reference(), channelID, reply)
 		return
 	}
 

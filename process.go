@@ -85,6 +85,10 @@ type Process struct {
 	// (set via WithMaxIterations at spawn time).
 	maxIterations int
 
+	// turnTimeout optionally overrides DefaultTurnTimeout for this process's
+	// turns. 0 => use DefaultTurnTimeout.
+	turnTimeout time.Duration
+
 	// llm is the backend to use
 	llm llm.LLM
 
@@ -261,6 +265,33 @@ func (p *Process) SetExtraSystem(content string) {
 	p.extraSystem = content
 }
 
+// DefaultTurnTimeout bounds a single conversation turn (one Send/SendStream/
+// SendStreamRich) when neither the caller's context nor the process sets a
+// tighter deadline. It is the backstop against a stalled LLM stream or a hung
+// tool call becoming an unbounded wait — e.g. a Discord/Telegram bot passes
+// context.Background(), so without this a stuck turn shows "typing…" forever.
+var DefaultTurnTimeout = 10 * time.Minute
+
+// SetTurnTimeout overrides the per-turn wall-clock deadline for this process.
+// A value <= 0 restores the package default (DefaultTurnTimeout).
+func (p *Process) SetTurnTimeout(d time.Duration) {
+	p.mu.Lock()
+	p.turnTimeout = d
+	p.mu.Unlock()
+}
+
+// effectiveTurnTimeout returns this process's per-turn deadline, falling back
+// to the package default.
+func (p *Process) effectiveTurnTimeout() time.Duration {
+	p.mu.RLock()
+	tt := p.turnTimeout
+	p.mu.RUnlock()
+	if tt <= 0 {
+		return DefaultTurnTimeout
+	}
+	return tt
+}
+
 // withProcessCancel derives a context from the caller's ctx that is also
 // cancelled when the process itself is cancelled — via Stop/Complete/Fail/Kill,
 // a linked-process death cascade, or orchestrator Shutdown. This makes those
@@ -268,17 +299,29 @@ func (p *Process) SetExtraSystem(content string) {
 // retry/backoff sleeps instead of letting them run to completion. The returned
 // cancel must be called (defer) to release the watcher goroutine.
 func (p *Process) withProcessCancel(ctx context.Context) (context.Context, context.CancelFunc) {
-	if p.ctx == nil {
-		return context.WithCancel(ctx)
-	}
-	merged, cancel := context.WithCancel(ctx)
-	go func() {
-		select {
-		case <-p.ctx.Done():
-			cancel()
-		case <-merged.Done():
+	// Per-turn wall-clock backstop. Callers that never bound the turn (the
+	// Discord/Telegram bots pass context.Background()) would otherwise let a
+	// stalled LLM stream or hung tool call run forever. A caller-supplied
+	// deadline is respected as-is and never loosened.
+	timeoutCancel := func() {}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		if tt := p.effectiveTurnTimeout(); tt > 0 {
+			ctx, timeoutCancel = context.WithTimeout(ctx, tt)
 		}
-	}()
+	}
+
+	merged, mergedCancel := context.WithCancel(ctx)
+	cancel := func() { mergedCancel(); timeoutCancel() }
+
+	if p.ctx != nil {
+		go func() {
+			select {
+			case <-p.ctx.Done():
+				cancel()
+			case <-merged.Done():
+			}
+		}()
+	}
 	return merged, cancel
 }
 
