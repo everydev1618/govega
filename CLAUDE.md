@@ -15,6 +15,10 @@ go test -run TestInterpreter ./dsl      # Run a single test
 
 The frontend (React 19 + Vite + Tailwind) is embedded via `//go:embed` in `serve/embed.go`. To build it separately: `make frontend-build`.
 
+## Running Locally
+
+To launch and drive the real app (manual verification, demos, screenshots), follow **`docs/PLAYGROUND.md`** — a verified walkthrough: build, `./bin/vega serve --addr 127.0.0.1:PORT --db <scratch>.db` (always use an isolated `--db`; the default touches the user's real `~/.vega` state), then the tour stops covering chat/SSE, agent building, MCP connect/restart, workflow interruption, and direct REST/SSE curls. `ANTHROPIC_API_KEY` is the only required env; chat turns spend real tokens (cents).
+
 ## Testing
 
 Three tiers. Every change gets unit tests (TDD: write the failing test first, verify it fails, implement, verify pass); the e2e tiers cover what unit tests can't.
