@@ -63,8 +63,8 @@ export function CostDashboard() {
       {/* Per-process table */}
       <div>
         <h3 className="text-lg font-semibold mb-3">Per-Process Breakdown</h3>
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-lg border border-border overflow-x-auto">
+          <table className="w-full text-sm min-w-[32rem]">
             <thead>
               <tr className="bg-muted/50">
                 <th className="text-left p-2 font-medium text-muted-foreground">Process</th>

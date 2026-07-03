@@ -224,7 +224,9 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
             onKeyDown={handleKeyDown}
             placeholder={placeholder || 'Type a message…'}
             disabled={sending}
-            className={`w-full px-3.5 py-2.5 rounded-sm bg-paper border text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 resize-none overflow-y-auto transition-colors ${borderClass}`}
+            // text-base (16px) on mobile prevents iOS Safari's zoom-on-focus;
+            // sm:text-sm restores the denser desktop size.
+            className={`w-full px-3.5 py-2.5 rounded-sm bg-paper border text-base sm:text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 resize-none overflow-y-auto transition-colors ${borderClass}`}
             style={{ maxHeight: '144px' }}
           />
         </div>

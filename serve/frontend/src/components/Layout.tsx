@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { CompanySwitcher } from './CompanySwitcher'
 import { PeeringPill } from './PeeringPill'
 import { AgentAvatar } from './chat/AgentAvatar'
@@ -384,39 +384,8 @@ export function Layout() {
         <main className="flex-1 min-w-0 p-3 pt-14 md:p-6 md:pt-6 overflow-auto flex flex-col min-h-0">
           <Outlet />
         </main>
-        {location.pathname !== '/visualize' && (
-          <VisualizeButton running={runningTasks.length} />
-        )}
       </div>
     </div>
-  )
-}
-
-function VisualizeButton({ running }: { running: number }) {
-  const navigate = useNavigate()
-  return (
-    <button
-      onClick={() => navigate('/visualize')}
-      // Hidden on phones: the tree it opens is a d3 graph built for large
-      // screens, and the floating pill otherwise overlaps the chat
-      // composer's send button.
-      className="hidden sm:flex absolute bottom-5 right-5 z-30 group items-center gap-2 pl-2.5 pr-3 py-2 rounded-sm border border-rule bg-paper text-ink-soft hover:text-ink hover:border-brand transition-colors"
-      title="Supervision tree"
-    >
-      {/* Tree icon */}
-      <svg className="w-4 h-4" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-        <circle cx="9" cy="4" r="2" />
-        <circle cx="4" cy="13" r="2" />
-        <circle cx="14" cy="13" r="2" />
-        <line x1="7.5" y1="5.5" x2="5.5" y2="11.5" />
-        <line x1="10.5" y1="5.5" x2="12.5" y2="11.5" />
-        <line x1="6" y1="13" x2="12" y2="13" />
-      </svg>
-      <span className="text-xs font-medium">tree</span>
-      {running > 0 && (
-        <span className="status-dot status-dot-running live-pulse" />
-      )}
-    </button>
   )
 }
 
