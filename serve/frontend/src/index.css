@@ -16,6 +16,16 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Lock the document so iOS Safari doesn't rubber-band the whole page
+       (which also makes the fixed mobile header jitter). The app shell is
+       a fixed-height flex layout with its own internal scroll areas, so
+       the document itself never needs to scroll. */
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  #root {
+    height: 100%;
   }
   body {
     @apply bg-background text-foreground;
