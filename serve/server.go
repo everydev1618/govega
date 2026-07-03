@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"strings"
 	"sync"
@@ -1034,6 +1035,20 @@ func (s *Server) Start(ctx context.Context) error {
 	// Build router.
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
+
+	// Opt-in runtime profiling. Off by default; set VEGA_PPROF=1 to expose the
+	// standard /debug/pprof/ endpoints (goroutine dumps, heap, CPU profiles).
+	// This is the only way to diagnose a wedged process in prod — a hung turn
+	// with no goroutine dump is guesswork. Kept off by default because the
+	// profile/trace endpoints are expensive and shouldn't be publicly probeable.
+	if os.Getenv("VEGA_PPROF") != "" {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		slog.Info("pprof debug endpoints enabled at /debug/pprof/ (VEGA_PPROF set)")
+	}
 
 	// Apply routes registered by the embedding product (RegisterRoute).
 	s.routeHooksMu.Lock()
