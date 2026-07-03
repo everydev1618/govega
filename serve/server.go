@@ -726,7 +726,9 @@ func (s *Server) Start(ctx context.Context) error {
 		memText := formatWikiMemoryForInjection(s.store, "default", agentName)
 		projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
 		companyCtx := buildCompanyContext(s.company)
-		if extra := buildExtraSystem(memText, projectCtx, companyCtx); extra != "" {
+		// Delegated/internal runs are not tied to a user-facing chat
+		// surface, so no surface descriptor is supplied here.
+		if extra := buildExtraSystem("", memText, projectCtx, companyCtx); extra != "" {
 			proc.SetExtraSystem(extra)
 		}
 	})

@@ -477,7 +477,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	memText := formatWikiMemoryForInjectionWithCtx(recallCtx, s.store, userID, baseAgent)
 	projectCtx := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtx := buildCompanyContext(s.company)
-	if extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memText, projectCtx, companyCtx); extra != "" {
+	if extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, surfaceContext(surfaceWeb), memText, projectCtx, companyCtx); extra != "" {
 		proc.SetExtraSystem(extra)
 	}
 
@@ -582,7 +582,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	memTextStream := formatWikiMemoryForInjectionWithCtx(recallCtx, s.store, userID, baseAgent)
 	projectCtxStream := buildProjectContext(s.interp.Tools().ActiveProject())
 	companyCtxStream := buildCompanyContext(s.company)
-	extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, memTextStream, projectCtxStream, companyCtxStream)
+	extra := s.composeExtraSystem(r.Context(), name, baseAgent, userID, surfaceContext(surfaceWeb), memTextStream, projectCtxStream, companyCtxStream)
 	if req.Context != "" {
 		if extra != "" {
 			extra += "\n\n"

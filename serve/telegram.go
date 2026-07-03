@@ -514,7 +514,7 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	if err == nil && proc != nil {
 		memText := formatWikiMemoryForInjection(t.store, userID, t.agentName)
 		companyCtx := buildCompanyContext(t.company)
-		if extra := buildExtraSystem(memText, "", companyCtx); extra != "" {
+		if extra := buildExtraSystem(surfaceContext(surfaceTelegram), memText, "", companyCtx); extra != "" {
 			proc.SetExtraSystem(extra)
 		}
 	}

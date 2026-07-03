@@ -538,7 +538,9 @@ func (s *Server) runChannelAgentStreamed(ch *Channel, cs *channelStream, agentNa
 	if i := strings.Index(agentName, ":"); i >= 0 {
 		baseAgent = agentName[:i]
 	}
-	if extra := s.composeExtraSystem(ctx, agentName, baseAgent, userID, memText, "", companyCtx); extra != "" {
+	// Channel runs happen inside the Vega workspace itself, so no
+	// user-facing chat surface descriptor is supplied here.
+	if extra := s.composeExtraSystem(ctx, agentName, baseAgent, userID, "", memText, "", companyCtx); extra != "" {
 		proc.SetExtraSystem(extra)
 	}
 

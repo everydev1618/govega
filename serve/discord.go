@@ -565,7 +565,7 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	if err == nil && proc != nil {
 		memText := formatWikiMemoryForInjection(d.store, userID, d.agentName)
 		companyCtx := buildCompanyContext(d.company)
-		if extra := buildExtraSystem(memText, "", companyCtx); extra != "" {
+		if extra := buildExtraSystem(surfaceContext(surfaceDiscord), memText, "", companyCtx); extra != "" {
 			proc.SetExtraSystem(extra)
 		}
 	}

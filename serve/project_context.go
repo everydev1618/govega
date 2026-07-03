@@ -144,10 +144,55 @@ func buildCompanyContext(company *dsl.Company) string {
 	return b.String()
 }
 
-// buildExtraSystem combines memory text, project context, and company context
-// into a single extra system prompt string.
-func buildExtraSystem(memText, projectContext, companyContext string) string {
-	parts := make([]string, 0, 3)
+// surface identifies which chat surface a turn is being served on. The
+// orchestrator narrates internal Vega actions differently depending on
+// whether the user can actually see its web workspace.
+type surface string
+
+const (
+	surfaceWeb      surface = "web"
+	surfaceDiscord  surface = "discord"
+	surfaceTelegram surface = "telegram"
+)
+
+// surfaceContext returns a per-surface descriptor paragraph that tells the
+// agent where the user is and, crucially, whether they can see the internal
+// Vega workspace (channels, tasks, agent roster). Returns "" for an unknown
+// or empty surface so callers can pass it straight into buildExtraSystem.
+func surfaceContext(s surface) string {
+	workspace := os.Getenv("PUBLIC_URL")
+	switch s {
+	case surfaceWeb:
+		return "The user is in the Vega web dashboard. They can see your channels, tasks, agent roster, and process tree directly."
+	case surfaceDiscord:
+		return chatSurfaceNote("Discord", workspace)
+	case surfaceTelegram:
+		return chatSurfaceNote("Telegram", workspace)
+	default:
+		return ""
+	}
+}
+
+// chatSurfaceNote builds the shared descriptor for external chat surfaces
+// (Discord, Telegram) where the user cannot see the Vega web workspace.
+// workspace is the PUBLIC_URL, if set; it is woven in so the agent can point
+// the user at where its channel/task work actually lives.
+func chatSurfaceNote(name, workspace string) string {
+	loc := "your Vega workspace"
+	if workspace != "" {
+		loc = "your Vega workspace (at " + workspace + ")"
+	}
+	return "You are talking to the user over " + name + " as a chat bot. They are NOT looking at your Vega web workspace — they cannot see your internal Vega channels, tasks, or agent roster unless you describe them in your reply. Your create_channel / post_to_channel / create_task tools act on " + loc + ", not on " + name + "; when you use them, say the result lives in your Vega workspace — do NOT imply a channel or board exists in this chat. Keep replies concise; " + name + " splits long messages."
+}
+
+// buildExtraSystem combines surface, memory text, project context, and
+// company context into a single extra system prompt string. The surface
+// descriptor leads the block so it is the most prominent guidance.
+func buildExtraSystem(surfaceText, memText, projectContext, companyContext string) string {
+	parts := make([]string, 0, 4)
+	if surfaceText != "" {
+		parts = append(parts, surfaceText)
+	}
 	if companyContext != "" {
 		parts = append(parts, companyContext)
 	}
@@ -170,8 +215,8 @@ func buildExtraSystem(memText, projectContext, companyContext string) string {
 // session-specific guidance (e.g. a per-book writing norm) that the
 // agent's static configuration can't express. Returns "" when there is
 // nothing to set.
-func (s *Server) composeExtraSystem(ctx context.Context, agentName, baseAgent, userID, memText, projectContext, companyContext string) string {
-	base := buildExtraSystem(memText, projectContext, companyContext)
+func (s *Server) composeExtraSystem(ctx context.Context, agentName, baseAgent, userID, surfaceText, memText, projectContext, companyContext string) string {
+	base := buildExtraSystem(surfaceText, memText, projectContext, companyContext)
 	if s == nil || s.cfg.ExtraSystemProvider == nil {
 		return base
 	}
