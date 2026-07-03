@@ -178,11 +178,11 @@ export function MessageBubble({
     <div className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {msg.role === 'assistant' && <AgentAvatar name={agentName} displayName={agentDisplayName} avatar={agentAvatar} />}
       {msg.role === 'user' ? (
-        <div className="max-w-[85%] md:max-w-[75%] rounded-sm px-3 py-2 md:px-3.5 md:py-2 text-sm whitespace-pre-wrap bg-brand text-paper">
+        <div className="max-w-[85%] md:max-w-[75%] rounded-sm px-3 py-2 md:px-3.5 md:py-2 text-sm whitespace-pre-wrap break-words bg-brand text-paper">
           {msg.content}
         </div>
       ) : (
-        <div className="max-w-[85%] md:max-w-[75%] rounded-sm px-3 py-2 md:px-3.5 md:py-2.5 text-sm bg-paper border border-rule prose prose-sm prose-p:my-2 prose-headings:my-3 prose-headings:text-ink prose-strong:text-ink prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-paper-deep prose-pre:border prose-pre:border-rule prose-pre:text-ink prose-code:text-brand-deep prose-code:bg-paper-deep prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:before:content-none prose-code:after:content-none max-w-none text-ink">
+        <div className="max-w-[85%] md:max-w-[75%] min-w-0 rounded-sm px-3 py-2 md:px-3.5 md:py-2.5 text-sm break-words bg-paper border border-rule prose prose-sm prose-p:my-2 prose-headings:my-3 prose-headings:text-ink prose-strong:text-ink prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:bg-paper-deep prose-pre:border prose-pre:border-rule prose-pre:text-ink prose-pre:overflow-x-auto prose-code:text-brand-deep prose-code:bg-paper-deep prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:before:content-none prose-code:after:content-none max-w-none text-ink">
           {showAgentLabel && msg.agent && (
             <p className="anno mb-1.5">{agentDisplayName || agentName}</p>
           )}
@@ -250,16 +250,22 @@ export function MessageBubble({
           )}
           {msg.error && <ErrorBanner error={msg.error} errorType={msg.errorType} />}
           {msg.metrics && !msg.streaming && (
-            <div className="mt-1.5 text-2xs text-ink-faint text-right font-mono tnum">
-              {msg.metrics.cost_usd >= 0.01
-                ? `$${msg.metrics.cost_usd.toFixed(2)}`
-                : `$${msg.metrics.cost_usd.toFixed(4)}`}
-              {' · '}
-              {(msg.metrics.input_tokens + msg.metrics.output_tokens).toLocaleString()} tokens
-              {' · '}
-              {msg.metrics.duration_ms >= 1000
-                ? `${(msg.metrics.duration_ms / 1000).toFixed(1)}s`
-                : `${msg.metrics.duration_ms}ms`}
+            // Wrapping flex, not a single ' · '-joined line: on a phone the
+            // three-part string is wider than the bubble and used to clip
+            // (the duration fell off the right edge). Each stat is its own
+            // token so it reflows to a second line instead.
+            <div className="mt-1.5 flex flex-wrap justify-end gap-x-2 gap-y-0.5 text-2xs text-ink-faint font-mono tnum">
+              <span>
+                {msg.metrics.cost_usd >= 0.01
+                  ? `$${msg.metrics.cost_usd.toFixed(2)}`
+                  : `$${msg.metrics.cost_usd.toFixed(4)}`}
+              </span>
+              <span>{(msg.metrics.input_tokens + msg.metrics.output_tokens).toLocaleString()} tokens</span>
+              <span>
+                {msg.metrics.duration_ms >= 1000
+                  ? `${(msg.metrics.duration_ms / 1000).toFixed(1)}s`
+                  : `${msg.metrics.duration_ms}ms`}
+              </span>
             </div>
           )}
           {onThreadClick && msg.id != null && msg.replyCount != null && msg.replyCount > 0 && (

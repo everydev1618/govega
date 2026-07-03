@@ -153,8 +153,10 @@ function TabBar({
               <AgentAvatar name={name} displayName={label} avatar={info?.avatar} size={5} />
               <div className="flex flex-col items-start min-w-0">
                 <span className="truncate max-w-[8rem]">{label}</span>
+                {/* Title subline is redundant vertical weight on phones (the
+                    Layout already shows a mobile top bar) — desktop only. */}
                 {info?.title && (
-                  <span className="truncate max-w-[8rem] text-2xs font-normal text-ink-faint leading-tight">{info.title}</span>
+                  <span className="hidden md:block truncate max-w-[8rem] text-2xs font-normal text-ink-faint leading-tight">{info.title}</span>
                 )}
               </div>
               {!isIris && (
@@ -645,7 +647,7 @@ export function Chat() {
   const agentNamesList = useMemo(() => [...agentNames], [agentNames])
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 min-w-0">
       {/* Tab bar + actions */}
       <div className="flex items-end border-b border-rule">
         <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
@@ -709,7 +711,7 @@ export function Chat() {
       </div>
 
       {/* Messages */}
-      <div ref={messagesRef} className="flex-1 overflow-auto space-y-5 pt-5 pb-4 relative">
+      <div ref={messagesRef} className="flex-1 overflow-y-auto overflow-x-hidden space-y-5 pt-5 pb-4 px-3 md:px-0 relative">
         {loaded && messages.length === 0 && isIris && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-4 max-w-md">

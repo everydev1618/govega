@@ -380,8 +380,8 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
-        <main className="flex-1 p-3 pt-14 md:p-6 md:pt-6 overflow-auto flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
+        <main className="flex-1 min-w-0 p-3 pt-14 md:p-6 md:pt-6 overflow-auto flex flex-col min-h-0">
           <Outlet />
         </main>
         {location.pathname !== '/visualize' && (
@@ -397,7 +397,10 @@ function VisualizeButton({ running }: { running: number }) {
   return (
     <button
       onClick={() => navigate('/visualize')}
-      className="absolute bottom-5 right-5 z-30 group flex items-center gap-2 pl-2.5 pr-3 py-2 rounded-sm border border-rule bg-paper text-ink-soft hover:text-ink hover:border-brand transition-colors"
+      // Hidden on phones: the tree it opens is a d3 graph built for large
+      // screens, and the floating pill otherwise overlaps the chat
+      // composer's send button.
+      className="hidden sm:flex absolute bottom-5 right-5 z-30 group items-center gap-2 pl-2.5 pr-3 py-2 rounded-sm border border-rule bg-paper text-ink-soft hover:text-ink hover:border-brand transition-colors"
       title="Supervision tree"
     >
       {/* Tree icon */}
