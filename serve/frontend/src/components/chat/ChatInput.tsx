@@ -201,7 +201,11 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
   return (
     <div className="pt-3 border-t border-rule space-y-1.5">
       <div className="flex gap-2 items-end">
-        <div className="relative flex-1" ref={mentionRef}>
+        {/* min-w-0 is load-bearing: Safari gives the <textarea> an intrinsic
+            min-width and won't shrink this flex-1 wrapper below it without
+            it, pushing the send button off-screen. Chrome shrinks anyway,
+            so this bug only shows on real iOS Safari. */}
+        <div className="relative flex-1 min-w-0" ref={mentionRef}>
           {mentionOpen && agentNames && (
             <div className="absolute bottom-full mb-1.5 left-0 w-64 rounded-sm border border-rule bg-paper z-20 overflow-hidden" style={{ boxShadow: '0 4px 16px -8px oklch(22% 0.018 40 / 0.12)' }}>
               <div className="px-3 py-2 border-b border-rule">
@@ -224,9 +228,11 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
             onKeyDown={handleKeyDown}
             placeholder={placeholder || 'Type a message…'}
             disabled={sending}
-            // text-base (16px) on mobile prevents iOS Safari's zoom-on-focus;
-            // sm:text-sm restores the denser desktop size.
-            className={`w-full px-3.5 py-2.5 rounded-sm bg-paper border text-base sm:text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 resize-none overflow-y-auto transition-colors ${borderClass}`}
+            // Exactly 16px on mobile to defeat iOS Safari's zoom-on-focus
+            // (this theme's text-base is 15px — still under the 16px
+            // threshold — so an arbitrary value is required); sm:text-sm
+            // restores the denser 13px desktop size.
+            className={`w-full px-3.5 py-2.5 rounded-sm bg-paper border text-[1rem] sm:text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 resize-none overflow-y-auto transition-colors ${borderClass}`}
             style={{ maxHeight: '144px' }}
           />
         </div>

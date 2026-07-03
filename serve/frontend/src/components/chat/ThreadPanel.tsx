@@ -205,7 +205,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
             onKeyDown={handleKeyDown}
             placeholder="Reply..."
             disabled={sending}
-            className="flex-1 px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:border-primary disabled:opacity-50 resize-none overflow-y-auto"
+            className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-background border border-border text-[1rem] sm:text-sm focus:outline-none focus:border-primary disabled:opacity-50 resize-none overflow-y-auto"
             style={{ maxHeight: '96px' }}
           />
           <button
