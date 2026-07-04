@@ -86,6 +86,41 @@ export function ActivityNarrative({ tools }: { tools: ToolCallState[] }) {
   )
 }
 
+// LOOP_RUN_THRESHOLD mirrors the backend circuit breaker (thrashRepeatThreshold):
+// a run of this many identical consecutive calls signals looping, so the
+// grouped chip turns amber instead of reading as a wall of green successes.
+const LOOP_RUN_THRESHOLD = 4
+
+type ToolGroup = {
+  name: string
+  indices: number[]
+  calls: ToolCallState[]
+}
+
+// groupConsecutive collapses runs of consecutive same-name tool calls into one
+// group, preserving each call's original index so toggling still maps back to
+// parent state. A lone call is just a group of size 1 (renders as before).
+function groupConsecutive(toolCalls: ToolCallState[]): ToolGroup[] {
+  const groups: ToolGroup[] = []
+  for (let i = 0; i < toolCalls.length; i++) {
+    const tc = toolCalls[i]
+    const last = groups[groups.length - 1]
+    if (last && last.name === tc.name) {
+      last.indices.push(i)
+      last.calls.push(tc)
+    } else {
+      groups.push({ name: tc.name, indices: [i], calls: [tc] })
+    }
+  }
+  return groups
+}
+
+function groupStatus(calls: ToolCallState[]): ToolCallState['status'] {
+  if (calls.some(c => c.status === 'running')) return 'running'
+  if (calls.some(c => c.status === 'error')) return 'error'
+  return 'completed'
+}
+
 export function ToolCallBadges({
   toolCalls,
   streaming,
@@ -95,21 +130,38 @@ export function ToolCallBadges({
   streaming?: boolean
   onToggle: (tcIdx: number) => void
 }) {
+  const groups = groupConsecutive(toolCalls)
+
   return (
     <div className="my-1.5">
       <div className="flex flex-row flex-wrap gap-1.5">
-        {toolCalls.map((tc, j) => (
-          <button key={tc.id} onClick={() => onToggle(j)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono
-              border transition-colors ${!tc.collapsed
-                ? 'border-indigo-500/50 bg-indigo-500/10 text-foreground'
-                : 'border-border bg-background/50 text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
-              }`}>
-            <span className={tc.status === 'running' ? 'animate-pulse' : ''}>{statusEmoji(tc)}</span>
-            <span>{shortToolName(tc.name)}</span>
-            {tc.duration_ms != null && <span className="text-muted-foreground">{tc.duration_ms}ms</span>}
-          </button>
-        ))}
+        {groups.map((g) => {
+          const count = g.calls.length
+          const status = groupStatus(g.calls)
+          const expanded = g.calls.some(c => !c.collapsed)
+          const looping = count >= LOOP_RUN_THRESHOLD
+          const totalMs = g.calls.reduce((sum, c) => sum + (c.duration_ms ?? 0), 0)
+          const pseudo = { ...g.calls[0], status } as ToolCallState
+          // Toggle the whole group together so a run expands/collapses as one.
+          const toggleGroup = () => g.indices.forEach(onToggle)
+          return (
+            <button key={g.calls[0].id} onClick={toggleGroup}
+              title={count > 1 ? `${count} calls to ${shortToolName(g.name)}` : undefined}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono
+                border transition-colors ${
+                  looping
+                    ? 'border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                    : expanded
+                      ? 'border-indigo-500/50 bg-indigo-500/10 text-foreground'
+                      : 'border-border bg-background/50 text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
+                }`}>
+              <span className={status === 'running' ? 'animate-pulse' : ''}>{statusEmoji(pseudo)}</span>
+              <span>{shortToolName(g.name)}</span>
+              {count > 1 && <span className="font-semibold">×{count}</span>}
+              {totalMs > 0 && <span className="text-muted-foreground">{totalMs}ms</span>}
+            </button>
+          )
+        })}
       </div>
       {streaming && toolCalls.length > 0 && (
         <div className="flex items-center gap-1 pt-1.5 constellation-activity">
