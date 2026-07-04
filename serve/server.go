@@ -22,6 +22,7 @@ import (
 	"github.com/everydev1618/govega/mcp"
 	"github.com/everydev1618/govega/reactive"
 	"github.com/everydev1618/govega/serve/peering"
+	"github.com/everydev1618/govega/tools"
 	"github.com/everydev1618/vega-population/population"
 )
 
@@ -317,6 +318,18 @@ type Server struct {
 	// operator will see immediately.
 	routeHooksMu sync.Mutex
 	routeHooks   []routeHook
+
+	// appHost is the app-hosting provider wired via RegisterAppHost. When nil
+	// at Start, the server installs the vendor-neutral LocalAppHost default.
+	appHost   tools.AppHost
+	localHost *LocalAppHost // set only when the default LocalAppHost is used
+}
+
+// RegisterAppHost wires a custom app-hosting provider (e.g. a Fly-backed host
+// contributed by v39a-vega), overriding the default LocalAppHost. Must be
+// called before Start.
+func (s *Server) RegisterAppHost(h tools.AppHost) {
+	s.appHost = h
 }
 
 // routeHook is one (pattern, handler) pair stashed by RegisterRoute and
@@ -1086,6 +1099,9 @@ func (s *Server) Start(ctx context.Context) error {
 	_, port, _ := net.SplitHostPort(addr)
 	baseURL := publicBaseURL(s.cfg.PublicURL, os.Getenv("PUBLIC_URL"), port)
 	s.interp.SetServerBaseURL(baseURL)
+	if s.localHost != nil {
+		s.localHost.SetBaseURL(baseURL)
+	}
 
 	authCfg, err := LoadAuthConfig(ctx)
 	if err != nil {
@@ -1340,6 +1356,18 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Workspace static files — serves raw files from ~/.vega/workspace/ so
 	// agents can provide direct URLs (e.g. /workspace/mysite/index.html).
 	mux.Handle("/workspace/", http.StripPrefix("/workspace/", http.HandlerFunc(s.handleWorkspaceStatic)))
+
+	// App hosting: default to the vendor-neutral LocalAppHost unless a provider
+	// was wired via RegisterAppHost. deploy_app delegates to it; the /apps/
+	// route serves static apps and proxies dynamic ones.
+	if s.appHost == nil {
+		s.localHost = NewLocalAppHost(vega.WorkspacePath())
+		s.appHost = s.localHost
+	}
+	s.interp.Tools().SetAppHost(s.appHost)
+	if s.localHost != nil {
+		mux.Handle("/apps/", s.localHost)
+	}
 
 	// Frontend SPA
 	mux.Handle("/", frontendHandler(s.cfg.FrontendFS))
