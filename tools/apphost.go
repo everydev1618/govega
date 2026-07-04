@@ -94,7 +94,10 @@ func (t *Tools) registerAppTools() {
 			"games) leave 'command' empty. For a dynamic app (Node, Python, Go) give the " +
 			"'command' that starts the server and the 'port' it listens on. Returns the " +
 			"public URL — always report it to the user. This is how you deliver a running " +
-			"app; never bind a localhost port yourself (unreachable).",
+			"app; never bind a localhost port yourself (unreachable). IMPORTANT: the app " +
+			"is served under a subpath (…/apps/<name>/), so reference assets with RELATIVE " +
+			"paths ('app.js', './style.css'), never root-absolute paths ('/app.js') — the " +
+			"latter break under the subpath.",
 		Fn: func(ctx context.Context, params map[string]any) (string, error) {
 			host := t.appHost
 			if host == nil {

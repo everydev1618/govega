@@ -293,4 +293,3 @@ func clusterForPath(path string) string {
 	}
 	return "other"
 }
-

@@ -8,11 +8,11 @@ import (
 
 func TestCapabilityScopeOf(t *testing.T) {
 	cases := map[string]string{
-		"/workspace/pacman/index.html":     "/workspace/pacman/",
-		"/workspace/pacman/assets/app.js":  "/workspace/pacman/",
-		"/apps/pacman/":                    "/apps/pacman/",
-		"/apps/pacman/sub/x.css":           "/apps/pacman/",
-		"/workspace/loose.html":            "/workspace/loose.html", // no project dir → the file itself
+		"/workspace/pacman/index.html":    "/workspace/pacman/",
+		"/workspace/pacman/assets/app.js": "/workspace/pacman/",
+		"/apps/pacman/":                   "/apps/pacman/",
+		"/apps/pacman/sub/x.css":          "/apps/pacman/",
+		"/workspace/loose.html":           "/workspace/loose.html", // no project dir → the file itself
 	}
 	for path, want := range cases {
 		if got := capabilityScopeOf(path); got != want {

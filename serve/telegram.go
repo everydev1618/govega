@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/everydev1618/govega/dsl"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // telegramBotsSettingKey holds the JSON-encoded list of configured bots.

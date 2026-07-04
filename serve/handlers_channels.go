@@ -89,7 +89,7 @@ func (s *Server) enrichChannelMessages(messages []ChannelMessage) {
 // channelStreams tracks active channel streams keyed by channel name.
 var (
 	channelStreamsMu sync.Mutex
-	channelStreams    = make(map[string]*channelStream)
+	channelStreams   = make(map[string]*channelStream)
 )
 
 // --- Channel CRUD Handlers ---

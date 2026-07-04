@@ -71,7 +71,7 @@ type Tools struct {
 	tools      map[string]*tool
 	middleware []ToolMiddleware
 	sandbox    string
-	baseURL    string // Server base URL for constructing deliverable URLs
+	baseURL    string            // Server base URL for constructing deliverable URLs
 	mcpClients []*mcpClientEntry // MCP server clients
 	container  *containerState   // Container routing state
 	project    *projectState     // Active project subdirectory (shared pointer)
@@ -94,6 +94,32 @@ type Tools struct {
 	// appHost is the wired app-hosting provider (nil ⇒ deploy_app reports
 	// hosting isn't configured). Set via SetAppHost by the host layer.
 	appHost AppHost
+
+	// urlSigner, when set, returns the ?sig= capability token that authorizes
+	// a given server URL path (e.g. "/workspace/site/index.html"). Empty return
+	// ⇒ no token needed (open mode). Injected by the serve layer so deliverable
+	// URLs the agent reports carry a working token.
+	urlSigner func(urlPath string) string
+}
+
+// SetURLSigner injects the capability-token signer used to sign deliverable
+// URLs. Returns "" for a path when gating is off (open mode).
+func (t *Tools) SetURLSigner(f func(urlPath string) string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.urlSigner = f
+}
+
+// signDeliverableURL appends a ?sig= capability token to a full deliverable URL
+// whose path portion is urlPath, when a signer is wired and returns one.
+func (t *Tools) signDeliverableURL(fullURL, urlPath string) string {
+	if t.urlSigner == nil {
+		return fullURL
+	}
+	if sig := t.urlSigner(urlPath); sig != "" {
+		return fullURL + "?sig=" + sig
+	}
+	return fullURL
 }
 
 // containerState holds container routing configuration.

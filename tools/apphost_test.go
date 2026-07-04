@@ -19,7 +19,7 @@ func (f *fakeAppHost) Deploy(_ context.Context, spec AppSpec) (AppDeployment, er
 	f.deps = append(f.deps, dep)
 	return dep, nil
 }
-func (f *fakeAppHost) Destroy(_ context.Context, id string) error { return nil }
+func (f *fakeAppHost) Destroy(_ context.Context, id string) error      { return nil }
 func (f *fakeAppHost) List(_ context.Context) ([]AppDeployment, error) { return f.deps, nil }
 
 func TestDeployAppDelegatesToHost(t *testing.T) {

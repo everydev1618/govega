@@ -8,11 +8,11 @@ import "testing"
 // hosted instance never hands users a dead localhost link.
 func TestPublicBaseURL(t *testing.T) {
 	cases := []struct {
-		name    string
-		cfgURL  string
-		envURL  string
-		port    string
-		want    string
+		name   string
+		cfgURL string
+		envURL string
+		port   string
+		want   string
 	}{
 		{"config wins", "https://cfg.example.com/", "https://env.example.com", "3001", "https://cfg.example.com"},
 		{"env fallback when config empty", "", "https://et.v39a.com/", "3001", "https://et.v39a.com"},

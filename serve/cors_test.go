@@ -160,8 +160,8 @@ func TestLoadCORSConfig_EnvParsing(t *testing.T) {
 		{"", nil},
 		{"https://app.apex.io", map[string]bool{"https://app.apex.io": true}},
 		{"https://app.apex.io,http://localhost:5173", map[string]bool{
-			"https://app.apex.io":    true,
-			"http://localhost:5173":  true,
+			"https://app.apex.io":   true,
+			"http://localhost:5173": true,
 		}},
 		// Tolerate whitespace around commas.
 		{" https://app.apex.io , http://localhost:5173 ", map[string]bool{

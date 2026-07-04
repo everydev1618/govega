@@ -503,33 +503,33 @@ type StoreEvent struct {
 
 // ProcessSnapshot is a point-in-time process state.
 type ProcessSnapshot struct {
-	ID          int64     `json:"id"`
-	ProcessID   string    `json:"process_id"`
-	AgentName   string    `json:"agent_name"`
-	Status      string    `json:"status"`
-	ParentID    string    `json:"parent_id,omitempty"`
-	InputTokens  int      `json:"input_tokens"`
-	OutputTokens int      `json:"output_tokens"`
-	CostUSD     float64   `json:"cost_usd"`
-	StartedAt   time.Time `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	SnapshotAt  time.Time `json:"snapshot_at"`
+	ID           int64      `json:"id"`
+	ProcessID    string     `json:"process_id"`
+	AgentName    string     `json:"agent_name"`
+	Status       string     `json:"status"`
+	ParentID     string     `json:"parent_id,omitempty"`
+	InputTokens  int        `json:"input_tokens"`
+	OutputTokens int        `json:"output_tokens"`
+	CostUSD      float64    `json:"cost_usd"`
+	StartedAt    time.Time  `json:"started_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	SnapshotAt   time.Time  `json:"snapshot_at"`
 }
 
 // ComposedAgent is a persisted agent created via the compose API.
 type ComposedAgent struct {
-	Name           string    `json:"name"`
-	DisplayName    string    `json:"display_name,omitempty"`
-	Title          string    `json:"title,omitempty"`
-	Description    string    `json:"description,omitempty"`
-	Avatar         string    `json:"avatar,omitempty"`
-	Icon           string    `json:"icon,omitempty"`
-	AvatarGradient []string  `json:"avatar_gradient,omitempty"`
-	Model          string    `json:"model"`
-	Persona        string    `json:"persona,omitempty"`
-	Skills         []string  `json:"skills,omitempty"`
-	Tools          []string  `json:"tools,omitempty"`
-	Team           []string  `json:"team,omitempty"`
+	Name           string           `json:"name"`
+	DisplayName    string           `json:"display_name,omitempty"`
+	Title          string           `json:"title,omitempty"`
+	Description    string           `json:"description,omitempty"`
+	Avatar         string           `json:"avatar,omitempty"`
+	Icon           string           `json:"icon,omitempty"`
+	AvatarGradient []string         `json:"avatar_gradient,omitempty"`
+	Model          string           `json:"model"`
+	Persona        string           `json:"persona,omitempty"`
+	Skills         []string         `json:"skills,omitempty"`
+	Tools          []string         `json:"tools,omitempty"`
+	Team           []string         `json:"team,omitempty"`
 	System         string           `json:"system,omitempty"`
 	Temperature    *float64         `json:"temperature,omitempty"`
 	Triggers       []dsl.TriggerDef `json:"triggers,omitempty"`

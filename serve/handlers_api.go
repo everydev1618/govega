@@ -421,7 +421,6 @@ func (s *Server) hydrateAgent(proc *vega.Process, agentName string) {
 	slog.Debug("hydrated agent from chat history", "agent", agentName, "messages", len(msgs))
 }
 
-
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	name := collapseLegacyCloneName(r.PathValue("name"))
 	baseAgent := name
@@ -1192,7 +1191,6 @@ func (s *Server) handleConnectMCPServer(w http.ResponseWriter, r *http.Request) 
 
 		// Build env map from per-server settings + request env.
 		envMap := s.buildMCPEnvMap(req.Name, req.Env)
-
 
 		// If this registry entry has a native Go implementation, use it
 		// instead of spawning an external process.
@@ -2497,7 +2495,6 @@ func (s *Server) handleDeleteInboxItem(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Helpers ---
-
 
 func processToResponse(p *vega.Process) ProcessResponse {
 	agentName := ""

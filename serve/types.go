@@ -120,13 +120,13 @@ type AgentResponse struct {
 	// IsBuilder is true when this agent is the tenant's configured
 	// builder (Hera by default; in Apex tenants this is always "apex").
 	// Internal meta-agent — typically filtered out of public listings.
-	IsBuilder bool   `json:"is_builder,omitempty"`
-	Model     string `json:"model,omitempty"`
-	System         string           `json:"system,omitempty"`
-	Tools          []string         `json:"tools,omitempty"`
-	Team           []string         `json:"team,omitempty"`
-	Triggers       []dsl.TriggerDef `json:"triggers,omitempty"`
-	ProcessID string `json:"process_id,omitempty"`
+	IsBuilder bool             `json:"is_builder,omitempty"`
+	Model     string           `json:"model,omitempty"`
+	System    string           `json:"system,omitempty"`
+	Tools     []string         `json:"tools,omitempty"`
+	Team      []string         `json:"team,omitempty"`
+	Triggers  []dsl.TriggerDef `json:"triggers,omitempty"`
+	ProcessID string           `json:"process_id,omitempty"`
 	// Status is the high-level agent lifecycle state. Always present.
 	Status AgentStatus `json:"status"`
 	// Health is the orthogonal "is anything wrong?" signal. Always present.
@@ -169,30 +169,30 @@ type InputResponse struct {
 
 // StatsResponse contains aggregate metrics.
 type StatsResponse struct {
-	TotalProcesses         int     `json:"total_processes"`
-	RunningProcesses       int     `json:"running_processes"`
-	CompletedProcesses     int     `json:"completed_processes"`
-	FailedProcesses        int     `json:"failed_processes"`
-	TotalInputTokens       int     `json:"total_input_tokens"`
-	TotalOutputTokens      int     `json:"total_output_tokens"`
-	TotalCacheCreationTokens int   `json:"total_cache_creation_tokens"`
-	TotalCacheReadTokens   int     `json:"total_cache_read_tokens"`
-	TotalCostUSD           float64 `json:"total_cost_usd"`
-	TotalToolCalls         int     `json:"total_tool_calls"`
-	TotalErrors            int     `json:"total_errors"`
-	Uptime                 string  `json:"uptime"`
+	TotalProcesses           int     `json:"total_processes"`
+	RunningProcesses         int     `json:"running_processes"`
+	CompletedProcesses       int     `json:"completed_processes"`
+	FailedProcesses          int     `json:"failed_processes"`
+	TotalInputTokens         int     `json:"total_input_tokens"`
+	TotalOutputTokens        int     `json:"total_output_tokens"`
+	TotalCacheCreationTokens int     `json:"total_cache_creation_tokens"`
+	TotalCacheReadTokens     int     `json:"total_cache_read_tokens"`
+	TotalCostUSD             float64 `json:"total_cost_usd"`
+	TotalToolCalls           int     `json:"total_tool_calls"`
+	TotalErrors              int     `json:"total_errors"`
+	Uptime                   string  `json:"uptime"`
 }
 
 // SpawnTreeNodeResponse is the API representation of a spawn tree node.
 type SpawnTreeNodeResponse struct {
-	ProcessID   string                   `json:"process_id"`
-	AgentName   string                   `json:"agent_name"`
-	Task        string                   `json:"task,omitempty"`
-	Status      string                   `json:"status"`
-	SpawnDepth  int                      `json:"spawn_depth"`
-	SpawnReason string                   `json:"spawn_reason,omitempty"`
-	StartedAt   time.Time                `json:"started_at"`
-	Children    []SpawnTreeNodeResponse  `json:"children,omitempty"`
+	ProcessID   string                  `json:"process_id"`
+	AgentName   string                  `json:"agent_name"`
+	Task        string                  `json:"task,omitempty"`
+	Status      string                  `json:"status"`
+	SpawnDepth  int                     `json:"spawn_depth"`
+	SpawnReason string                  `json:"spawn_reason,omitempty"`
+	StartedAt   time.Time               `json:"started_at"`
+	Children    []SpawnTreeNodeResponse `json:"children,omitempty"`
 }
 
 // MCPServerResponse is the API representation of an MCP server.
@@ -224,18 +224,18 @@ type WorkflowRunResponse struct {
 
 // BrokerEvent is an event sent via SSE.
 type BrokerEvent struct {
-	Type      string `json:"type"`
-	ProcessID string `json:"process_id,omitempty"`
-	Agent     string `json:"agent,omitempty"`
-	Data      any    `json:"data,omitempty"`
+	Type      string    `json:"type"`
+	ProcessID string    `json:"process_id,omitempty"`
+	Agent     string    `json:"agent,omitempty"`
+	Data      any       `json:"data,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
 // MemoryResponse is the API representation of user memory.
 type MemoryResponse struct {
-	UserID  string       `json:"user_id"`
-	Agent   string       `json:"agent"`
-	Layers  []UserMemory `json:"layers"`
+	UserID string       `json:"user_id"`
+	Agent  string       `json:"agent"`
+	Layers []UserMemory `json:"layers"`
 }
 
 // ChatStatusResponse indicates whether an agent has an active stream.
@@ -245,11 +245,11 @@ type ChatStatusResponse struct {
 
 // CompanyResponse is the API representation of company identity.
 type CompanyResponse struct {
-	ID          string                    `json:"id"`
-	Name        string                    `json:"name"`
-	LogoURL     string                    `json:"logo_url,omitempty"`
-	AccentColor string                    `json:"accent_color,omitempty"`
-	Siblings    []CompanySiblingResponse  `json:"siblings,omitempty"`
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	LogoURL     string                   `json:"logo_url,omitempty"`
+	AccentColor string                   `json:"accent_color,omitempty"`
+	Siblings    []CompanySiblingResponse `json:"siblings,omitempty"`
 }
 
 // CompanySiblingResponse is the API representation of a sibling instance.
@@ -295,15 +295,15 @@ type Channel struct {
 
 // ChannelMessage is a message in a channel, optionally part of a thread.
 type ChannelMessage struct {
-	ID         int64     `json:"id"`
-	ChannelID  string    `json:"channel_id"`
-	ThreadID   *int64    `json:"thread_id,omitempty"`
-	Agent      string    `json:"agent,omitempty"`
-	Sender     string    `json:"sender,omitempty"`
-	Role       string    `json:"role"`
-	Content    string    `json:"content"`
-	Metadata   string    `json:"metadata,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        int64     `json:"id"`
+	ChannelID string    `json:"channel_id"`
+	ThreadID  *int64    `json:"thread_id,omitempty"`
+	Agent     string    `json:"agent,omitempty"`
+	Sender    string    `json:"sender,omitempty"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	Metadata  string    `json:"metadata,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 	// Icon / AvatarGradient are echoed from the sending agent so channel
 	// UIs don't need a separate /api/v1/agents lookup to render identity.
 	Icon           string   `json:"icon,omitempty"`
@@ -457,19 +457,19 @@ type PopulationInstallRequest struct {
 
 // CreateAgentRequest is the request to compose a new agent.
 type CreateAgentRequest struct {
-	Name           string   `json:"name"`
-	DisplayName    string   `json:"display_name,omitempty"`
-	Title          string   `json:"title,omitempty"`
-	Description    string   `json:"description,omitempty"`
-	Avatar         string   `json:"avatar,omitempty"`
-	Icon           string   `json:"icon,omitempty"`
-	AvatarGradient []string `json:"avatar_gradient,omitempty"`
-	Model          string   `json:"model"`
-	Persona        string   `json:"persona,omitempty"`
-	Skills         []string `json:"skills,omitempty"`
-	Team           []string `json:"team,omitempty"`
-	System         string   `json:"system,omitempty"`
-	Temperature    *float64 `json:"temperature,omitempty"`
+	Name           string           `json:"name"`
+	DisplayName    string           `json:"display_name,omitempty"`
+	Title          string           `json:"title,omitempty"`
+	Description    string           `json:"description,omitempty"`
+	Avatar         string           `json:"avatar,omitempty"`
+	Icon           string           `json:"icon,omitempty"`
+	AvatarGradient []string         `json:"avatar_gradient,omitempty"`
+	Model          string           `json:"model"`
+	Persona        string           `json:"persona,omitempty"`
+	Skills         []string         `json:"skills,omitempty"`
+	Team           []string         `json:"team,omitempty"`
+	System         string           `json:"system,omitempty"`
+	Temperature    *float64         `json:"temperature,omitempty"`
 	Triggers       []dsl.TriggerDef `json:"triggers,omitempty"`
 }
 
@@ -487,20 +487,20 @@ type CreateAgentResponse struct {
 // schedules endpoints. Mirrors apex-host-mgmt's AgentRoutine type so the
 // FE can render the Routines tab without any client-side conversion.
 type AgentRoutineResponse struct {
-	ID           string     `json:"id"`
-	Agent        string     `json:"agent"`
-	Title        string     `json:"title"`
-	Instructions string     `json:"instructions"`
-	Schedule     Schedule   `json:"schedule"`
+	ID           string   `json:"id"`
+	Agent        string   `json:"agent"`
+	Title        string   `json:"title"`
+	Instructions string   `json:"instructions"`
+	Schedule     Schedule `json:"schedule"`
 	// Cron is the derived expression — exposed for FE debugging and for
 	// jobs created via DSL/legacy paths where the structured Schedule
 	// can't be reconstructed.
-	Cron       string     `json:"cron"`
-	Enabled    bool       `json:"enabled"`
-	LastRunAt  *time.Time `json:"last_run_at"`
-	NextRunAt  *time.Time `json:"next_run_at"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	Cron      string     `json:"cron"`
+	Enabled   bool       `json:"enabled"`
+	LastRunAt *time.Time `json:"last_run_at"`
+	NextRunAt *time.Time `json:"next_run_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 // CreateRoutineRequest is the POST body for creating a routine on an agent.

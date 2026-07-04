@@ -328,7 +328,7 @@ func TestReportsTo_Inversion(t *testing.T) {
 	})
 
 	cases := []struct {
-		name      string
+		name       string
 		wantSorted []string
 	}{
 		{"riley", []string{"iris"}},
@@ -560,8 +560,8 @@ func TestHandleGetAgent_IsOrchestratorFlag(t *testing.T) {
 	s.cfg.Orchestrator = dsl.IrisConfig{Name: "kai"}
 
 	cases := []struct {
-		name              string
-		wantOrchestrator  bool
+		name             string
+		wantOrchestrator bool
 	}{
 		{"kai", true},
 		{"riley", false},

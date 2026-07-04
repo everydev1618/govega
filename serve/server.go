@@ -323,6 +323,11 @@ type Server struct {
 	// at Start, the server installs the vendor-neutral LocalAppHost default.
 	appHost   tools.AppHost
 	localHost *LocalAppHost // set only when the default LocalAppHost is used
+
+	// capSigner gates /workspace/ and /apps/ deliverable URLs with path-scoped
+	// capability tokens. nil ⇒ open mode (VEGA_WORKSPACE_SIGNING_KEY unset:
+	// self-hosted / local single-user).
+	capSigner *capabilitySigner
 }
 
 // RegisterAppHost wires a custom app-hosting provider (e.g. a Fly-backed host
@@ -330,6 +335,24 @@ type Server struct {
 // called before Start.
 func (s *Server) RegisterAppHost(h tools.AppHost) {
 	s.appHost = h
+}
+
+// gateDeliverable wraps a deliverable handler (/workspace/) with the capability
+// gate. It runs on the full request path before any StripPrefix rewrites it. A
+// nil signer is open mode (pass-through). A valid ?sig= sets a scoped cookie so
+// relative assets stay authorized.
+func (s *Server) gateDeliverable(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		allow, cookie := capabilityGate(s.capSigner, r)
+		if !allow {
+			http.Error(w, "unauthorized — this link is missing its access token", http.StatusUnauthorized)
+			return
+		}
+		if cookie != nil {
+			http.SetCookie(w, cookie)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // routeHook is one (pattern, handler) pair stashed by RegisterRoute and
@@ -1355,13 +1378,26 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Workspace static files — serves raw files from ~/.vega/workspace/ so
 	// agents can provide direct URLs (e.g. /workspace/mysite/index.html).
-	mux.Handle("/workspace/", http.StripPrefix("/workspace/", http.HandlerFunc(s.handleWorkspaceStatic)))
+	// Gated by capability token (open mode when no signing key is set). The
+	// gate runs on the full path before StripPrefix rewrites it.
+	mux.Handle("/workspace/", s.gateDeliverable(http.StripPrefix("/workspace/", http.HandlerFunc(s.handleWorkspaceStatic))))
+
+	// Capability-token signer for deliverable URLs. Keyed by
+	// VEGA_WORKSPACE_SIGNING_KEY; unset ⇒ nil ⇒ open mode (self-hosted/local).
+	s.capSigner = newCapabilitySigner(os.Getenv("VEGA_WORKSPACE_SIGNING_KEY"))
+	s.interp.Tools().SetURLSigner(func(urlPath string) string {
+		if s.capSigner == nil {
+			return ""
+		}
+		return s.capSigner.SignURLPath(urlPath)
+	})
 
 	// App hosting: default to the vendor-neutral LocalAppHost unless a provider
 	// was wired via RegisterAppHost. deploy_app delegates to it; the /apps/
 	// route serves static apps and proxies dynamic ones.
 	if s.appHost == nil {
 		s.localHost = NewLocalAppHost(vega.WorkspacePath())
+		s.localHost.SetSigner(s.capSigner)
 		s.appHost = s.localHost
 	}
 	s.interp.Tools().SetAppHost(s.appHost)

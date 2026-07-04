@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 	"github.com/everydev1618/govega/llm"
-	vega "github.com/everydev1618/govega"
 )
 
 // wrappedStore embeds the Store interface so it satisfies Store but is NOT a

@@ -171,9 +171,12 @@ type responseRecorder struct {
 func newResponseRecorder() *responseRecorder {
 	return &responseRecorder{code: http.StatusOK, headers: http.Header{}}
 }
-func (r *responseRecorder) Header() http.Header        { return r.headers }
-func (r *responseRecorder) WriteHeader(code int)       { r.code = code }
-func (r *responseRecorder) Write(p []byte) (int, error) { r.body = append(r.body, p...); return len(p), nil }
+func (r *responseRecorder) Header() http.Header  { return r.headers }
+func (r *responseRecorder) WriteHeader(code int) { r.code = code }
+func (r *responseRecorder) Write(p []byte) (int, error) {
+	r.body = append(r.body, p...)
+	return len(p), nil
+}
 func (r *responseRecorder) copyTo(w http.ResponseWriter) {
 	for k, vs := range r.headers {
 		for _, v := range vs {

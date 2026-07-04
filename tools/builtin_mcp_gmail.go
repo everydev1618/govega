@@ -17,9 +17,10 @@ import (
 
 // gmailServer is a built-in Go MCP server that talks to the Gmail API
 // using a bring-your-own OAuth refresh token. The required env vars are:
-//   GMAIL_CLIENT_ID
-//   GMAIL_CLIENT_SECRET
-//   GMAIL_REFRESH_TOKEN
+//
+//	GMAIL_CLIENT_ID
+//	GMAIL_CLIENT_SECRET
+//	GMAIL_REFRESH_TOKEN
 //
 // Generate them via Google's OAuth Playground (https://developers.google.com/oauthplayground)
 // with the gmail.modify scope. This is the lowest-friction path for testing

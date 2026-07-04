@@ -59,13 +59,13 @@ func (s *Server) handleGetIdentity(w http.ResponseWriter, r *http.Request) {
 
 // ConfigUploadResult describes the outcome of a YAML config upload.
 type ConfigUploadResult struct {
-	Name           string   `json:"name,omitempty"`
-	AgentsCreated  []string `json:"agents_created,omitempty"`
-	AgentsUpdated  []string `json:"agents_updated,omitempty"`
-	AgentsSkipped  []string `json:"agents_skipped,omitempty"`
-	MCPConnected   []string `json:"mcp_connected,omitempty"`
-	MCPFailed      []string `json:"mcp_failed,omitempty"`
-	Errors         []string `json:"errors,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	AgentsCreated []string `json:"agents_created,omitempty"`
+	AgentsUpdated []string `json:"agents_updated,omitempty"`
+	AgentsSkipped []string `json:"agents_skipped,omitempty"`
+	MCPConnected  []string `json:"mcp_connected,omitempty"`
+	MCPFailed     []string `json:"mcp_failed,omitempty"`
+	Errors        []string `json:"errors,omitempty"`
 }
 
 // ConfigResponse returns the current running configuration.
@@ -420,4 +420,3 @@ func expandEnvMap(env map[string]string) map[string]string {
 	}
 	return result
 }
-

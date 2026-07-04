@@ -250,11 +250,11 @@ func fetchToolFunc(ctx context.Context, params map[string]any) (string, error) {
 
 // Tags whose entire content (including children) should be removed.
 var (
-	stripScriptRe  = regexp.MustCompile(`(?is)<script[\s>].*?</script>`)
-	stripStyleRe   = regexp.MustCompile(`(?is)<style[\s>].*?</style>`)
-	stripNavRe     = regexp.MustCompile(`(?is)<nav[\s>].*?</nav>`)
-	stripHeaderRe  = regexp.MustCompile(`(?is)<header[\s>].*?</header>`)
-	stripFooterRe  = regexp.MustCompile(`(?is)<footer[\s>].*?</footer>`)
+	stripScriptRe = regexp.MustCompile(`(?is)<script[\s>].*?</script>`)
+	stripStyleRe  = regexp.MustCompile(`(?is)<style[\s>].*?</style>`)
+	stripNavRe    = regexp.MustCompile(`(?is)<nav[\s>].*?</nav>`)
+	stripHeaderRe = regexp.MustCompile(`(?is)<header[\s>].*?</header>`)
+	stripFooterRe = regexp.MustCompile(`(?is)<footer[\s>].*?</footer>`)
 )
 
 // Any remaining HTML tag.

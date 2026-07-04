@@ -31,7 +31,7 @@ type scheduleRunRecorder interface {
 type Scheduler struct {
 	c        *cron.Cron
 	interp   *dsl.Interpreter
-	inbox    inboxChecker         // optional — used to skip no-op heartbeats
+	inbox    inboxChecker        // optional — used to skip no-op heartbeats
 	recorder scheduleRunRecorder // optional — stamps last_run_at after each fire
 	persist  func(job dsl.ScheduledJob) error
 	remove   func(name string) error

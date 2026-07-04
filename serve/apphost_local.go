@@ -29,6 +29,7 @@ type LocalAppHost struct {
 	workspace string
 	mu        sync.Mutex
 	baseURL   string
+	signer    *capabilitySigner    // nil ⇒ open mode (no gating, unsigned URLs)
 	deps      map[string]*localDep // keyed by app name
 }
 
@@ -54,15 +55,29 @@ func (h *LocalAppHost) SetBaseURL(u string) {
 	h.baseURL = strings.TrimRight(u, "/")
 }
 
+// SetSigner wires the capability-token signer. When set, app URLs are signed
+// and the /apps/ route is gated; nil keeps open mode.
+func (h *LocalAppHost) SetSigner(s *capabilitySigner) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.signer = s
+}
+
 func (h *LocalAppHost) urlFor(name string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.urlForLocked(name)
 }
 
-// urlForLocked builds the app URL; caller must hold h.mu.
+// urlForLocked builds the app URL, signed with a capability token when a signer
+// is wired. Caller must hold h.mu.
 func (h *LocalAppHost) urlForLocked(name string) string {
-	return h.baseURL + "/apps/" + name + "/"
+	path := "/apps/" + name + "/"
+	url := h.baseURL + path
+	if h.signer != nil {
+		url += "?sig=" + h.signer.SignURLPath(path)
+	}
+	return url
 }
 
 // Deploy hosts an app. Empty spec.Command ⇒ static file serving from the source
@@ -152,20 +167,68 @@ func (h *LocalAppHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mu.Lock()
 	dep := h.deps[name]
+	signer := h.signer
 	h.mu.Unlock()
 	if dep == nil {
 		http.NotFound(w, r)
 		return
 	}
 
+	// Capability gate: a signed link or portal session is required when gating
+	// is on; open mode always allows.
+	allow, cookie := capabilityGate(signer, r)
+	if !allow {
+		http.Error(w, "unauthorized — this app link is missing its access token", http.StatusUnauthorized)
+		return
+	}
+	if cookie != nil {
+		http.SetCookie(w, cookie)
+	}
+
 	prefix := "/apps/" + name + "/"
 	if dep.static {
-		http.StripPrefix(prefix, http.FileServer(http.Dir(dep.dir))).ServeHTTP(w, r)
+		serveStaticWithBase(w, r, dep.dir, prefix)
 		return
 	}
 	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", dep.port))
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	http.StripPrefix(strings.TrimRight(prefix, "/"), proxy).ServeHTTP(w, r)
+}
+
+// serveStaticWithBase serves files from a static app's directory. For HTML it
+// injects <base href="<prefix>"> so relative asset references resolve under the
+// subpath (et.v39a.com/apps/<name>/) even when the author wrote bare relative
+// paths. Non-HTML is served verbatim by the standard file server.
+func serveStaticWithBase(w http.ResponseWriter, r *http.Request, dir, prefix string) {
+	rel := strings.TrimPrefix(r.URL.Path, prefix)
+	target := filepath.Join(dir, filepath.Clean("/"+rel))
+	if rel == "" || strings.HasSuffix(rel, "/") {
+		target = filepath.Join(target, "index.html")
+	}
+	if strings.HasSuffix(target, ".html") {
+		if data, err := os.ReadFile(target); err == nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(injectBaseTag(data, prefix))
+			return
+		}
+	}
+	http.StripPrefix(prefix, http.FileServer(http.Dir(dir))).ServeHTTP(w, r)
+}
+
+// injectBaseTag inserts <base href="prefix"> right after the first <head> tag
+// (or prepends it when there's no head), so relative URLs resolve under prefix.
+// Idempotent-ish: skips injection if a <base is already present.
+func injectBaseTag(html []byte, prefix string) []byte {
+	lower := strings.ToLower(string(html))
+	if strings.Contains(lower, "<base") {
+		return html
+	}
+	tag := fmt.Sprintf(`<base href="%s">`, prefix)
+	if i := strings.Index(lower, "<head>"); i >= 0 {
+		at := i + len("<head>")
+		return []byte(string(html[:at]) + tag + string(html[at:]))
+	}
+	return append([]byte(tag), html...)
 }
 
 // safeDir resolves a workspace-relative source dir, rejecting traversal.

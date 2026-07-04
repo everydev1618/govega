@@ -265,9 +265,9 @@ func TestDualStore_MemoryPagesRenameRewritesLinks(t *testing.T) {
 		}
 		// Concretely we expect: MEMORY.md→new.md, new.md→sibling.md, sibling.md→new.md.
 		wantSet := map[string]bool{
-			"MEMORY.md→new.md":   false,
-			"new.md→sibling.md":  false,
-			"sibling.md→new.md":  false,
+			"MEMORY.md→new.md":  false,
+			"new.md→sibling.md": false,
+			"sibling.md→new.md": false,
 		}
 		for _, l := range links {
 			k := l.FromPath + "→" + l.ToPath
