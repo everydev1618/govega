@@ -397,16 +397,19 @@ func InjectIris(interp *Interpreter, cfg IrisConfig, channelBackend ChannelBacke
 	}
 
 	def := IrisAgent(cfg)
-	// Verification tools (read_file, fetch__fetch, exec) are intentional —
-	// the orchestrator must be able to verify deliverables ("does the
-	// app actually run?") rather than just relay claims from team members.
-	// Without these, the orchestrator hallucinates confident summaries
-	// from inbox reports it cannot validate.
+	// Read-only verification tools (read_file, fetch__fetch) let the
+	// orchestrator confirm deliverables ("does the file exist? does the URL
+	// respond?") rather than relay unvalidated claims. It deliberately has NO
+	// shell/build tools (exec, start_service, spawn_app): a router that can
+	// shell out builds and hosts work itself instead of dispatching to a
+	// specialist — the runaway loop that flooded a turn with 70+ exec calls
+	// spinning up nc/python/tunnels. Build work goes through a specialist
+	// agent; the orchestrator verifies the result read-only.
 	def.Tools = append([]string{
 		"list_agents", "send_to_agent", "check_status",
 		"connect_mcp", "disconnect_mcp", "list_mcp_registry", "list_mcp_status",
 		"set_project", "list_projects",
-		"list_files", "read_file", "exec",
+		"list_files", "read_file",
 		"fetch__fetch",
 		"create_channel", "post_to_channel", "list_my_channels", "read_channel",
 	}, extraTools...)

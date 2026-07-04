@@ -101,6 +101,61 @@ func TestMetaAgentsDontInheritSandboxTools(t *testing.T) {
 	}
 }
 
+// TestMetaAgentsDontGetExecOrServiceTools pins lever 1 of the runaway-loop fix
+// (TonyVega exec meltdown, Jul 4): a router that holds `exec`/`start_service`
+// shells out to build and host deliverables itself — 70+ exec calls spinning
+// up nc/python/tunnels — instead of dispatching to a specialist. Meta-agents
+// must never receive shell/build tools even if their persisted allow-list
+// names them. Workers keep them.
+func TestMetaAgentsDontGetExecOrServiceTools(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+
+	meta := &Agent{
+		Name:   "tony",
+		Model:  "test-model",
+		System: "You orchestrate.",
+		Tools:  []string{"list_agents", "send_to_agent", "read_file", "exec", "start_service"},
+		IsMeta: true,
+	}
+	if err := interp.AddAgent("tony", meta); err != nil {
+		t.Fatalf("AddAgent meta: %v", err)
+	}
+	worker := &Agent{
+		Name:   "builder-bee",
+		Model:  "test-model",
+		System: "You build.",
+		Tools:  []string{"read_file", "exec", "start_service"},
+	}
+	if err := interp.AddAgent("builder-bee", worker); err != nil {
+		t.Fatalf("AddAgent worker: %v", err)
+	}
+
+	metaHas := map[string]bool{}
+	for _, s := range interp.Agents()["tony"].Agent.Tools.Schema() {
+		metaHas[s.Name] = true
+	}
+	for _, denied := range []string{"exec", "start_service", "stop_service", "list_services", "service_logs"} {
+		if metaHas[denied] {
+			t.Errorf("meta-agent must not hold %q — routers dispatch, they don't shell out", denied)
+		}
+	}
+	// It keeps its read-only verification tools (list_agents/send_to_agent
+	// are Iris-injected, not builtins, so they're not registered in this bare
+	// harness — read_file is the builtin we can assert survives the strip).
+	if !metaHas["read_file"] {
+		t.Error("meta-agent should keep read_file for read-only verification")
+	}
+
+	workerHas := map[string]bool{}
+	for _, s := range interp.Agents()["builder-bee"].Agent.Tools.Schema() {
+		workerHas[s.Name] = true
+	}
+	if !workerHas["exec"] || !workerHas["start_service"] {
+		t.Error("worker agents must keep exec/start_service — they do the building")
+	}
+}
+
 // TestDeliveryPromptScopedByRole: worker agents get the DIY "files you write
 // are served at …" invitation; meta-agents instead get delegation guidance —
 // they relay deliverable URLs but are told the building isn't theirs to do.

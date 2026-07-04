@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+// ShellExecToolNames lists the shell/execution + background-service tools.
+// Meta-agents (orchestrator, builder) are denied these: a router that can
+// shell out builds and hosts deliverables itself instead of dispatching to a
+// specialist (the TonyVega exec meltdown). The DSL layer strips these from any
+// IsMeta agent's surface.
+func ShellExecToolNames() []string {
+	return []string{"exec", "start_service", "stop_service", "list_services", "service_logs"}
+}
+
 // requireString extracts a required string parameter, returning a clear error
 // the model can self-correct on instead of panicking on a bad type assertion.
 func requireString(params map[string]any, key string) (string, error) {

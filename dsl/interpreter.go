@@ -281,6 +281,27 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	return interp, nil
 }
 
+// stripMetaDeniedTools removes shell/execution + sandbox build tools from a
+// tool-name list. Meta-agents (orchestrator, builder) route work to specialist
+// agents; holding exec/start_service/spawn_app lets a router build and host
+// deliverables itself instead of dispatching (the TonyVega exec meltdown).
+func stripMetaDeniedTools(names []string) []string {
+	denied := make(map[string]bool)
+	for _, n := range tools.ShellExecToolNames() {
+		denied[n] = true
+	}
+	for _, n := range tools.SandboxToolNames() {
+		denied[n] = true
+	}
+	kept := names[:0:0]
+	for _, n := range names {
+		if !denied[n] {
+			kept = append(kept, n)
+		}
+	}
+	return kept
+}
+
 // spawnAgent creates a Vega process for a DSL agent.
 func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	// Build the base system string, enriching with team section if needed.
@@ -475,7 +496,19 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 				toolNames = append(toolNames, schema.Name)
 			}
 		}
+		if def.IsMeta {
+			toolNames = stripMetaDeniedTools(toolNames)
+		}
 		agentTools = i.tools.Filter(toolNames...)
+	} else if def.IsMeta {
+		// A meta-agent with no explicit allow-list would otherwise inherit
+		// the entire tool surface (exec, start_service, sandbox). Route it
+		// through the filter so routers never hold build/exec tools.
+		var toolNames []string
+		for _, schema := range i.tools.Schema() {
+			toolNames = append(toolNames, schema.Name)
+		}
+		agentTools = i.tools.Filter(stripMetaDeniedTools(toolNames)...)
 	}
 
 	// If agent has skills, set skillsRef so skill-declared tools augment the schema dynamically.
