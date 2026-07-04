@@ -177,7 +177,11 @@ func (c *flySandboxClient) allocateIP(ctx context.Context, appName, ipType strin
 
 // spawnApp creates a Fly app + machine running the sandbox image. Returns the
 // (unique) app id and the public URL the user can visit.
-func (c *flySandboxClient) spawnApp(ctx context.Context, name string, port int) (string, string, error) {
+//
+// Any failure after the app exists tears it back down (best-effort) —
+// otherwise each failed spawn leaks a machineless "pending" app into the
+// sandbox org, one per agent retry.
+func (c *flySandboxClient) spawnApp(ctx context.Context, name string, port int) (_ string, _ string, err error) {
 	if port <= 0 {
 		port = 8080
 	}
@@ -189,6 +193,15 @@ func (c *flySandboxClient) spawnApp(ctx context.Context, name string, port int) 
 	}, nil); err != nil {
 		return "", "", fmt.Errorf("create app: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			// context.WithoutCancel: still clean up when the failure was a
+			// cancelled/expired ctx.
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			_ = c.destroyApp(cleanupCtx, appID)
+		}
+	}()
 
 	// IP allocation happens via Fly's GraphQL API — the Machines API has
 	// no IP resource. Without these two calls the app has no public IPs

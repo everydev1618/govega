@@ -156,10 +156,13 @@ type Config struct {
 
 	// PublicURL is the externally-reachable base URL of this server (no
 	// trailing slash), used to build OAuth redirect URIs that match what
-	// operators register in their identity-provider consoles. When empty,
-	// the redirect URI is inferred from the incoming request's Host header
-	// and X-Forwarded-Proto — which works for laptops but not behind some
-	// reverse proxies. Set this on any deployed instance.
+	// operators register in their identity-provider consoles, and the
+	// workspace deliverable links agents hand to users. When empty, the
+	// PUBLIC_URL env var is honored so embedders that don't wire this
+	// field still report reachable links on hosted instances; the OAuth
+	// redirect URI is otherwise inferred from the incoming request's Host
+	// header and X-Forwarded-Proto — which works for laptops but not
+	// behind some reverse proxies. Set this on any deployed instance.
 	PublicURL string
 
 	// Orchestrator/Builder identify the meta-agents used for routing,
@@ -446,6 +449,20 @@ func resolveAddr(addr string) (net.Listener, string, error) {
 		return nil, "", err
 	}
 	return ln, ln.Addr().String(), nil
+}
+
+// publicBaseURL resolves the base URL agents embed in deliverable links
+// (…/workspace/…): Config.PublicURL when set, else the PUBLIC_URL env var
+// (passed in by Start) so embedders that build their own Config on a hosted
+// instance don't silently hand users localhost links, else localhost:port.
+func publicBaseURL(cfgURL, envURL, port string) string {
+	if u := strings.TrimRight(cfgURL, "/"); u != "" {
+		return u
+	}
+	if u := strings.TrimRight(envURL, "/"); u != "" {
+		return u
+	}
+	return fmt.Sprintf("http://localhost:%s", port)
 }
 
 // Start initializes the store, wires callbacks, registers routes, and
@@ -1067,10 +1084,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// agent generates point at the customer-visible hostname, not the
 	// container's localhost.
 	_, port, _ := net.SplitHostPort(addr)
-	baseURL := strings.TrimRight(s.cfg.PublicURL, "/")
-	if baseURL == "" {
-		baseURL = fmt.Sprintf("http://localhost:%s", port)
-	}
+	baseURL := publicBaseURL(s.cfg.PublicURL, os.Getenv("PUBLIC_URL"), port)
 	s.interp.SetServerBaseURL(baseURL)
 
 	authCfg, err := LoadAuthConfig(ctx)

@@ -16,6 +16,13 @@ import (
 type flyMockServer struct {
 	*httptest.Server
 	calls []recordedCall
+
+	// machineCreateStatus, when non-zero, is returned for POST …/machines —
+	// lets tests simulate e.g. a missing image (the production failure mode
+	// that used to leak half-created apps).
+	machineCreateStatus int
+	// failGraphQL, when true, makes IP allocation return a GraphQL error.
+	failGraphQL bool
 }
 
 type recordedCall struct {
@@ -45,6 +52,12 @@ func newFlyMockServer(t *testing.T) *flyMockServer {
 			// IP allocation goes through GraphQL — return a synthetic ok
 			// payload so spawnApp's error checks pass.
 			w.Header().Set("Content-Type", "application/json")
+			if m.failGraphQL {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"errors": []map[string]any{{"message": "boom"}},
+				})
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{
 					"allocateIpAddress": map[string]any{
@@ -53,6 +66,11 @@ func newFlyMockServer(t *testing.T) *flyMockServer {
 				},
 			})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/machines"):
+			if m.machineCreateStatus != 0 {
+				w.WriteHeader(m.machineCreateStatus)
+				_, _ = w.Write([]byte(`{"error":"not a valid image"}`))
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "machine-abc123"})
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/machines"):
@@ -150,6 +168,43 @@ func TestSandboxSpawnApp(t *testing.T) {
 	if int(svc["internal_port"].(float64)) != 8080 {
 		t.Errorf("internal_port should be 8080, got %v", svc["internal_port"])
 	}
+}
+
+// A spawn that fails after the app is created (missing image, IP allocation
+// error, Fly hiccup) must tear the app back down — otherwise every retry
+// leaks a pending app into the sandbox org.
+func TestSandboxSpawnAppCleansUpOnFailure(t *testing.T) {
+	assertCleanup := func(t *testing.T, mock *flyMockServer) {
+		t.Helper()
+		last := mock.calls[len(mock.calls)-1]
+		if last.Method != "DELETE" || !strings.HasPrefix(last.Path, "/v1/apps/") {
+			t.Errorf("failed spawn must delete the app it created; last call was %s %s", last.Method, last.Path)
+		}
+	}
+
+	t.Run("machine create fails", func(t *testing.T) {
+		mock := newFlyMockServer(t)
+		mock.machineCreateStatus = http.StatusNotFound
+		c := &flySandboxClient{token: "test", apiBase: mock.URL + "/v1", graphqlBase: mock.URL + "/graphql", org: "vega-apps", image: "x", httpClient: http.DefaultClient}
+
+		_, _, err := c.spawnApp(context.Background(), "pacman", 8080)
+		if err == nil {
+			t.Fatal("expected spawnApp to fail")
+		}
+		assertCleanup(t, mock)
+	})
+
+	t.Run("ip allocation fails", func(t *testing.T) {
+		mock := newFlyMockServer(t)
+		mock.failGraphQL = true
+		c := &flySandboxClient{token: "test", apiBase: mock.URL + "/v1", graphqlBase: mock.URL + "/graphql", org: "vega-apps", image: "x", httpClient: http.DefaultClient}
+
+		_, _, err := c.spawnApp(context.Background(), "pacman", 8080)
+		if err == nil {
+			t.Fatal("expected spawnApp to fail")
+		}
+		assertCleanup(t, mock)
+	})
 }
 
 func TestSandboxRunInApp(t *testing.T) {
