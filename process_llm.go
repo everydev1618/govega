@@ -3,8 +3,11 @@ package vega
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +16,50 @@ import (
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/memory"
 )
+
+// thrashRepeatThreshold is how many times an identical (tool, args, result)
+// signature may occur within one turn before the circuit breaker trips. A few
+// retries of the same failing call is normal; the fourth means the agent is
+// looping without learning anything new.
+const thrashRepeatThreshold = 4
+
+// resetThrashDetector clears the per-turn tool-call signature counts. Called at
+// the start of every tool loop.
+func (p *Process) resetThrashDetector() {
+	p.turnToolSigs = make(map[string]int)
+}
+
+// detectThrash records this batch of tool calls (paired with their results by
+// index) and reports the first tool whose identical (args, result) signature
+// has now repeated thrashRepeatThreshold times — the signal that the agent is
+// stuck retrying the same call and getting the same answer.
+func (p *Process) detectThrash(calls []llm.ToolCall, results []llm.ContentBlock) (string, bool) {
+	if p.turnToolSigs == nil {
+		p.turnToolSigs = make(map[string]int)
+	}
+	for i, tc := range calls {
+		var result string
+		if i < len(results) {
+			result = results[i].Content
+		}
+		argsJSON, _ := json.Marshal(tc.Arguments) // Go marshals map keys sorted → canonical
+		h := fnv.New64a()
+		_, _ = h.Write(argsJSON)
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(result))
+		sig := tc.Name + ":" + strconv.FormatUint(h.Sum64(), 16)
+		p.turnToolSigs[sig]++
+		if p.turnToolSigs[sig] >= thrashRepeatThreshold {
+			return tc.Name, true
+		}
+	}
+	return "", false
+}
+
+// thrashStopMessage is the honest turn-ending message when the breaker trips.
+func thrashStopMessage(tool string) string {
+	return fmt.Sprintf("I stopped here. I called the `%s` tool %d times with the same arguments and got the same result each time, so I'm looping without making progress. Rather than keep retrying, I'm flagging it: this step isn't working and needs a different approach or more information from you.", tool, thrashRepeatThreshold)
+}
 
 // v39aReporter is the lazily-initialised reporter used by callLLMWithRetry
 // to ship per-call cost telemetry to v39a's control panel. Nil means env
@@ -287,6 +334,7 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 
 	// Main loop - keep calling LLM until we get a final response (no tool calls)
 	maxIterations := p.effectiveMaxIterations()
+	p.resetThrashDetector()
 	compacted := false
 	for i := 0; i < maxIterations; i++ {
 		select {
@@ -366,6 +414,10 @@ func (p *Process) executeLLMLoop(ctx context.Context, message string) (string, C
 		wg.Wait()
 
 		messages = append(messages, toolResultsMessage(results))
+
+		if tool, tripped := p.detectThrash(resp.ToolCalls, results); tripped {
+			return thrashStopMessage(tool), metrics, nil
+		}
 	}
 
 	return "", metrics, ErrMaxIterationsExceeded
@@ -382,6 +434,7 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 
 	var fullResponse string
 	maxIterations := p.effectiveMaxIterations()
+	p.resetThrashDetector()
 	compacted := false
 
 	for i := 0; i < maxIterations; i++ {
@@ -478,6 +531,16 @@ func (p *Process) executeLLMStream(ctx context.Context, message string, chunks c
 		wg.Wait()
 
 		messages = append(messages, toolResultsMessage(streamResults))
+
+		if tool, tripped := p.detectThrash(collector.toolCalls, streamResults); tripped {
+			msg := thrashStopMessage(tool)
+			select {
+			case chunks <- msg:
+			case <-ctx.Done():
+				return fullResponse, ctx.Err()
+			}
+			return fullResponse + msg, nil
+		}
 	}
 
 	return fullResponse, ErrMaxIterationsExceeded
@@ -514,6 +577,7 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 	}()
 
 	maxIterations := p.effectiveMaxIterations()
+	p.resetThrashDetector()
 	compacted := false
 
 	for i := 0; i < maxIterations; i++ {
@@ -651,6 +715,15 @@ func (p *Process) executeLLMStreamRich(ctx context.Context, message string, even
 			resultBlocks = append(resultBlocks, tr.block)
 		}
 		messages = append(messages, toolResultsMessage(resultBlocks))
+
+		if tool, tripped := p.detectThrash(collector.toolCalls, resultBlocks); tripped {
+			msg := thrashStopMessage(tool)
+			if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: msg}) {
+				return fullResponse, ctx.Err()
+			}
+			return fullResponse + msg, nil
+		}
+
 		// Separate tool results from the next LLM response with a newline
 		// so streamed text doesn't concatenate without whitespace.
 		if !sendEvent(ctx, events, ChatEvent{Type: ChatEventTextDelta, Delta: "\n\n"}) {

@@ -85,6 +85,12 @@ type Process struct {
 	// (set via WithMaxIterations at spawn time).
 	maxIterations int
 
+	// turnToolSigs counts identical (tool, args, result) signatures within the
+	// current turn. When one signature repeats thrashRepeatThreshold times the
+	// agent is looping without progress and the circuit breaker trips. Reset at
+	// the start of each tool loop.
+	turnToolSigs map[string]int
+
 	// turnTimeout optionally overrides DefaultTurnTimeout for this process's
 	// turns. 0 => use DefaultTurnTimeout.
 	turnTimeout time.Duration

@@ -281,6 +281,11 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 	return interp, nil
 }
 
+// metaAgentMaxIterations caps the per-turn tool loop for routers (orchestrator,
+// builder). They dispatch and verify; they don't need the worker default of
+// 100 iterations, and a lower ceiling contains a confused router.
+const metaAgentMaxIterations = 20
+
 // stripMetaDeniedTools removes shell/execution + sandbox build tools from a
 // tool-name list. Meta-agents (orchestrator, builder) route work to specialist
 // agents; holding exec/start_service/spawn_app lets a router build and host
@@ -525,6 +530,14 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		System:        systemPrompt,
 		Tools:         agentTools,
 		LLM:           i.llmOverride, // nil unless WithLLM was set; orch default otherwise
+	}
+
+	// Meta-agents route work; they don't grind through long tool loops. Cap
+	// their per-turn iterations well below the worker default (100) so a
+	// confused router can't burn a whole turn dispatching in circles — a
+	// belt-and-braces ceiling under the thrash circuit breaker.
+	if def.IsMeta {
+		agent.MaxIterations = metaAgentMaxIterations
 	}
 
 	if def.Temperature != nil {
