@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -317,6 +318,65 @@ func TestMatcher(t *testing.T) {
 					tt.expectedCount, tt.message, len(matches))
 			}
 		})
+	}
+}
+
+// TestDesignImpeccableSkill verifies that the bundled design skill is present
+// in examples/skills and carries the substance Hera relies on when she attaches
+// it to UI/frontend agents. Skill body must encode impeccable.style's
+// anti-patterns, register split, and color/typography rules — if any of these
+// terms go missing the skill stops doing its job.
+func TestDesignImpeccableSkill(t *testing.T) {
+	loader := NewLoader("../../examples/skills")
+	if err := loader.Load(context.Background()); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	skill, err := loader.Get("design-impeccable")
+	if err != nil {
+		t.Fatalf("design-impeccable skill must be loadable: %v", err)
+	}
+
+	if skill.Description == "" {
+		t.Error("design-impeccable must have a description")
+	}
+
+	// Triggers must cover the obvious entry points so Hera's create_agent
+	// flow surfaces this skill for UI/frontend/landing-page builds.
+	wantTriggers := []string{"design", "ui", "frontend", "landing", "app"}
+	gotKeywords := map[string]bool{}
+	for _, tr := range skill.Triggers {
+		for _, kw := range tr.Keywords {
+			gotKeywords[strings.ToLower(kw)] = true
+		}
+	}
+	for _, want := range wantTriggers {
+		found := false
+		for kw := range gotKeywords {
+			if strings.Contains(kw, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("design-impeccable triggers missing keyword containing %q (have %v)", want, gotKeywords)
+		}
+	}
+
+	// Body must carry the load-bearing impeccable.style concepts.
+	wantBody := []string{
+		"purple gradient",
+		"glassmorphism",
+		"OKLCH",
+		"Brand mode",
+		"Product mode",
+		"nested card",
+	}
+	body := skill.Instructions
+	for _, want := range wantBody {
+		if !strings.Contains(strings.ToLower(body), strings.ToLower(want)) {
+			t.Errorf("design-impeccable instructions missing %q", want)
+		}
 	}
 }
 

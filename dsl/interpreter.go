@@ -183,9 +183,9 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 
 	t := tools.NewTools(toolOpts...)
 	t.RegisterBuiltins()
-	// Sandbox tools (spawn/run/write/destroy fly machines for user-built apps)
-	// are no-ops unless FLY_SANDBOX_TOKEN is in the environment.
-	tools.RegisterSandboxTools(t)
+	// App hosting is provider-neutral: RegisterBuiltins wires the deploy_app
+	// tool + AppHost interface; the host layer (serve LocalAppHost by default,
+	// v39a's FlyAppHost when wired) supplies the backend. No vendor code here.
 
 	// Register custom tools defined in the YAML tools: section.
 	for name, td := range doc.Tools {
@@ -286,16 +286,13 @@ func NewInterpreter(doc *Document, opts ...InterpreterOption) (*Interpreter, err
 // 100 iterations, and a lower ceiling contains a confused router.
 const metaAgentMaxIterations = 20
 
-// stripMetaDeniedTools removes shell/execution + sandbox build tools from a
+// stripMetaDeniedTools removes shell/execution + app-deploy tools from a
 // tool-name list. Meta-agents (orchestrator, builder) route work to specialist
-// agents; holding exec/start_service/spawn_app lets a router build and host
+// agents; holding exec/start_service/deploy_app lets a router build and host
 // deliverables itself instead of dispatching (the TonyVega exec meltdown).
 func stripMetaDeniedTools(names []string) []string {
 	denied := make(map[string]bool)
 	for _, n := range tools.ShellExecToolNames() {
-		denied[n] = true
-	}
-	for _, n := range tools.SandboxToolNames() {
 		denied[n] = true
 	}
 	for _, n := range tools.DeployToolNames() {
@@ -477,25 +474,15 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		// Always-available bucket — tools the host opted into that every
 		// agent gets regardless of its persisted allow-list:
 		//   - "__"-prefixed MCP/builtin server tools
-		//   - sandbox tools (spawn_app etc.), registered only when
-		//     FLY_SANDBOX_TOKEN is set. Without this, agents created before
-		//     the sandbox surface shipped silently fall back to
-		//     `start_service` + `python -m http.server`, handing the user a
-		//     localhost URL instead of a public *.fly.dev URL.
-		//     EXCEPT meta-agents: the orchestrator and builder route work to
-		//     specialist agents — hand them spawn_app and they build instead
-		//     of dispatching, hollowing out the delegation model.
 		//   - wiki memory tools (memory_read/list/search/write/append/edit).
 		//     Every agent shares the user wiki — gating these behind a
 		//     per-agent allow-list left custom personas read-only-by-prompt:
 		//     they'd see the injected MEMORY.md but couldn't drill into
 		//     linked pages or write back. Memory is first-class for all.
+		// (App hosting is not force-added: deploy_app is a normal builtin that
+		// workers get via their allow-list / DefaultNonMetaToolNames, and
+		// meta-agents are stripped of it below.)
 		always := make(map[string]bool, 16)
-		if !def.IsMeta {
-			for _, n := range tools.SandboxToolNames() {
-				always[n] = true
-			}
-		}
 		for _, n := range tools.WikiMemoryToolNames() {
 			always[n] = true
 		}

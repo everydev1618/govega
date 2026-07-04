@@ -601,6 +601,27 @@ func TestHeraAgentPopulatesTitle(t *testing.T) {
 	}
 }
 
+// TestHeraPromptCoversDesignDiscipline guards the prompt rule that tells
+// Hera to attach the design-impeccable skill (and the examples/skills
+// directory) when she builds any UI/frontend/designer-style agent. Without
+// this, spawned designers default to generic AI-styled output — purple
+// gradients, glassmorphism, Inter on everything.
+func TestHeraPromptCoversDesignDiscipline(t *testing.T) {
+	def := HeraAgent(DefaultHeraConfig())
+	prompt := def.System
+
+	wants := []string{
+		"design-impeccable",
+		"skills_dirs",
+		"frontend",
+	}
+	for _, w := range wants {
+		if !strings.Contains(prompt, w) {
+			t.Errorf("Hera prompt must reference %q so design discipline is attached to UI agents", w)
+		}
+	}
+}
+
 func TestIsHeraTool(t *testing.T) {
 	if !IsHeraTool("create_agent") {
 		t.Error("create_agent should be a hera tool")
