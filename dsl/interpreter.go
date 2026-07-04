@@ -298,6 +298,9 @@ func stripMetaDeniedTools(names []string) []string {
 	for _, n := range tools.SandboxToolNames() {
 		denied[n] = true
 	}
+	for _, n := range tools.DeployToolNames() {
+		denied[n] = true
+	}
 	kept := names[:0:0]
 	for _, n := range names {
 		if !denied[n] {

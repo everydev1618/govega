@@ -133,6 +133,10 @@ func sandboxEnv(sandbox string) []string {
 
 // RegisterBuiltins adds the built-in tools.
 func (t *Tools) RegisterBuiltins() {
+	// Provider-agnostic app-hosting tools (deploy_app etc.). They delegate to
+	// the wired AppHost; without one they report hosting isn't configured.
+	t.registerAppTools()
+
 	t.Register("read_file", func(path string) (string, error) {
 		data, err := os.ReadFile(path)
 		return string(data), err

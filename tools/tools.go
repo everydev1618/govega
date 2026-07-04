@@ -90,6 +90,10 @@ type Tools struct {
 	// OnFileWrite is called after a successful write_file or append_file operation.
 	// Parameters: ctx, relative path, operation ("write"/"append"), description.
 	OnFileWrite func(ctx context.Context, path, operation, description string)
+
+	// appHost is the wired app-hosting provider (nil ⇒ deploy_app reports
+	// hosting isn't configured). Set via SetAppHost by the host layer.
+	appHost AppHost
 }
 
 // containerState holds container routing configuration.

@@ -156,6 +156,38 @@ func TestMetaAgentsDontGetExecOrServiceTools(t *testing.T) {
 	}
 }
 
+// TestMetaAgentsDontGetDeployTools: app-hosting tools (deploy_app etc.) are
+// build tools — a router dispatches deployment to specialists, it doesn't host
+// apps itself. Meta-agents are denied them; workers keep them.
+func TestMetaAgentsDontGetDeployTools(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+	interp.Tools().RegisterBuiltins() // ensure deploy_app is registered
+
+	meta := &Agent{Name: "tony", Model: "test-model", System: "route", Tools: []string{"read_file", "deploy_app"}, IsMeta: true}
+	if err := interp.AddAgent("tony", meta); err != nil {
+		t.Fatalf("AddAgent meta: %v", err)
+	}
+	worker := &Agent{Name: "dev", Model: "test-model", System: "build", Tools: []string{"read_file", "deploy_app"}}
+	if err := interp.AddAgent("dev", worker); err != nil {
+		t.Fatalf("AddAgent worker: %v", err)
+	}
+
+	metaHas, workerHas := map[string]bool{}, map[string]bool{}
+	for _, s := range interp.Agents()["tony"].Agent.Tools.Schema() {
+		metaHas[s.Name] = true
+	}
+	for _, s := range interp.Agents()["dev"].Agent.Tools.Schema() {
+		workerHas[s.Name] = true
+	}
+	if metaHas["deploy_app"] {
+		t.Error("meta-agent must not hold deploy_app")
+	}
+	if !workerHas["deploy_app"] {
+		t.Error("worker must keep deploy_app")
+	}
+}
+
 // TestDeliveryPromptScopedByRole: worker agents get the DIY "files you write
 // are served at …" invitation; meta-agents instead get delegation guidance —
 // they relay deliverable URLs but are told the building isn't theirs to do.
