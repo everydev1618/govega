@@ -359,11 +359,20 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	// Universal brevity directive — applies to ALL agents.
 	systemStr += "\n\n## Communication style\nBe direct and concise. Lead with the answer, not the reasoning. 1-3 sentences for simple responses. Use bullet points only when listing concrete items — never for padding. No filler phrases, no restating the question, no sign-offs. The user's time is sacred."
 
-	// Inject workspace path and deliverable URL so agents know where files go and how to serve them.
+	// Inject workspace path and deliverable URL so agents know where files go
+	// and how to serve them. Meta-agents (orchestrator, builder) get the
+	// delegation variant: they relay deliverable URLs but the building itself
+	// belongs to specialist agents — an orchestrator holding the DIY
+	// invitation takes the path of least resistance and builds instead of
+	// dispatching.
 	systemStr += "\nYour working directory is " + vega.WorkspacePath()
 	if i.serverBaseURL != "" {
-		systemStr += fmt.Sprintf("\n\n## Delivering work product\nFiles you write to your working directory are served at %s/workspace/. For example, if you write a website to `%s/mysite/index.html`, it will be accessible at `%s/workspace/mysite/index.html`. When you produce deliverables (websites, documents, images), ALWAYS report the full URL so the user can view them immediately.", i.serverBaseURL, vega.WorkspacePath(), i.serverBaseURL)
-		systemStr += "\n\nFor dynamic applications (Node.js, Python, etc.), use `start_service` to run dev servers in the background. The service keeps running until stopped with `stop_service`. Use `service_logs` to check output and `list_services` to see what's running. Always report the URL where the service is accessible."
+		if def.IsMeta {
+			systemStr += fmt.Sprintf("\n\n## Delivering work product\nDeliverables (websites, documents, apps, images) are produced by specialist agents, never by you. Dispatch build work to the agent whose job it is — and if no agent fits, have one created first. Files agents write to the workspace are served at %s/workspace/ (e.g. `%s/workspace/mysite/index.html`); when you relay results to the user, ALWAYS include the full URL so they can open it immediately.", i.serverBaseURL, i.serverBaseURL)
+		} else {
+			systemStr += fmt.Sprintf("\n\n## Delivering work product\nFiles you write to your working directory are served at %s/workspace/. For example, if you write a website to `%s/mysite/index.html`, it will be accessible at `%s/workspace/mysite/index.html`. When you produce deliverables (websites, documents, images), ALWAYS report the full URL so the user can view them immediately.", i.serverBaseURL, vega.WorkspacePath(), i.serverBaseURL)
+			systemStr += "\n\nFor dynamic applications (Node.js, Python, etc.), use `start_service` to run dev servers in the background. The service keeps running until stopped with `stop_service`. Use `service_logs` to check output and `list_services` to see what's running. Always report the URL where the service is accessible."
+		}
 	}
 
 	// Inject connected MCP tool summary so agents know what external data
@@ -444,14 +453,19 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		//     the sandbox surface shipped silently fall back to
 		//     `start_service` + `python -m http.server`, handing the user a
 		//     localhost URL instead of a public *.fly.dev URL.
+		//     EXCEPT meta-agents: the orchestrator and builder route work to
+		//     specialist agents — hand them spawn_app and they build instead
+		//     of dispatching, hollowing out the delegation model.
 		//   - wiki memory tools (memory_read/list/search/write/append/edit).
 		//     Every agent shares the user wiki — gating these behind a
 		//     per-agent allow-list left custom personas read-only-by-prompt:
 		//     they'd see the injected MEMORY.md but couldn't drill into
 		//     linked pages or write back. Memory is first-class for all.
 		always := make(map[string]bool, 16)
-		for _, n := range tools.SandboxToolNames() {
-			always[n] = true
+		if !def.IsMeta {
+			for _, n := range tools.SandboxToolNames() {
+				always[n] = true
+			}
 		}
 		for _, n := range tools.WikiMemoryToolNames() {
 			always[n] = true

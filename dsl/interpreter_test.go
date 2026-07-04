@@ -56,6 +56,92 @@ func TestAgentInheritsSandboxTools(t *testing.T) {
 	}
 }
 
+// TestMetaAgentsDontInheritSandboxTools pins the delegation tenet: work goes
+// to specialist agents, and meta-agents (orchestrator, builder) route it —
+// they don't build. The always-available bucket force-feeds sandbox tools to
+// every persisted agent (see TestAgentInheritsSandboxTools); meta-agents are
+// the exception, otherwise the orchestrator takes the path of least
+// resistance and spawns apps herself instead of dispatching (TonyVega pacman
+// incident, Jul 4).
+func TestMetaAgentsDontInheritSandboxTools(t *testing.T) {
+	t.Setenv("FLY_SANDBOX_TOKEN", "fake-token")
+
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+	tools.RegisterSandboxTools(interp.Tools())
+
+	def := &Agent{
+		Name:   "tony",
+		Model:  "test-model",
+		System: "You are the orchestrator.",
+		Tools:  []string{"read_file", "list_files"},
+		IsMeta: true,
+	}
+	if err := interp.AddAgent("tony", def); err != nil {
+		t.Fatalf("AddAgent: %v", err)
+	}
+
+	proc := interp.Agents()["tony"]
+	if proc == nil || proc.Agent == nil || proc.Agent.Tools == nil {
+		t.Fatal("tony process should be spawned with a Tools collection")
+	}
+
+	have := map[string]bool{}
+	for _, s := range proc.Agent.Tools.Schema() {
+		have[s.Name] = true
+	}
+	for _, name := range tools.SandboxToolNames() {
+		if have[name] {
+			t.Errorf("meta-agent surface must not include %q — build work routes through specialist agents", name)
+		}
+	}
+	// The allow-list itself still applies.
+	if !have["read_file"] {
+		t.Error("meta-agent should keep its own allow-listed tools")
+	}
+}
+
+// TestDeliveryPromptScopedByRole: worker agents get the DIY "files you write
+// are served at …" invitation; meta-agents instead get delegation guidance —
+// they relay deliverable URLs but are told the building isn't theirs to do.
+func TestDeliveryPromptScopedByRole(t *testing.T) {
+	interp := newHeraTestInterpreter(t)
+	defer interp.Shutdown()
+	interp.SetServerBaseURL("https://et.example.com")
+
+	worker := &Agent{Name: "builder-bee", Model: "test-model", System: "You build.", Tools: []string{"read_file"}}
+	if err := interp.AddAgent("builder-bee", worker); err != nil {
+		t.Fatalf("AddAgent worker: %v", err)
+	}
+	meta := &Agent{Name: "tony", Model: "test-model", System: "You orchestrate.", Tools: []string{"read_file"}, IsMeta: true}
+	if err := interp.AddAgent("tony", meta); err != nil {
+		t.Fatalf("AddAgent meta: %v", err)
+	}
+
+	workerPrompt := interp.Agents()["builder-bee"].Agent.System.Prompt()
+	metaPrompt := interp.Agents()["tony"].Agent.System.Prompt()
+
+	if !strings.Contains(workerPrompt, "Files you write to your working directory are served at https://et.example.com/workspace/") {
+		t.Error("worker prompt should invite direct delivery via workspace URLs")
+	}
+	if !strings.Contains(workerPrompt, "start_service") {
+		t.Error("worker prompt should mention start_service for dynamic apps")
+	}
+
+	if strings.Contains(metaPrompt, "Files you write to your working directory") {
+		t.Error("meta prompt must not invite DIY delivery")
+	}
+	if strings.Contains(metaPrompt, "start_service") {
+		t.Error("meta prompt must not invite running services directly")
+	}
+	if !strings.Contains(metaPrompt, "https://et.example.com/workspace/") {
+		t.Error("meta prompt should still explain workspace URLs so the orchestrator can relay them")
+	}
+	if !strings.Contains(metaPrompt, "specialist") {
+		t.Error("meta prompt should direct build work to specialist agents")
+	}
+}
+
 // TestEvictIdle_PreservesDocAgents covers govega#76: idle eviction was
 // calling RemoveAgent which deletes from BOTH i.agents AND i.doc.Agents,
 // so an evicted agent silently disappeared from list_agents — the exact
