@@ -1,7 +1,15 @@
 # App Hosting Design — provider-neutral deployment for Vega-built apps
 
-Status: proposal · Author: initial draft 2026-07-04 · Supersedes standalone
-"capability-token workspace links" work (they merge — see §7).
+Status: **Phases 1–2 + Phase 3 core shipped** (govega v0.8.9 / v39avega v0.2.10);
+Phase 3 edge-routing + App Contract and Phase 4 deferred (see §9 and CHANGELOG /
+issue #116). Draft 2026-07-04 · Supersedes standalone "capability-token
+workspace links" work (they merged — see §7).
+
+Shipped: `tools.AppHost` interface + `deploy_app` (tools/apphost.go),
+`serve.LocalAppHost` default (serve/apphost_local.go), capability-token gating
+(serve/capability.go), v39a's `FlyAppHost` (v39avega apphost/fly.go). Deferred:
+edge subdomain routing `{app}.{slug}.v39a.com`, App Contract data access,
+per-app Public/Private visibility, spawn_app deprecation alias.
 
 ## 1. Problem
 
