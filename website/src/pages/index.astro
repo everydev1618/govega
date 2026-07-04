@@ -3,7 +3,7 @@ import '../styles/global.css'
 import SupervisionTree from '../components/SupervisionTree.astro'
 
 const BASE = import.meta.env.BASE_URL
-const version = '0.7.0'
+const version = '0.8.9'
 ---
 
 <!DOCTYPE html>
@@ -34,6 +34,7 @@ const version = '0.7.0'
         <a href="#model">supervision model</a>
         <a href="#reactive">reactive</a>
         <a href="#surfaces">surfaces</a>
+        <a href="#deliverables">deliverables</a>
         <a href="#api">api</a>
         <a href={`${BASE}getting-started`}>get started</a>
         <a href="https://github.com/everydev1618/govega" target="_blank" rel="noreferrer" class="header-nav-ext">github ↗</a>
@@ -485,9 +486,46 @@ const version = '0.7.0'
 
   <hr class="rule" />
 
-  <!-- §7 Colophon -->
+  <!-- §7 Deliverables -->
+  <section id="deliverables" class="frame section">
+    <div class="section-num">
+      §7 &nbsp; deliverables
+      <p class="sidenote">
+        Agents don't just answer — they build. A specialist writes the
+        files; <span class="mono">deploy_app</span> hosts them and hands
+        back a URL you can open. The orchestrator only relays it.
+      </p>
+    </div>
+    <div class="section-body">
+      <h2 class="display display-section">When an agent builds something, it ships.</h2>
+      <p class="lede" style="margin-top: 1.5rem;">
+        One provider-agnostic tool. The agent says "host this, give me a URL"
+        and never learns the backend — a subprocess on the Vega box by default,
+        an isolated cloud machine when the host wires one.
+      </p>
+
+      <div class="run-block">
+        <div class="code">
+          <p><span class="c-com">#</span> a worker agent, after writing pacman/index.html</p>
+          <p>deploy_app(<span class="c-key">name</span>: <span class="c-str">"pacman"</span>, <span class="c-key">source</span>: <span class="c-str">"pacman"</span>)</p>
+          <p class="run-out">▸ hosted · https://you.v3ga.dev/apps/pacman/?sig=…</p>
+          <p class="run-out">▸ capability-gated · not world-readable by default</p>
+          <p class="run-out">▸ provider-neutral · local subprocess or isolated machine</p>
+        </div>
+        <p class="sidenote" style="margin-top: 0.75rem;">
+          Static sites are served straight from the workspace; dynamic apps run
+          as a supervised process. Either way the link works over chat, email,
+          or Discord — no login, but scoped by a signed token you can revoke.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- §8 Colophon -->
   <section class="frame section colophon">
-    <div class="section-num">§7 &nbsp; colophon</div>
+    <div class="section-num">§8 &nbsp; colophon</div>
     <div class="section-body">
       <h2 class="display display-section">Built by one person, on purpose.</h2>
       <p class="lede" style="margin-top: 1.5rem;">
