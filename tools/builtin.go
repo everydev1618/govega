@@ -8,15 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
-
-// absPathRe matches absolute path tokens inside shell command strings.
-// Stops at whitespace and common shell meta-characters.
-var absPathRe = regexp.MustCompile(`(/[^\s"'<>|&;(){}\[\]\\]+)`)
 
 // requireString extracts a required string parameter, returning a clear error
 // the model can self-correct on instead of panicking on a bad type assertion.
@@ -75,19 +70,6 @@ func (rb *ringBuffer) String() string {
 		return string(rb.buf[:rb.pos])
 	}
 	return string(rb.buf[rb.pos:]) + string(rb.buf[:rb.pos])
-}
-
-// rewriteCommandPaths rewrites absolute paths in a shell command that escape
-// the sandbox, redirecting them to sandbox/basename.
-func rewriteCommandPaths(command, sandbox string) string {
-	return absPathRe.ReplaceAllStringFunc(command, func(match string) string {
-		clean := filepath.Clean(match)
-		rel, err := filepath.Rel(sandbox, clean)
-		if err != nil || strings.HasPrefix(rel, "..") {
-			return filepath.Join(sandbox, filepath.Base(clean))
-		}
-		return match
-	})
 }
 
 // sandboxEnv returns the current environment with HOME and TMPDIR pointed at
@@ -281,12 +263,6 @@ func (t *Tools) RegisterBuiltins() {
 			execCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
-			// Rewrite any absolute paths in the command that escape the sandbox,
-			// and isolate HOME/TMPDIR so ~ doesn't point outside.
-			if sandbox != "" {
-				command = rewriteCommandPaths(command, sandbox)
-			}
-
 			cmd := exec.CommandContext(execCtx, "sh", "-c", command)
 			cmd.Dir = workdir
 			// Always use the filtered environment so secrets aren't exposed to
@@ -363,10 +339,6 @@ func (t *Tools) RegisterBuiltins() {
 				return "", fmt.Errorf("service %q is already running (PID %d). Stop it first or use a different name", name, existing.PID)
 			}
 			t.servicesMu.Unlock()
-
-			if sandbox != "" {
-				command = rewriteCommandPaths(command, sandbox)
-			}
 
 			cmd := exec.Command("sh", "-c", command)
 			cmd.Dir = workdir

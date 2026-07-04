@@ -59,6 +59,40 @@ func TestWriteFileReturnsURLWithProject(t *testing.T) {
 	}
 }
 
+// TestExecHeredocPreservesContent covers the deliverable-corruption bug
+// (TonyVega pacman, Jul 4): an agent writing a file through an exec heredoc/
+// echo must land byte-for-byte on disk. The old rewriteCommandPaths ran a
+// blunt path-rewrite regex over the ENTIRE command string, so every "/"-token
+// inside the heredoc body — `</canvas>`, `w/2`, `//comments` — got rewritten
+// to sandbox/basename, structurally destroying the file before it was written.
+func TestExecHeredocPreservesContent(t *testing.T) {
+	dir := t.TempDir()
+	tools := NewTools(WithSandbox(dir))
+	tools.RegisterBuiltins()
+
+	html := "<!DOCTYPE html>\n<canvas id=\"c\"></canvas>\n<script>var x = w/2; // half\nfetch(\"/api/data\");</script>\n</html>"
+	// Heredoc with a quoted delimiter so the shell writes the body verbatim.
+	cmd := "cat > out.html <<'HTMLEOF'\n" + html + "\nHTMLEOF"
+
+	if _, err := tools.Execute(context.Background(), "exec", map[string]any{"command": cmd}); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "out.html"))
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if string(got) != html+"\n" {
+		t.Errorf("exec-written content was mangled.\nwant: %q\n got: %q", html+"\n", string(got))
+	}
+	// Guard the specific corruption signature.
+	for _, frag := range []string{"</canvas>", "w/2", "/api/data", "// half"} {
+		if !strings.Contains(string(got), frag) {
+			t.Errorf("missing/mangled fragment %q in written file", frag)
+		}
+	}
+}
+
 func TestWriteFileNoURLWithoutBaseURL(t *testing.T) {
 	dir := t.TempDir()
 
