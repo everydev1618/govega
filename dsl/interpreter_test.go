@@ -114,24 +114,31 @@ func TestDeliveryPromptScopedByRole(t *testing.T) {
 	workerPrompt := interp.Agents()["builder-bee"].Agent.System.Prompt()
 	metaPrompt := interp.Agents()["tony"].Agent.System.Prompt()
 
-	if !strings.Contains(workerPrompt, "Files you write to your working directory are served at https://et.example.com/workspace/") {
-		t.Error("worker prompt should invite direct delivery via workspace URLs")
-	}
-	if !strings.Contains(workerPrompt, "start_service") {
-		t.Error("worker prompt should mention start_service for dynamic apps")
+	// Both roles must be told to use the exact write_file/deploy_app URL and
+	// NEVER hand-build a /workspace/ URL — a reconstructed URL drops the
+	// capability token and 401s on gated instances (the jackal-game bug).
+	for name, prompt := range map[string]string{"worker": workerPrompt, "meta": metaPrompt} {
+		if !strings.Contains(prompt, "Accessible at:") {
+			t.Errorf("%s prompt should point at write_file's Accessible-at URL", name)
+		}
+		if !strings.Contains(prompt, "NEVER hand-build") {
+			t.Errorf("%s prompt should warn against reconstructing workspace URLs (token loss)", name)
+		}
 	}
 
-	if strings.Contains(metaPrompt, "Files you write to your working directory") {
-		t.Error("meta prompt must not invite DIY delivery")
+	// Worker builds directly (deploy_app), meta delegates.
+	if !strings.Contains(workerPrompt, "deploy_app") {
+		t.Error("worker prompt should point browser apps at deploy_app")
 	}
-	if strings.Contains(metaPrompt, "start_service") {
-		t.Error("meta prompt must not invite running services directly")
-	}
-	if !strings.Contains(metaPrompt, "https://et.example.com/workspace/") {
-		t.Error("meta prompt should still explain workspace URLs so the orchestrator can relay them")
+	if strings.Contains(workerPrompt, "specialist agents, never by you") {
+		t.Error("worker prompt must not carry the meta delegation-only framing")
 	}
 	if !strings.Contains(metaPrompt, "specialist") {
 		t.Error("meta prompt should direct build work to specialist agents")
+	}
+	// The old DIY-invite phrasing must be gone from both.
+	if strings.Contains(workerPrompt, "it will be accessible at") {
+		t.Error("worker prompt must not teach hand-constructed workspace URLs")
 	}
 }
 

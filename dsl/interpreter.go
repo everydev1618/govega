@@ -394,10 +394,10 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 	systemStr += "\nYour working directory is " + vega.WorkspacePath()
 	if i.serverBaseURL != "" {
 		if def.IsMeta {
-			systemStr += fmt.Sprintf("\n\n## Delivering work product\nDeliverables (websites, documents, apps, images) are produced by specialist agents, never by you. Dispatch build work to the agent whose job it is — and if no agent fits, have one created first. Files agents write to the workspace are served at %s/workspace/ (e.g. `%s/workspace/mysite/index.html`); when you relay results to the user, ALWAYS include the full URL so they can open it immediately.", i.serverBaseURL, i.serverBaseURL)
+			systemStr += "\n\n## Delivering work product\nDeliverables (websites, documents, apps, images) are produced by specialist agents, never by you. Dispatch build work to the agent whose job it is — and if no agent fits, have one created first. When you relay the result to the user, quote the EXACT URL the specialist reported (from write_file's `Accessible at:` line, or from deploy_app). That URL carries a required access token on hosted instances. NEVER hand-build a `" + i.serverBaseURL + "/workspace/...` URL yourself — a reconstructed URL is missing the token and will fail for the user."
 		} else {
-			systemStr += fmt.Sprintf("\n\n## Delivering work product\nFiles you write to your working directory are served at %s/workspace/. For example, if you write a website to `%s/mysite/index.html`, it will be accessible at `%s/workspace/mysite/index.html`. When you produce deliverables (websites, documents, images), ALWAYS report the full URL so the user can view them immediately.", i.serverBaseURL, vega.WorkspacePath(), i.serverBaseURL)
-			systemStr += "\n\nFor dynamic applications (Node.js, Python, etc.), use `start_service` to run dev servers in the background. The service keeps running until stopped with `stop_service`. Use `service_logs` to check output and `list_services` to see what's running. Always report the URL where the service is accessible."
+			systemStr += "\n\n## Delivering work product\nWhen you write a file with write_file, its result includes an `Accessible at:` URL — that exact URL is how the user opens your work, and on hosted instances it carries a required access token. ALWAYS report that exact URL verbatim. NEVER hand-build a `" + i.serverBaseURL + "/workspace/...` URL yourself: a reconstructed URL is missing the token and will 401 for the user."
+			systemStr += "\n\nFor a browser app the user opens (static site, canvas game, or a dynamic Node/Python/Go server), use `deploy_app` — it hosts the app and returns a ready-to-share URL (with the access token). Do NOT bind a localhost port yourself; that is unreachable to the user."
 		}
 	}
 
