@@ -152,6 +152,13 @@ func fetchServer() *BuiltinMCPServer {
 	}
 }
 
+// browserUserAgent is a current desktop-Chrome UA. Fetching public pages on
+// the user's behalf with a realistic UA avoids the reflexive bot-block that a
+// tool-flavored UA triggers. This is not evasion of a real access decision —
+// sites that truly gate content (login/paywall/hard challenge) still return
+// 401/403 and we report that honestly.
+const browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+
 func fetchToolFunc(ctx context.Context, params map[string]any) (string, error) {
 	urlStr, _ := params["url"].(string)
 	if urlStr == "" {
@@ -174,15 +181,19 @@ func fetchToolFunc(ctx context.Context, params map[string]any) (string, error) {
 	}
 
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 20 * time.Second,
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Vega/1.0 (MCP Fetch Server)")
-	req.Header.Set("Accept", "text/html, application/json, text/plain, */*")
+	// Present as a real browser. A bot-flavored User-Agent (the old
+	// "Vega/1.0 (MCP Fetch Server)") gets 403'd on sight by anti-bot layers
+	// like Cloudflare, which the user experiences as "it got blocked".
+	req.Header.Set("User-Agent", browserUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -190,6 +201,11 @@ func fetchToolFunc(ctx context.Context, params map[string]any) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	// 401/403/429 are the anti-bot / rate-limit signatures — say so plainly so
+	// the agent relays an honest, actionable message rather than a bare code.
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusTooManyRequests {
+		return "", fmt.Errorf("%s blocked automated access (HTTP %d) — the site likely requires a real browser or login; try a different source", urlStr, resp.StatusCode)
+	}
 	if resp.StatusCode >= 400 {
 		return "", fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, urlStr)
 	}

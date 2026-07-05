@@ -9,6 +9,39 @@ import (
 	"testing"
 )
 
+// The fetch tool must present a real browser User-Agent. The old
+// "Vega/1.0 (MCP Fetch Server)" UA got 403'd by anti-bot layers (Cloudflare),
+// which surfaced to the user as "I got blocked".
+func TestFetchToolBrowserUserAgent(t *testing.T) {
+	var gotUA string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		fmt.Fprint(w, "ok")
+	}))
+	defer server.Close()
+
+	if _, err := fetchToolFunc(context.Background(), map[string]any{"url": server.URL}); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if strings.Contains(gotUA, "Vega") || !strings.Contains(gotUA, "Mozilla") {
+		t.Errorf("expected a browser-like User-Agent, got %q", gotUA)
+	}
+}
+
+// A 403 (anti-bot) should produce a clear, honest error the agent can relay,
+// not a bare "HTTP 403".
+func TestFetchToolBlockedMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	_, err := fetchToolFunc(context.Background(), map[string]any{"url": server.URL})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "blocked") {
+		t.Errorf("403 should yield a 'blocked automated access' error, got %v", err)
+	}
+}
+
 func TestFetchTool(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
