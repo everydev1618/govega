@@ -86,3 +86,18 @@ func TestChatImagesToBlocks(t *testing.T) {
 		t.Errorf("image/jpg should normalize to image/jpeg, got %q", blocks[1].MediaType)
 	}
 }
+
+func TestIsAudioAttachment(t *testing.T) {
+	for ct, want := range map[string]bool{
+		"audio/ogg":  true,
+		"audio/mpeg": true,
+		"AUDIO/WAV":  true,
+		"image/png":  false,
+		"text/plain": false,
+		"":           false,
+	} {
+		if got := isAudioAttachment(ct); got != want {
+			t.Errorf("isAudioAttachment(%q) = %v, want %v", ct, got, want)
+		}
+	}
+}

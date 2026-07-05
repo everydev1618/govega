@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -539,7 +540,9 @@ func (d *DiscordBot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageC
 	}
 
 	text := stripBotMention(m.Content, botUserID)
-	if text == "" {
+	// An empty text is still actionable when the message carries attachments
+	// (an image to look at, or a voice note to transcribe).
+	if text == "" && len(m.Attachments) == 0 {
 		return
 	}
 
@@ -567,6 +570,16 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 		}
 		name = target
 		text = body
+	}
+
+	// Voice notes: transcribe an audio attachment and use it as the message.
+	// If the user also typed text, the transcript is appended.
+	if transcript := d.transcribeVoice(ctx, m); transcript != "" {
+		if text == "" {
+			text = transcript
+		} else {
+			text = text + "\n\n[voice] " + transcript
+		}
 	}
 
 	if d.onIncoming != nil {
@@ -597,6 +610,15 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	// Pull image attachments so the (vision-capable) agent can actually read
 	// them, rather than silently ignoring uploads.
 	images := d.extractImages(ctx, m)
+
+	// Nothing usable (e.g. an audio clip we couldn't transcribe, or an
+	// unsupported attachment) — say so instead of sending an empty turn.
+	if text == "" && len(images) == 0 {
+		close(stopTyping)
+		d.replyThreaded(m.Reference(), channelID, "I couldn't read that — I can handle text, images, and voice notes (voice needs a transcription key configured).")
+		return
+	}
+
 	resp, err := d.exch.run(ctx, name, text, userID, onProgress, images)
 	close(stopTyping)
 	if err != nil {
@@ -616,6 +638,49 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	// (chunked to the 2000-char limit) and threaded as a reply to the
 	// triggering message.
 	d.replyThreaded(m.Reference(), channelID, resp)
+}
+
+// isAudioAttachment reports whether a Discord attachment is an audio clip
+// (voice message or uploaded audio file).
+func isAudioAttachment(contentType string) bool {
+	return strings.HasPrefix(strings.ToLower(contentType), "audio/")
+}
+
+// transcribeVoice downloads the first audio attachment on a Discord message and
+// returns its transcript, or "" if there's no audio (or transcription fails —
+// logged, best-effort, so a bad clip doesn't sink the turn).
+func (d *DiscordBot) transcribeVoice(ctx context.Context, m *discordgo.MessageCreate) string {
+	if m.Message == nil {
+		return ""
+	}
+	for _, att := range m.Attachments {
+		if att == nil || !isAudioAttachment(att.ContentType) {
+			continue
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, att.URL, nil)
+		if err != nil {
+			return ""
+		}
+		resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+		if err != nil || resp.StatusCode >= 400 {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			return ""
+		}
+		audio, readErr := io.ReadAll(io.LimitReader(resp.Body, 25<<20)) // Whisper caps ~25MB
+		resp.Body.Close()
+		if readErr != nil || len(audio) == 0 {
+			return ""
+		}
+		transcript, err := newDefaultTranscriber().Transcribe(ctx, audio, att.Filename)
+		if err != nil {
+			slog.Warn("discord: voice transcription failed", "error", err)
+			return ""
+		}
+		return strings.TrimSpace(transcript)
+	}
+	return ""
 }
 
 // extractImages downloads image attachments on a Discord message into vision
