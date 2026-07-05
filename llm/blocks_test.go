@@ -209,3 +209,26 @@ func TestStreamEmitsThinkingEvents(t *testing.T) {
 		t.Errorf("signature = %q, want %q", signature, "sig-stream")
 	}
 }
+
+// TestBlocksToAnthropicImage verifies an image content block converts to the
+// Anthropic vision API shape ({type:image, source:{type:base64,...}}).
+func TestBlocksToAnthropicImage(t *testing.T) {
+	out := blocksToAnthropic([]ContentBlock{
+		{Type: BlockText, Text: "what is this?"},
+		{Type: BlockImage, MediaType: "image/png", Data: "aGVsbG8="},
+	})
+	if len(out) != 2 {
+		t.Fatalf("expected 2 blocks, got %d: %+v", len(out), out)
+	}
+	img, ok := out[1].(map[string]any)
+	if !ok || img["type"] != "image" {
+		t.Fatalf("second block is not an image: %+v", out[1])
+	}
+	src, ok := img["source"].(map[string]any)
+	if !ok {
+		t.Fatalf("image block missing source: %+v", img)
+	}
+	if src["type"] != "base64" || src["media_type"] != "image/png" || src["data"] != "aGVsbG8=" {
+		t.Errorf("bad image source: %+v", src)
+	}
+}

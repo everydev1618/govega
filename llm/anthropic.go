@@ -566,6 +566,22 @@ func blocksToAnthropic(blocks []ContentBlock) []any {
 				blk["is_error"] = true
 			}
 			out = append(out, blk)
+		case BlockImage:
+			if b.Data == "" {
+				continue
+			}
+			mt := b.MediaType
+			if mt == "" {
+				mt = "image/png"
+			}
+			out = append(out, map[string]any{
+				"type": "image",
+				"source": map[string]any{
+					"type":       "base64",
+					"media_type": mt,
+					"data":       b.Data,
+				},
+			})
 		}
 	}
 	return out

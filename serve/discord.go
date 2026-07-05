@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/llm"
 )
 
 // discordBotsSettingKey holds the JSON-encoded list of configured bots.
@@ -592,7 +594,10 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 			slog.Debug("discord: progress send failed", "error", err)
 		}
 	}
-	resp, err := d.exch.run(ctx, name, text, userID, onProgress)
+	// Pull image attachments so the (vision-capable) agent can actually read
+	// them, rather than silently ignoring uploads.
+	images := d.extractImages(ctx, m)
+	resp, err := d.exch.run(ctx, name, text, userID, onProgress, images)
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("discord: SendToAgent failed", "error", err)
@@ -611,6 +616,28 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	// (chunked to the 2000-char limit) and threaded as a reply to the
 	// triggering message.
 	d.replyThreaded(m.Reference(), channelID, resp)
+}
+
+// extractImages downloads image attachments on a Discord message into vision
+// content blocks. Non-images and oversized/failed downloads are skipped.
+func (d *DiscordBot) extractImages(ctx context.Context, m *discordgo.MessageCreate) []llm.ContentBlock {
+	if m.Message == nil || len(m.Attachments) == 0 {
+		return nil
+	}
+	client := &http.Client{Timeout: 20 * time.Second}
+	var out []llm.ContentBlock
+	for _, att := range m.Attachments {
+		if att == nil || normalizeImageMediaType(att.ContentType) == "" {
+			continue
+		}
+		if blk := downloadImageBlock(ctx, client, att.URL, att.ContentType); blk != nil {
+			out = append(out, *blk)
+		}
+		if len(out) >= maxImagesPerTurn {
+			break
+		}
+	}
+	return out
 }
 
 // replyThreaded sends content back to the channel as a reply to the triggering

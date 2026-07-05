@@ -34,6 +34,7 @@ const (
 	BlockThinking   = "thinking"
 	BlockToolUse    = "tool_use"
 	BlockToolResult = "tool_result"
+	BlockImage      = "image"
 )
 
 // ContentBlock is one typed unit of message content. Exactly one group of
@@ -61,6 +62,11 @@ type ContentBlock struct {
 	ToolUseID string `json:"tool_use_id,omitempty"`
 	Content   string `json:"content,omitempty"`
 	IsError   bool   `json:"is_error,omitempty"`
+
+	// Image fields (BlockImage): base64-encoded image Data plus its MediaType
+	// (e.g. "image/png"). Vision-capable models read these on user turns.
+	MediaType string `json:"media_type,omitempty"`
+	Data      string `json:"data,omitempty"`
 }
 
 // Role identifies the message sender.

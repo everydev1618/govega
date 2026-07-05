@@ -2124,6 +2124,24 @@ func (i *Interpreter) StreamToAgent(ctx context.Context, agentName string, messa
 	return proc.SendStreamRich(ctx, message)
 }
 
+// StreamToAgentWithImages is StreamToAgent for a multimodal user turn: text
+// plus image content blocks the (vision-capable) agent reads this turn.
+func (i *Interpreter) StreamToAgentWithImages(ctx context.Context, agentName, message string, images []llm.ContentBlock) (*vega.ChatStream, error) {
+	if len(images) == 0 {
+		return i.StreamToAgent(ctx, agentName, message)
+	}
+	if err := checkDelegation(ctx, agentName); err != nil {
+		return nil, err
+	}
+	ctx = contextWithDelegationHop(ctx, agentName)
+
+	proc, err := i.ensureAgent(agentName)
+	if err != nil {
+		return nil, err
+	}
+	return proc.SendStreamRichWithImages(ctx, message, images)
+}
+
 // resolveKnowledge fetches all knowledge URIs and returns a formatted section.
 func (i *Interpreter) resolveKnowledge(ctx context.Context, uris []string) string {
 	var builder strings.Builder

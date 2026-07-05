@@ -473,6 +473,30 @@ func (p *Process) SendStream(ctx context.Context, message string) (*Stream, erro
 // SendStreamRich sends a message and returns a ChatStream with structured events
 // (text deltas, tool start/end) instead of raw text chunks.
 func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStream, error) {
+	return p.sendStreamRich(ctx, llm.Message{Role: llm.RoleUser, Content: message}, message)
+}
+
+// SendStreamRichWithImages is SendStreamRich for a multimodal user turn: the
+// text plus one or more image content blocks (vision-capable models read
+// them). History keeps the text (rollbackKey), so the turn persists as its
+// text with an image placeholder supplied by the caller.
+func (p *Process) SendStreamRichWithImages(ctx context.Context, text string, images []llm.ContentBlock) (*ChatStream, error) {
+	if len(images) == 0 {
+		return p.SendStreamRich(ctx, text)
+	}
+	blocks := make([]llm.ContentBlock, 0, len(images)+1)
+	if text != "" {
+		blocks = append(blocks, llm.ContentBlock{Type: llm.BlockText, Text: text})
+	}
+	blocks = append(blocks, images...)
+	// Content=text so history/skill-context/rollback see the text; Blocks
+	// (which include the images) take precedence when the request is built.
+	return p.sendStreamRich(ctx, llm.Message{Role: llm.RoleUser, Content: text, Blocks: blocks}, text)
+}
+
+// sendStreamRich is the shared streaming-turn core: add the user message, run
+// the rich stream, and persist the assistant reply (or roll back on error).
+func (p *Process) sendStreamRich(ctx context.Context, userMsg llm.Message, rollbackKey string) (*ChatStream, error) {
 	p.mu.Lock()
 	if p.status != StatusRunning && p.status != StatusPending {
 		p.mu.Unlock()
@@ -494,9 +518,9 @@ func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStre
 		defer close(stream.events)
 		defer close(stream.done)
 
-		p.addMessage(llm.Message{Role: llm.RoleUser, Content: message})
+		p.addMessage(userMsg)
 
-		response, err := p.executeLLMStreamRich(ctx, message, stream.events)
+		response, err := p.executeLLMStreamRich(ctx, rollbackKey, stream.events)
 		stream.mu.Lock()
 		stream.response = response
 		stream.err = err
@@ -505,7 +529,7 @@ func (p *Process) SendStreamRich(ctx context.Context, message string) (*ChatStre
 		if err == nil {
 			p.addMessage(llm.Message{Role: llm.RoleAssistant, Content: response})
 		} else {
-			p.rollbackUserMessage(message)
+			p.rollbackUserMessage(rollbackKey)
 		}
 	}()
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/llm"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -536,7 +537,8 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 			slog.Debug("telegram: progress send failed", "error", err)
 		}
 	}
-	resp, err := t.exch.run(ctx, name, text, userID, onProgress)
+	images := t.extractImages(ctx, update.Message)
+	resp, err := t.exch.run(ctx, name, text, userID, onProgress, images)
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("telegram: SendToAgent failed", "error", err)
@@ -571,6 +573,36 @@ func telegramAudioFileID(msg *tgbotapi.Message) (fileID, label string) {
 		return msg.VideoNote.FileID, "video note"
 	}
 	return "", ""
+}
+
+// extractImages turns a Telegram photo (and image documents) into vision
+// content blocks. Telegram delivers a photo as several sizes; we take the
+// largest. Photos are JPEG, so we hint that media type since the file server
+// doesn't set a reliable Content-Type.
+func (t *TelegramBot) extractImages(ctx context.Context, msg *tgbotapi.Message) []llm.ContentBlock {
+	if msg == nil {
+		return nil
+	}
+	client := &http.Client{Timeout: 20 * time.Second}
+	var out []llm.ContentBlock
+
+	if len(msg.Photo) > 0 {
+		largest := msg.Photo[len(msg.Photo)-1] // sizes ascend
+		if url, err := t.bot.GetFileDirectURL(largest.FileID); err == nil {
+			if blk := downloadImageBlock(ctx, client, url, "image/jpeg"); blk != nil {
+				out = append(out, *blk)
+			}
+		}
+	}
+	// An image sent as a file/document (uncompressed) carries its own MIME type.
+	if msg.Document != nil && normalizeImageMediaType(msg.Document.MimeType) != "" {
+		if url, err := t.bot.GetFileDirectURL(msg.Document.FileID); err == nil {
+			if blk := downloadImageBlock(ctx, client, url, msg.Document.MimeType); blk != nil {
+				out = append(out, *blk)
+			}
+		}
+	}
+	return out
 }
 
 // transcribeTelegramFile downloads the file behind fileID via the Telegram

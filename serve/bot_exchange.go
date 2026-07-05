@@ -6,6 +6,7 @@ import (
 
 	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
+	"github.com/everydev1618/govega/llm"
 )
 
 // botExchange is the shared inbound-message core for external chat bots
@@ -57,7 +58,7 @@ func memoryUserID(ctx context.Context) string {
 // runs (e.g. "→ handing this to sage…" when the orchestrator dispatches to a
 // sub-agent) so the user gets visibility into the multi-agent work a linear
 // chat window otherwise hides. nil disables progress (silent turn).
-func (b *botExchange) run(ctx context.Context, agent, text, platformUserID string, onProgress func(string)) (string, error) {
+func (b *botExchange) run(ctx context.Context, agent, text, platformUserID string, onProgress func(string), images []llm.ContentBlock) (string, error) {
 	// Resolver first: it may attach claims that determine the memory
 	// namespace for everything below.
 	ctx = applyResolver(ctx, b.resolver, platformUserID)
@@ -81,8 +82,14 @@ func (b *botExchange) run(ctx context.Context, agent, text, platformUserID strin
 		}
 	}
 
-	// Persist user message.
-	if err := b.store.InsertChatMessage(agent, "user", text, nil); err != nil {
+	// Persist the user message. When images are attached, store a text
+	// placeholder (we don't persist image bytes — pass-through for the turn),
+	// so the dashboard shows the turn cleanly.
+	persisted := text
+	if len(images) > 0 {
+		persisted = imagePlaceholder(len(images)) + text
+	}
+	if err := b.store.InsertChatMessage(agent, "user", persisted, nil); err != nil {
 		slog.Warn("bot: failed to insert user message", "surface", b.surface, "error", err)
 	}
 
@@ -92,8 +99,9 @@ func (b *botExchange) run(ctx context.Context, agent, text, platformUserID strin
 	// Stream the turn so we can surface dispatch/progress to the user. The
 	// setup above (hydration, memory, persistence) is unchanged; only the send
 	// is now streaming. We consume events for progress and take the final text
-	// from the stream's accumulated response.
-	stream, err := b.interp.StreamToAgent(ctx, agent, text)
+	// from the stream's accumulated response. Images ride along as vision
+	// content blocks the agent reads this turn.
+	stream, err := b.interp.StreamToAgentWithImages(ctx, agent, text, images)
 	if err != nil {
 		return "", err
 	}

@@ -105,7 +105,7 @@ func TestBotExchangeHydratesProcessFromHistory(t *testing.T) {
 		surface:   surfaceDiscord,
 		baseAgent: "tony",
 	}
-	if _, err := exch.run(context.Background(), "tony", "what was that link again?", "snowflake-123", nil); err != nil {
+	if _, err := exch.run(context.Background(), "tony", "what was that link again?", "snowflake-123", nil, nil); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestBotExchangePersistsExchange(t *testing.T) {
 	interp, store := newBotExchangeFixture(t, backend)
 
 	exch := &botExchange{interp: interp, store: store, surface: surfaceTelegram, baseAgent: "tony"}
-	if _, err := exch.run(context.Background(), "tony", "hi", "12345", nil); err != nil {
+	if _, err := exch.run(context.Background(), "tony", "hi", "12345", nil, nil); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -172,7 +172,7 @@ func TestBotExchangeMemoryScopedToDefaultUser(t *testing.T) {
 	}
 
 	exch := &botExchange{interp: interp, store: store, surface: surfaceDiscord, baseAgent: "tony"}
-	if _, err := exch.run(context.Background(), "tony", "what do you remember?", "snowflake-987654", nil); err != nil {
+	if _, err := exch.run(context.Background(), "tony", "what do you remember?", "snowflake-987654", nil, nil); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -206,7 +206,7 @@ func TestBotExchangeFiresOnExchange(t *testing.T) {
 			gotUser, gotAgent, gotMsg, gotResp = userID, agent, userMsg, response
 		},
 	}
-	if _, err := exch.run(context.Background(), "tony", "remember the link", "snowflake-1", nil); err != nil {
+	if _, err := exch.run(context.Background(), "tony", "remember the link", "snowflake-1", nil, nil); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if !fired {
@@ -239,7 +239,7 @@ func TestBotExchangeResolverClaimsScopeMemory(t *testing.T) {
 			gotUser = userID
 		},
 	}
-	if _, err := exch.run(context.Background(), "tony", "hi", "tg-777", nil); err != nil {
+	if _, err := exch.run(context.Background(), "tony", "hi", "tg-777", nil, nil); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if gotUser != "apex-user-42" {
@@ -264,7 +264,7 @@ func TestBotExchangeErrorDoesNotFireOnExchange(t *testing.T) {
 		},
 	}
 	// Unknown agent → EnsureAgent and SendToAgent both fail.
-	if _, err := exch.run(context.Background(), "nosuchagent", "hi", "u1", nil); err == nil {
+	if _, err := exch.run(context.Background(), "nosuchagent", "hi", "u1", nil, nil); err == nil {
 		t.Fatal("expected error for unknown agent")
 	}
 	if fired {
