@@ -138,10 +138,13 @@ func (s *Server) startTelegramBot(parent context.Context, cfg TelegramBotConfig)
 		s.interp,
 		s.store,
 		s.company,
-		// Passive memory extraction disabled — wiki curator (govega#71)
-		// owns long-term memory writes. Hook left in place as a no-op
-		// so the telegram bot's callback signature stays stable.
-		func(userID, agent, userMsg, response string) {},
+		// onExchange: feed the finished exchange to the wiki memory curator
+		// (govega#71) so Telegram conversations write long-term memory the
+		// same way web chats do. Detached from the turn's cancellation but
+		// keeps its identity/BYOK values.
+		func(ctx context.Context, userID, agent, userMsg, response string) {
+			go s.curateMemory(carryRequestValues(ctx, context.Background()), userID, agent, userMsg, response)
+		},
 		// onIncoming: bind the per-user clone agent to a ReplyTarget so
 		// async dispatch completions push back to this exact chat.
 		func(agentName string, target dsl.ReplyTarget) {
@@ -295,24 +298,18 @@ func (s *Server) TelegramBotsSnapshot() []TelegramBotStatus {
 // TelegramBot handles incoming Telegram messages via long polling and routes
 // them to a vega agent, storing history in the same store as the HTTP chat API.
 type TelegramBot struct {
-	bot        *tgbotapi.BotAPI
-	interp     *dsl.Interpreter
-	store      Store
-	agentName  string
-	company    *dsl.Company
-	onExchange func(userID, agent, userMsg, response string)
+	bot       *tgbotapi.BotAPI
+	agentName string
+
+	// exch runs the shared hydrate → inject → send → persist → curate
+	// turn core (see bot_exchange.go).
+	exch *botExchange
 
 	// onIncoming is called once per inbound message, BEFORE the message
 	// is dispatched to the agent. The serve layer uses this to register
 	// a ReplyTarget keyed by the per-user clone agent name so async
 	// dispatch completions can be pushed back to this exact Telegram chat.
 	onIncoming func(agentName string, target dsl.ReplyTarget)
-
-	// resolver, when set, enriches inbound-handler ctx with caller
-	// identity + per-user credentials before dispatching to the agent
-	// (apexvega#24). Without it, background paths like Telegram inbound
-	// would hit the LLM with no BYOK key attached.
-	resolver CallerResolver
 
 	// allowedUsers, when non-empty, restricts which numeric user IDs may
 	// talk to the bot. Empty means open access.
@@ -329,28 +326,33 @@ func (t *TelegramBot) SetAllowedUsers(ids []string) {
 // context before SendToAgent on every inbound Telegram message. Pass
 // nil to clear.
 func (t *TelegramBot) SetCallerResolver(r CallerResolver) {
-	t.resolver = r
+	t.exch.resolver = r
 }
 
 // NewTelegramBot creates a TelegramBot connected to the given token.
-// onExchange is called after each successful exchange for async memory
-// extraction. onIncoming (optional) is called for each inbound message
-// with the per-user clone agent name and a ReplyTarget that will push
-// to this user's chat — the serve layer registers it on the server's
-// reply-target map so dispatch-complete callbacks can find it.
-func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Store, company *dsl.Company, onExchange func(userID, agent, userMsg, response string), onIncoming func(agentName string, target dsl.ReplyTarget)) (*TelegramBot, error) {
+// onExchange is called after each successful exchange (the serve layer
+// wires it to the memory curator). onIncoming (optional) is called for
+// each inbound message with the per-user clone agent name and a
+// ReplyTarget that will push to this user's chat — the serve layer
+// registers it on the server's reply-target map so dispatch-complete
+// callbacks can find it.
+func NewTelegramBot(token, agentName string, interp *dsl.Interpreter, store Store, company *dsl.Company, onExchange func(ctx context.Context, userID, agent, userMsg, response string), onIncoming func(agentName string, target dsl.ReplyTarget)) (*TelegramBot, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("telegram bot init: %w", err)
 	}
 	bot.Debug = false
 	return &TelegramBot{
-		bot:        bot,
-		interp:     interp,
-		store:      store,
-		agentName:  agentName,
-		company:    company,
-		onExchange: onExchange,
+		bot:       bot,
+		agentName: agentName,
+		exch: &botExchange{
+			interp:     interp,
+			store:      store,
+			company:    company,
+			surface:    surfaceTelegram,
+			baseAgent:  agentName,
+			onExchange: onExchange,
+		},
 		onIncoming: onIncoming,
 	}, nil
 }
@@ -496,7 +498,7 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	// "!agent rest of message". Unknown names pass through to the base
 	// agent so a stray "!something" never silently disappears.
 	name := t.agentName
-	if target, body := parseAgentPrefix(text, t.interp.HasAgent); target != "" {
+	if target, body := parseAgentPrefix(text, t.exch.interp.HasAgent); target != "" {
 		if body == "" {
 			t.bot.Send(tgbotapi.NewMessage(chatID, "What would you like to ask "+target+"?"))
 			return
@@ -508,31 +510,6 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 	if t.onIncoming != nil {
 		t.onIncoming(name, &telegramReplyTarget{bot: t.bot, chatID: chatID})
 	}
-
-	// Load and inject memory into the process before sending.
-	proc, err := t.interp.EnsureAgent(name)
-	if err == nil && proc != nil {
-		memText := formatWikiMemoryForInjection(t.store, userID, t.agentName)
-		companyCtx := buildCompanyContext(t.company)
-		if extra := buildExtraSystem(surfaceContext(surfaceTelegram), memText, "", companyCtx); extra != "" {
-			proc.SetExtraSystem(extra)
-		}
-	}
-
-	// Persist user message.
-	if err := t.store.InsertChatMessage(name, "user", text, nil); err != nil {
-		slog.Warn("telegram: failed to insert user message", "error", err)
-	}
-
-	// Add memory context so tools can access the store.
-	ctx = ContextWithMemory(ctx, t.store, userID, t.agentName)
-
-	// Enrich with caller identity + BYOK key (apexvega#24). Without
-	// this, the LLM call would hit Anthropic with no key and 401.
-	// Apex tenants are single-user today, so the resolver ignores the
-	// userID arg and uses APEX_DEFAULT_USER_ID; multi-user tenants
-	// will eventually map this telegram userID to an apex user.
-	ctx = applyResolver(ctx, t.resolver, userID)
 
 	// Show "typing..." in the user's chat for the duration of inference.
 	// Telegram's typing indicator naturally expires after ~5s, so refresh
@@ -549,8 +526,7 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 		}
 	}()
 
-	// Send to agent.
-	resp, err := t.interp.SendToAgent(ctx, name, text)
+	resp, err := t.exch.run(ctx, name, text, userID)
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("telegram: SendToAgent failed", "error", err)
@@ -558,10 +534,6 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	// Persist assistant response and reply.
-	if err := t.store.InsertChatMessage(name, "assistant", resp, nil); err != nil {
-		slog.Warn("telegram: failed to insert assistant message", "error", err)
-	}
 	// Format the agent's markdown for Telegram's HTML parse mode. If Telegram
 	// rejects the formatted message (e.g. due to malformed HTML from edge-case
 	// model output), fall back to sending plain text so we never silently drop
@@ -574,9 +546,6 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 		if _, err := t.bot.Send(tgbotapi.NewMessage(chatID, resp)); err != nil {
 			slog.Warn("telegram: plain reply also failed", "error", err)
 		}
-	}
-	if t.onExchange != nil {
-		t.onExchange(userID, t.agentName, text, resp)
 	}
 }
 

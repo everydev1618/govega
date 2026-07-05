@@ -156,6 +156,13 @@ func (s *Server) startDiscordBot(parent context.Context, cfg DiscordBotConfig) (
 		s.interp,
 		s.store,
 		s.company,
+		// onExchange: feed the finished exchange to the wiki memory curator
+		// (govega#71) so Discord conversations write long-term memory the
+		// same way web chats do. Detached from the turn's cancellation but
+		// keeps its identity/BYOK values.
+		func(ctx context.Context, userID, agent, userMsg, response string) {
+			go s.curateMemory(carryRequestValues(ctx, context.Background()), userID, agent, userMsg, response)
+		},
 		// onIncoming: bind the addressed agent to a ReplyTarget so async
 		// dispatch completions push back to this exact channel.
 		func(agentName string, target dsl.ReplyTarget) {
@@ -331,19 +338,16 @@ func (s *Server) DiscordBotsSnapshot() []DiscordBotStatus {
 // when the bot is mentioned.
 type DiscordBot struct {
 	session   *discordgo.Session
-	interp    *dsl.Interpreter
-	store     Store
 	agentName string
-	company   *dsl.Company
+
+	// exch runs the shared hydrate → inject → send → persist → curate
+	// turn core (see bot_exchange.go).
+	exch *botExchange
 
 	// onIncoming is called once per inbound message, BEFORE dispatch, with
 	// the addressed agent name and a ReplyTarget that pushes to this exact
 	// channel — so async dispatch completions can be delivered back.
 	onIncoming func(agentName string, target dsl.ReplyTarget)
-
-	// resolver, when set, enriches the dispatch ctx with caller identity +
-	// per-user credentials before hitting the LLM (apexvega#24).
-	resolver CallerResolver
 
 	// allowedUsers, when non-empty, restricts which user IDs may talk to the
 	// bot. Empty means open access.
@@ -359,12 +363,13 @@ func (d *DiscordBot) SetAllowedUsers(ids []string) {
 // SetCallerResolver registers a CallerResolver applied to the dispatch context
 // before SendToAgent on every inbound Discord message. Pass nil to clear.
 func (d *DiscordBot) SetCallerResolver(r CallerResolver) {
-	d.resolver = r
+	d.exch.resolver = r
 }
 
 // NewDiscordBot creates a DiscordBot connected to the given token. It does not
-// open the gateway session — call Open for that.
-func NewDiscordBot(token, agentName string, interp *dsl.Interpreter, store Store, company *dsl.Company, onIncoming func(agentName string, target dsl.ReplyTarget)) (*DiscordBot, error) {
+// open the gateway session — call Open for that. onExchange is called after
+// each successful exchange (the serve layer wires it to the memory curator).
+func NewDiscordBot(token, agentName string, interp *dsl.Interpreter, store Store, company *dsl.Company, onExchange func(ctx context.Context, userID, agent, userMsg, response string), onIncoming func(agentName string, target dsl.ReplyTarget)) (*DiscordBot, error) {
 	session, err := discordgo.New("Bot " + strings.TrimSpace(token))
 	if err != nil {
 		return nil, fmt.Errorf("discord session init: %w", err)
@@ -376,11 +381,16 @@ func NewDiscordBot(token, agentName string, interp *dsl.Interpreter, store Store
 		discordgo.IntentDirectMessages |
 		discordgo.IntentMessageContent
 	d := &DiscordBot{
-		session:    session,
-		interp:     interp,
-		store:      store,
-		agentName:  agentName,
-		company:    company,
+		session:   session,
+		agentName: agentName,
+		exch: &botExchange{
+			interp:     interp,
+			store:      store,
+			company:    company,
+			surface:    surfaceDiscord,
+			baseAgent:  agentName,
+			onExchange: onExchange,
+		},
 		onIncoming: onIncoming,
 	}
 	session.AddHandler(d.onMessageCreate)
@@ -548,7 +558,7 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	// Escape hatch: address a specific agent inline with "!agent rest".
 	// Unknown names pass through to the base agent (see telegram.go).
 	name := d.agentName
-	if target, body := parseAgentPrefix(text, d.interp.HasAgent); target != "" {
+	if target, body := parseAgentPrefix(text, d.exch.interp.HasAgent); target != "" {
 		if body == "" {
 			d.replyThreaded(m.Reference(), channelID, "What would you like to ask "+target+"?")
 			return
@@ -560,27 +570,6 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 	if d.onIncoming != nil {
 		d.onIncoming(name, &discordReplyTarget{session: d.session, channelID: channelID})
 	}
-
-	// Load and inject memory into the process before sending.
-	proc, err := d.interp.EnsureAgent(name)
-	if err == nil && proc != nil {
-		memText := formatWikiMemoryForInjection(d.store, userID, d.agentName)
-		companyCtx := buildCompanyContext(d.company)
-		if extra := buildExtraSystem(surfaceContext(surfaceDiscord), memText, "", companyCtx); extra != "" {
-			proc.SetExtraSystem(extra)
-		}
-	}
-
-	// Persist user message.
-	if err := d.store.InsertChatMessage(name, "user", text, nil); err != nil {
-		slog.Warn("discord: failed to insert user message", "error", err)
-	}
-
-	// Add memory context so tools can access the store.
-	ctx = ContextWithMemory(ctx, d.store, userID, d.agentName)
-
-	// Enrich with caller identity + BYOK key (apexvega#24).
-	ctx = applyResolver(ctx, d.resolver, userID)
 
 	// Show "typing..." in the channel for the duration of inference. Discord's
 	// typing indicator expires after ~10s, so refresh every 8s until done.
@@ -596,7 +585,7 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 		}
 	}()
 
-	resp, err := d.interp.SendToAgent(ctx, name, text)
+	resp, err := d.exch.run(ctx, name, text, userID)
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("discord: SendToAgent failed", "error", err)
@@ -611,12 +600,9 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 		return
 	}
 
-	// Persist assistant response and reply. Discord renders markdown natively,
-	// so the agent's output is sent as-is (chunked to the 2000-char limit) and
-	// threaded as a reply to the triggering message.
-	if err := d.store.InsertChatMessage(name, "assistant", resp, nil); err != nil {
-		slog.Warn("discord: failed to insert assistant message", "error", err)
-	}
+	// Discord renders markdown natively, so the agent's output is sent as-is
+	// (chunked to the 2000-char limit) and threaded as a reply to the
+	// triggering message.
 	d.replyThreaded(m.Reference(), channelID, resp)
 }
 

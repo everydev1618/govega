@@ -1,0 +1,93 @@
+package serve
+
+import (
+	"context"
+	"log/slog"
+
+	"github.com/everydev1618/govega/dsl"
+)
+
+// botExchange is the shared inbound-message core for external chat bots
+// (Discord, Telegram). It gives bot surfaces the same conversation
+// continuity and memory behavior as the web chat handlers:
+//
+//   - the CallerResolver runs first, so claims-based identity is available
+//     for memory scoping (apexvega#24)
+//   - the process is rehydrated from persisted chat history when fresh
+//     (server restart, failed-turn respawn) — without this the bot greets
+//     the user as a stranger while the whole conversation sits in SQLite
+//   - wiki memory is injected under the same userID namespace the web
+//     surface reads and writes (see memoryUserID)
+//   - both sides of the exchange are persisted to chat history
+//   - onExchange fires after a successful turn; the serve layer wires it
+//     to the memory curator so bot conversations feed long-term memory
+type botExchange struct {
+	interp    *dsl.Interpreter
+	store     Store
+	company   *dsl.Company
+	surface   surface
+	baseAgent string
+	resolver  CallerResolver
+
+	// onExchange receives the resolver-enriched ctx (identity, BYOK key)
+	// plus the memory-scoped userID — NOT the platform user id.
+	onExchange func(ctx context.Context, userID, agent, userMsg, response string)
+}
+
+// memoryUserID returns the memory namespace owner for a bot exchange:
+// resolver-attached claims when present, else "default" — the same
+// fallback the web surface uses (see chatUserID). Platform user ids
+// (Telegram numeric id, Discord snowflake) are deliberately NOT used:
+// vega is single-user-per-bot, and scoping memory by platform id gives
+// each surface a disjoint namespace so cross-surface recall silently
+// finds nothing.
+func memoryUserID(ctx context.Context) string {
+	if c, ok := ClaimsFrom(ctx); ok && c.UserID != "" {
+		return c.UserID
+	}
+	return "default"
+}
+
+// run executes one bot turn against `agent` (the routed agent, which may
+// differ from baseAgent via the "!agent" prefix). platformUserID is the
+// surface-native user id; it is passed to the resolver only.
+func (b *botExchange) run(ctx context.Context, agent, text, platformUserID string) (string, error) {
+	// Resolver first: it may attach claims that determine the memory
+	// namespace for everything below.
+	ctx = applyResolver(ctx, b.resolver, platformUserID)
+	memUser := memoryUserID(ctx)
+
+	// Load and inject memory into the process before sending.
+	proc, err := b.interp.EnsureAgent(agent)
+	if err == nil && proc != nil {
+		hydrateProcess(b.store, proc, agent)
+		memText := formatWikiMemoryForInjection(b.store, memUser, b.baseAgent)
+		companyCtx := buildCompanyContext(b.company)
+		if extra := buildExtraSystem(surfaceContext(b.surface), memText, "", companyCtx); extra != "" {
+			proc.SetExtraSystem(extra)
+		}
+	}
+
+	// Persist user message.
+	if err := b.store.InsertChatMessage(agent, "user", text, nil); err != nil {
+		slog.Warn("bot: failed to insert user message", "surface", b.surface, "error", err)
+	}
+
+	// Add memory context so tools can access the store.
+	ctx = ContextWithMemory(ctx, b.store, memUser, b.baseAgent)
+
+	resp, err := b.interp.SendToAgent(ctx, agent, text)
+	if err != nil {
+		return "", err
+	}
+
+	// Persist assistant response.
+	if err := b.store.InsertChatMessage(agent, "assistant", resp, nil); err != nil {
+		slog.Warn("bot: failed to insert assistant message", "surface", b.surface, "error", err)
+	}
+
+	if b.onExchange != nil {
+		b.onExchange(ctx, memUser, agent, text, resp)
+	}
+	return resp, nil
+}

@@ -387,10 +387,7 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 // See apexvega/docs/phase-2-auth-rfc.md Decision 9 for the migration
 // from the legacy X-Auth-User header to claims-based identity.
 func chatUserID(r *http.Request) string {
-	if c, ok := ClaimsFrom(r.Context()); ok && c.UserID != "" {
-		return c.UserID
-	}
-	return "default"
+	return memoryUserID(r.Context())
 }
 
 // collapseLegacyCloneName trims any "base:suffix" form a chat URL may
@@ -407,11 +404,17 @@ func collapseLegacyCloneName(name string) string {
 // conversation history (e.g. freshly spawned after restart). This gives
 // agents continuity across server restarts.
 func (s *Server) hydrateAgent(proc *vega.Process, agentName string) {
+	hydrateProcess(s.store, proc, agentName)
+}
+
+// hydrateProcess is the store-agnostic core of hydrateAgent, shared with
+// the bot surfaces (Discord, Telegram) which hold a Store but no *Server.
+func hydrateProcess(store Store, proc *vega.Process, agentName string) {
 	if len(proc.Messages()) > 0 {
 		return // already has history
 	}
 
-	history, err := s.store.ListChatMessages(agentName)
+	history, err := store.ListChatMessages(agentName)
 	if err != nil || len(history) == 0 {
 		return
 	}
