@@ -540,12 +540,24 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	userID := chatUserID(r)
 
 	var req struct {
-		Message string `json:"message"`
-		Context string `json:"context,omitempty"`
+		Message string             `json:"message"`
+		Context string             `json:"context,omitempty"`
+		Images  []chatImagePayload `json:"images,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		return
+	}
+	images := chatImagesToBlocks(req.Images)
+	// A turn needs either text or at least one image.
+	if req.Message == "" && len(images) == 0 {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
 		return
+	}
+	// What we persist/echo for an image turn: the text with a placeholder.
+	persistedMsg := req.Message
+	if len(images) > 0 {
+		persistedMsg = imagePlaceholder(len(images)) + req.Message
 	}
 
 	// Budget enforcement — see handleChat. Streaming path takes the
@@ -554,7 +566,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	// In-flight turns aren't interrupted; this only blocks new turns
 	// after a cap trip (refs govega#47).
 	if s.agentOverBudget(baseAgent) {
-		_ = s.store.InsertChatMessage(name, "user", req.Message, nil)
+		_ = s.store.InsertChatMessage(name, "user", persistedMsg, nil)
 		_ = s.store.InsertChatMessage(name, "assistant", budgetCapMessage, nil)
 		s.writeBudgetCapStream(w)
 		return
@@ -595,12 +607,12 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		proc.SetExtraSystem(extra)
 	}
 
-	if err := s.store.InsertChatMessage(name, "user", req.Message, nil); err != nil {
+	if err := s.store.InsertChatMessage(name, "user", persistedMsg, nil); err != nil {
 		slog.Error("failed to persist user chat message", "agent", name, "error", err)
 	}
 
 	// Record original prompt to iris in prompt history (survives reset).
-	if baseAgent == s.cfg.Orchestrator.Name {
+	if baseAgent == s.cfg.Orchestrator.Name && req.Message != "" {
 		if _, err := s.store.InsertPromptHistory(req.Message); err != nil {
 			slog.Error("failed to persist prompt history", "error", err)
 		}
@@ -622,7 +634,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	baseMetrics := proc.Metrics()
 	streamStart := time.Now()
 
-	stream, err := s.interp.StreamToAgent(ctx, name, req.Message)
+	stream, err := s.interp.StreamToAgentWithImages(ctx, name, req.Message, images)
 	if err != nil {
 		cancel()
 		status, msg := classifyHTTPError(err)

@@ -68,3 +68,21 @@ func TestDownloadImageBlock(t *testing.T) {
 		t.Error("media-type hint should let a mislabeled response through as image/jpeg")
 	}
 }
+
+func TestChatImagesToBlocks(t *testing.T) {
+	blocks := chatImagesToBlocks([]chatImagePayload{
+		{MediaType: "image/png", Data: "aGVsbG8="},
+		{MediaType: "text/html", Data: "x"},   // not an image → dropped
+		{MediaType: "image/jpeg", Data: ""},    // empty → dropped
+		{MediaType: "image/jpg", Data: "YWJj"}, // normalized to image/jpeg
+	})
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 valid image blocks, got %d: %+v", len(blocks), blocks)
+	}
+	if blocks[0].Type != "image" || blocks[0].MediaType != "image/png" {
+		t.Errorf("first block wrong: %+v", blocks[0])
+	}
+	if blocks[1].MediaType != "image/jpeg" {
+		t.Errorf("image/jpg should normalize to image/jpeg, got %q", blocks[1].MediaType)
+	}
+}

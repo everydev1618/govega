@@ -506,10 +506,12 @@ export function Chat() {
     }
   }, [activeAgent])
 
-  const send = async (text: string) => {
+  const send = async (text: string, images?: import('../lib/types').ChatImage[]) => {
     const msg = text.trim()
-    if (!msg || sending) return
-    setMessages(prev => [...prev, { role: 'user', content: msg }])
+    if ((!msg && !images?.length) || sending) return
+    // Show the text with an image marker so the optimistic bubble reflects the upload.
+    const shown = images?.length ? `${'📎 '.repeat(images.length)}${msg}`.trim() : msg
+    setMessages(prev => [...prev, { role: 'user', content: shown }])
     setMessages(prev => [...prev, { role: 'assistant', content: '', toolCalls: [], streaming: true }])
     setSending(true)
 
@@ -525,7 +527,7 @@ export function Chat() {
     }
 
     try {
-      await api.chatStream(activeAgent, msg, wrappedHandler, abort.signal)
+      await api.chatStream(activeAgent, msg, wrappedHandler, abort.signal, images)
       checkForHandoff(finalContent)
     } catch (err) {
       setMessages(prev => {

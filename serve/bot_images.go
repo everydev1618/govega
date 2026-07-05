@@ -41,6 +41,35 @@ func normalizeImageMediaType(contentType string) string {
 	return ""
 }
 
+// chatImagePayload is the wire shape for an image uploaded via the web chat
+// API: a base64-encoded payload plus its media type (the frontend strips the
+// "data:...;base64," prefix before sending).
+type chatImagePayload struct {
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+}
+
+// chatImagesToBlocks validates uploaded image payloads into vision content
+// blocks, dropping any with an unsupported type, empty/oversized data, and
+// capping the count. Base64 expands ~4/3, so the byte cap maps to ~len*3/4.
+func chatImagesToBlocks(payloads []chatImagePayload) []llm.ContentBlock {
+	var out []llm.ContentBlock
+	for _, p := range payloads {
+		mt := normalizeImageMediaType(p.MediaType)
+		if mt == "" || p.Data == "" {
+			continue
+		}
+		if len(p.Data)*3/4 > maxImageBytes {
+			continue
+		}
+		out = append(out, llm.ContentBlock{Type: llm.BlockImage, MediaType: mt, Data: p.Data})
+		if len(out) >= maxImagesPerTurn {
+			break
+		}
+	}
+	return out
+}
+
 // downloadImageBlock fetches an image URL and returns a vision content block,
 // or nil if it isn't a supported image, is empty, exceeds maxImageBytes, or
 // fails to download. mediaTypeHint, when non-empty, is used instead of the

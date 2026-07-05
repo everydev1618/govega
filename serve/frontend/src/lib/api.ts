@@ -380,11 +380,12 @@ export const api = {
     message: string,
     onEvent: (event: import('./types').ChatEvent) => void,
     signal?: AbortSignal,
+    images?: import('./types').ChatImage[],
   ): Promise<void> => {
     return fetch(`${BASE}/agents/${agent}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(images && images.length ? { message, images } : { message }),
       signal,
     }).then(async (res) => {
       if (!res.ok) {

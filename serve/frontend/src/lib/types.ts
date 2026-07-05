@@ -438,6 +438,13 @@ export interface InboxItem {
 
 // --- Streaming Chat Types ---
 
+// ChatImage is an image attached to a chat turn: base64 payload (no data:
+// prefix) + its media type. Sent to the vision-capable agent for that turn.
+export interface ChatImage {
+  media_type: string
+  data: string
+}
+
 export interface ChatEventMetrics {
   input_tokens: number
   output_tokens: number

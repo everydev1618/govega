@@ -1,8 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { AgentAvatar } from './AgentAvatar'
+import type { ChatImage } from '../../lib/types'
+
+// fileToChatImage reads an image File into a ChatImage (base64, no data: prefix).
+async function fileToChatImage(file: File): Promise<ChatImage | null> {
+  if (!file.type.startsWith('image/')) return null
+  const dataURL: string = await new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(String(fr.result))
+    fr.onerror = reject
+    fr.readAsDataURL(file)
+  })
+  const comma = dataURL.indexOf(',')
+  if (comma < 0) return null
+  return { media_type: file.type, data: dataURL.slice(comma + 1) }
+}
 
 interface ChatInputProps {
-  onSend: (text: string) => void
+  onSend: (text: string, images?: ChatImage[]) => void
   sending: boolean
   placeholder?: string
   borderColor?: string
@@ -64,8 +79,27 @@ function MentionDropdown({
 
 export function ChatInput({ onSend, sending, placeholder, borderColor, agentNames, agentDisplayInfo }: ChatInputProps) {
   const [input, setInput] = useState('')
+  const [images, setImages] = useState<ChatImage[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const mentionRef = useRef<HTMLDivElement>(null)
+
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    const next: ChatImage[] = []
+    for (const f of Array.from(files)) {
+      const img = await fileToChatImage(f)
+      if (img) next.push(img)
+    }
+    if (next.length) setImages(prev => [...prev, ...next].slice(0, 8))
+  }, [])
+
+  const submit = useCallback((msg: string) => {
+    if (sending) return
+    if (!msg && images.length === 0) return
+    onSend(msg, images.length ? images : undefined)
+    setInput('')
+    setImages([])
+  }, [sending, images, onSend])
 
   // @-mention state
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -180,19 +214,18 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      const msg = input.trim()
-      if (msg && !sending) {
-        setInput('')
-        onSend(msg)
-      }
+      submit(input.trim())
     }
   }
 
-  const handleSendClick = () => {
-    const msg = input.trim()
-    if (msg && !sending) {
-      setInput('')
-      onSend(msg)
+  const handleSendClick = () => submit(input.trim())
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData.files || [])
+    const imgs = files.filter(f => f.type.startsWith('image/'))
+    if (imgs.length) {
+      e.preventDefault()
+      void addFiles(imgs)
     }
   }
 
@@ -200,7 +233,44 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
 
   return (
     <div className="pt-3 border-t border-rule space-y-1.5">
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-1">
+          {images.map((img, i) => (
+            <div key={i} className="relative group">
+              <img
+                src={`data:${img.media_type};base64,${img.data}`}
+                alt={`attachment ${i + 1}`}
+                className="h-14 w-14 object-cover rounded-sm border border-rule"
+              />
+              <button
+                onClick={() => setImages(prev => prev.filter((_, j) => j !== i))}
+                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-ink text-paper text-xs leading-none flex items-center justify-center hover:bg-brand-deep"
+                aria-label="Remove image"
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={e => { if (e.target.files) { void addFiles(e.target.files); e.target.value = '' } }}
+      />
       <div className="flex gap-2 items-end">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending}
+          className="p-2.5 rounded-sm border border-rule text-ink-faint hover:text-ink hover:border-ink disabled:opacity-40 transition-colors flex-shrink-0"
+          aria-label="Attach image"
+          title="Attach image"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+          </svg>
+        </button>
         {/* min-w-0 is load-bearing: Safari gives the <textarea> an intrinsic
             min-width and won't shrink this flex-1 wrapper below it without
             it, pushing the send button off-screen. Chrome shrinks anyway,
@@ -226,6 +296,7 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={placeholder || 'Type a message…'}
             disabled={sending}
             // Exactly 16px on mobile to defeat iOS Safari's zoom-on-focus
@@ -238,7 +309,7 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
         </div>
         <button
           onClick={handleSendClick}
-          disabled={sending || !input.trim()}
+          disabled={sending || (!input.trim() && images.length === 0)}
           className="p-2.5 rounded-sm bg-ink text-paper hover:bg-brand-deep disabled:opacity-40 disabled:hover:bg-ink transition-colors flex-shrink-0"
           aria-label="Send"
         >
