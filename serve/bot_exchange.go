@@ -57,6 +57,13 @@ func (b *botExchange) run(ctx context.Context, agent, text, platformUserID strin
 	ctx = applyResolver(ctx, b.resolver, platformUserID)
 	memUser := memoryUserID(ctx)
 
+	// Visibility commands (/agents, /channels, /status) short-circuit the agent
+	// turn: they answer instantly from the roster/channel state and are not
+	// persisted to chat history (they're operator queries, not conversation).
+	if cmd := botCommand(text); cmd != "" {
+		return b.formatCommand(cmd, memUser), nil
+	}
+
 	// Load and inject memory into the process before sending.
 	proc, err := b.interp.EnsureAgent(agent)
 	if err == nil && proc != nil {
