@@ -4,6 +4,20 @@ Notable changes to govega. Newest first. Versions ship to v39a tenants via the
 pipeline in `docs/` — each govega `vX.Y.Z` is paired with a v39avega release and
 an `apps.version` migration (see the v39avega-image-pipeline notes).
 
+## v0.8.13 — voice input + richer URL reading (2026-07-05)
+
+- **Discord voice notes**: audio attachments are downloaded and transcribed
+  (shared Whisper transcriber) like Telegram already did. Also fixed a latent
+  bug where attachment-only messages (image or voice, no text) were dropped
+  before reaching the handler.
+- **Web composer mic**: `POST /api/v1/transcribe` + a record button
+  (MediaRecorder) that drops the transcript into the message box to edit before
+  sending. (Voice on any surface needs a transcription key — `OPENAI_API_KEY`;
+  Claude can't transcribe.)
+- **fetch reads more than HTML**: image URLs return an honest note (upload for
+  vision instead of dumping bytes); PDF URLs are text-extracted (rsc.io/pdf,
+  bounded, panic-safe). HTML/text unchanged.
+
 ## v0.8.12 — image input + browser-UA fetch (2026-07-05)
 
 - **Vision/image input** end to end: `llm.BlockImage` (base64 + media type) →
