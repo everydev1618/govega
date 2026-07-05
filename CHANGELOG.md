@@ -4,6 +4,23 @@ Notable changes to govega. Newest first. Versions ship to v39a tenants via the
 pipeline in `docs/` — each govega `vX.Y.Z` is paired with a v39avega release and
 an `apps.version` migration (see the v39avega-image-pipeline notes).
 
+## v0.8.12 — image input + browser-UA fetch (2026-07-05)
+
+- **Vision/image input** end to end: `llm.BlockImage` (base64 + media type) →
+  Anthropic vision API; `StreamToAgentWithImages` carries a multimodal user
+  turn (history keeps a `[📎 image]` placeholder — bytes passed to the model,
+  not persisted). Wired into **Discord** (attachments), **Telegram** (photos +
+  image documents), and the **dashboard composer** (attach button + paste +
+  thumbnails). Bounded by size/count; unsupported types dropped.
+- **Fetch tool** now sends a real desktop-Chrome `User-Agent` + `Accept-Language`
+  (the old `Vega/1.0` UA got 403'd by anti-bot layers), 20s timeout, and turns
+  401/403/429 into an honest "blocked automated access — try a different
+  source" message.
+- Note: frontend changes require rebuilding + committing `serve/frontend/dist`
+  (embedded via `//go:embed`; the v39avega image uses the committed dist). This
+  release also lands the v0.8.11 collapsed-tool-pill UI whose dist rebuild was
+  missed.
+
 ## v0.8.11 — comms visibility, Layer 1 (2026-07-05)
 
 Surfacing the multi-agent system through linear chat bridges (Discord, Telegram).
