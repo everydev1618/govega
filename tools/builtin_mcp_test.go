@@ -203,3 +203,34 @@ func TestConnectBuiltinServerNotFound(t *testing.T) {
 		t.Fatal("expected error for nonexistent server")
 	}
 }
+
+// TestFetchToolContentTypes: images return an honest note (not binary garbage),
+// and a PDF content-type routes to extraction (here a fake body → clean error,
+// proving we don't dump raw bytes).
+func TestFetchToolContentTypes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/pic":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("\x89PNG\r\nbinary"))
+		case "/doc":
+			w.Header().Set("Content-Type", "application/pdf")
+			_, _ = w.Write([]byte("%PDF-1.4 not-a-real-pdf"))
+		}
+	}))
+	defer srv.Close()
+	ctx := context.Background()
+
+	out, err := fetchToolFunc(ctx, map[string]any{"url": srv.URL + "/pic"})
+	if err != nil {
+		t.Fatalf("image fetch: %v", err)
+	}
+	if !strings.Contains(out, "image") || strings.Contains(out, "PNG\r\nbinary") {
+		t.Errorf("image URL should return a note, not raw bytes: %q", out)
+	}
+
+	_, err = fetchToolFunc(ctx, map[string]any{"url": srv.URL + "/doc"})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "pdf") {
+		t.Errorf("malformed PDF should yield an honest pdf error, got %v", err)
+	}
+}

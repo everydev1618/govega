@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
@@ -9,7 +10,45 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"rsc.io/pdf"
 )
+
+// extractPDFText pulls readable text from a PDF's bytes. rsc.io/pdf handles
+// only unencrypted PDFs and can panic on malformed input, so we recover and
+// return an error the caller surfaces honestly. Page count is bounded.
+func extractPDFText(data []byte) (text string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("pdf parse failed: %v", r)
+		}
+	}()
+	rd, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	n := rd.NumPage()
+	if n > 50 {
+		n = 50
+	}
+	var lastY float64
+	for i := 1; i <= n; i++ {
+		p := rd.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		for _, t := range p.Content().Text {
+			if lastY != 0 && t.Y != lastY {
+				sb.WriteByte('\n')
+			}
+			sb.WriteString(t.S)
+			lastY = t.Y
+		}
+		sb.WriteString("\n\n")
+	}
+	return sb.String(), nil
+}
 
 // BuiltinMCPServer is an in-process Go-native MCP server. Embedding
 // applications register additional servers via RegisterBuiltinServer.
@@ -217,10 +256,25 @@ func fetchToolFunc(ctx context.Context, params map[string]any) (string, error) {
 		return "", fmt.Errorf("read body: %w", err)
 	}
 
+	// Route by content type so non-HTML resources don't come back as binary
+	// garbage. Images can't be read by fetching (upload them for vision); PDFs
+	// get text-extracted; everything else takes the HTML/text path.
+	ctype := strings.ToLower(resp.Header.Get("Content-Type"))
+	switch {
+	case strings.HasPrefix(ctype, "image/"):
+		return fmt.Sprintf("URL: %s\n\nThis is an image (%s, %d bytes). I can't read images by fetching a URL — if you want it analyzed, upload the image directly and I'll look at it.", urlStr, ctype, len(body)), nil
+	case strings.Contains(ctype, "pdf") || bytes.HasPrefix(body, []byte("%PDF")):
+		text, err := extractPDFText(body)
+		if err != nil || strings.TrimSpace(text) == "" {
+			return "", fmt.Errorf("%s is a PDF but I couldn't extract text (it may be scanned or encrypted): %v", urlStr, err)
+		}
+		body = []byte(text) // fall through to pagination as plain text
+	}
+
 	content := string(body)
 	title := ""
 
-	if !raw {
+	if !raw && !strings.Contains(ctype, "pdf") && !bytes.HasPrefix(body, []byte("%PDF")) {
 		title = extractTitle(content)
 		content = stripHTML(content)
 	}
