@@ -4,6 +4,33 @@ Notable changes to govega. Newest first. Versions ship to v39a tenants via the
 pipeline in `docs/` — each govega `vX.Y.Z` is paired with a v39avega release and
 an `apps.version` migration (see the v39avega-image-pipeline notes).
 
+## v0.8.11 — comms visibility, Layer 1 (2026-07-05)
+
+Surfacing the multi-agent system through linear chat bridges (Discord, Telegram).
+
+- **Visibility commands** in the shared bot core: `agents` / `channels` /
+  `status` / `help` (with or without a leading slash, so a plain `agents` works
+  on any surface). They answer instantly from roster/channel state and don't
+  pollute chat history. Both Discord and Telegram get them for free.
+- **Streamed dispatch progress**: bridges now stream the turn instead of
+  relaying only the final text — when the orchestrator hands work to a
+  sub-agent (or hosts an app) the user sees a short interim line
+  (`→ handing this to sage…`). Routine tools stay silent; honest by
+  construction (reports the dispatch that fired, never claims live monitoring).
+
+Deferred (Layer 2): mirroring Vega channels → Discord/Slack channels + rendering
+sub-agents as distinct webhook senders; Slack/WhatsApp bridges.
+
+## v0.8.10 — agents share exact signed deliverable URLs (2026-07-05)
+
+- The "Delivering work product" prompt taught agents to hand-build
+  `{baseURL}/workspace/...` URLs, which drop the capability token and 401 on
+  gated instances (Tony shared a dead link on the et tenant). Both prompt
+  variants now instruct agents to report the exact `Accessible at:` URL that
+  `write_file`/`deploy_app` returns and never reconstruct one. Worker guidance
+  points browser apps at `deploy_app` instead of an unreachable localhost
+  `start_service`.
+
 ## v0.8.9 — vendor-neutral core (2026-07-04)
 
 Provider-neutral app hosting, Phase 3 (issue #116).
