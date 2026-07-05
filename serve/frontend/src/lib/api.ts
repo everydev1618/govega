@@ -235,6 +235,18 @@ export const api = {
   resetChat: (agent: string) =>
     fetchAPI<{ status: string }>(`/agents/${agent}/chat`, { method: 'DELETE' }),
 
+  // Transcribe recorded audio (composer mic) → text.
+  transcribe: async (audio: Blob, filename = 'audio.webm'): Promise<string> => {
+    const res = await fetch(`${BASE}/transcribe?filename=${encodeURIComponent(filename)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': audio.type || 'application/octet-stream' },
+      body: audio,
+    })
+    if (!res.ok) throw await parseErrorResponse(res)
+    const data = await res.json()
+    return (data.text as string) || ''
+  },
+
   // Chat status — check if agent has an active stream
   chatStatus: (agent: string) =>
     fetchAPI<{ streaming: boolean }>(`/agents/${agent}/chat/status`),

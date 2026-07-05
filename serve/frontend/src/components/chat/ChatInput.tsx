@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { AgentAvatar } from './AgentAvatar'
 import type { ChatImage } from '../../lib/types'
+import { api } from '../../lib/api'
 
 // fileToChatImage reads an image File into a ChatImage (base64, no data: prefix).
 async function fileToChatImage(file: File): Promise<ChatImage | null> {
@@ -80,9 +81,49 @@ function MentionDropdown({
 export function ChatInput({ onSend, sending, placeholder, borderColor, agentNames, agentDisplayInfo }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [images, setImages] = useState<ChatImage[]>([])
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const mentionRef = useRef<HTMLDivElement>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+
+  const startRecording = useCallback(async () => {
+    try {
+      const streamMedia = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const rec = new MediaRecorder(streamMedia)
+      chunksRef.current = []
+      rec.ondataavailable = e => { if (e.data.size) chunksRef.current.push(e.data) }
+      rec.onstop = async () => {
+        streamMedia.getTracks().forEach(t => t.stop())
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' })
+        if (!blob.size) return
+        setTranscribing(true)
+        try {
+          const ext = blob.type.includes('ogg') ? 'audio.ogg' : 'audio.webm'
+          const text = await api.transcribe(blob, ext)
+          if (text) setInput(prev => (prev ? prev + ' ' : '') + text)
+        } catch {
+          // Surfaced via placeholder below; leave the box as-is.
+        } finally {
+          setTranscribing(false)
+          textareaRef.current?.focus()
+        }
+      }
+      recorderRef.current = rec
+      rec.start()
+      setRecording(true)
+    } catch {
+      setRecording(false)
+    }
+  }, [])
+
+  const stopRecording = useCallback(() => {
+    recorderRef.current?.stop()
+    recorderRef.current = null
+    setRecording(false)
+  }, [])
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const next: ChatImage[] = []
@@ -271,6 +312,21 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
             <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
           </svg>
         </button>
+        <button
+          onClick={recording ? stopRecording : startRecording}
+          disabled={sending || transcribing}
+          className={`p-2.5 rounded-sm border transition-colors flex-shrink-0 ${
+            recording
+              ? 'border-red-500 text-red-500 animate-pulse'
+              : 'border-rule text-ink-faint hover:text-ink hover:border-ink'
+          } disabled:opacity-40`}
+          aria-label={recording ? 'Stop recording' : 'Record voice'}
+          title={transcribing ? 'Transcribing…' : recording ? 'Stop recording' : 'Record voice'}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+          </svg>
+        </button>
         {/* min-w-0 is load-bearing: Safari gives the <textarea> an intrinsic
             min-width and won't shrink this flex-1 wrapper below it without
             it, pushing the send button off-screen. Chrome shrinks anyway,
@@ -318,7 +374,7 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
           </svg>
         </button>
       </div>
-      <p className="text-xs text-ink-faint px-1">Enter to send · Shift+Enter for new line{agentNames?.length ? ' · @ to mention' : ''}</p>
+      <p className="text-xs text-ink-faint px-1">{recording ? '● Recording — tap the mic to stop' : transcribing ? 'Transcribing…' : `Enter to send · Shift+Enter for new line${agentNames?.length ? ' · @ to mention' : ''}`}</p>
     </div>
   )
 }

@@ -1261,6 +1261,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/agents/{name}/memory", s.handleDeleteMemory)
 
 	// Files
+	mux.HandleFunc("POST /api/v1/transcribe", s.handleTranscribe)
 	mux.HandleFunc("GET /api/v1/files", s.handleListFiles)
 	mux.HandleFunc("GET /api/v1/files/read", s.handleReadFile)
 	mux.HandleFunc("DELETE /api/v1/files", s.handleDeleteFile)

@@ -99,3 +99,26 @@ func (t *transcriber) Transcribe(ctx context.Context, audio []byte, filename str
 	}
 	return strings.TrimSpace(parsed.Text), nil
 }
+
+// handleTranscribe accepts an audio upload (raw body) and returns its
+// transcript, so the web composer's mic button can turn speech into text.
+// Body is the audio bytes; ?filename= carries an extension Whisper recognizes
+// (defaults to audio.webm, which MediaRecorder produces).
+func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	audio, err := io.ReadAll(io.LimitReader(r.Body, 25<<20)) // Whisper caps ~25MB
+	if err != nil || len(audio) == 0 {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "empty or unreadable audio"})
+		return
+	}
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		filename = "audio.webm"
+	}
+	text, err := newDefaultTranscriber().Transcribe(r.Context(), audio, filename)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "transcription failed: " + err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"text": strings.TrimSpace(text)})
+}
