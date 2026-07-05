@@ -526,7 +526,17 @@ func (t *TelegramBot) handle(ctx context.Context, update tgbotapi.Update) {
 		}
 	}()
 
-	resp, err := t.exch.run(ctx, name, text, userID)
+	// Surface dispatch/progress as interim messages so the user sees the
+	// multi-agent work happening, not just the final reply.
+	onProgress := func(msg string) {
+		out := tgbotapi.NewMessage(chatID, markdownToTelegramHTML(msg))
+		out.ParseMode = "HTML"
+		out.DisableWebPagePreview = true
+		if _, err := t.bot.Send(out); err != nil {
+			slog.Debug("telegram: progress send failed", "error", err)
+		}
+	}
+	resp, err := t.exch.run(ctx, name, text, userID, onProgress)
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("telegram: SendToAgent failed", "error", err)

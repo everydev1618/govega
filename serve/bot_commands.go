@@ -132,6 +132,25 @@ func (b *botExchange) formatStatus() string {
 	return "Working now: " + strings.Join(working, ", ")
 }
 
+// dispatchProgress returns a short interim status line for a tool_start that
+// represents user-meaningful multi-agent work — routing to a sub-agent or
+// hosting an app — or "" for routine tools (read_file, exec) that would just
+// be noise on a chat surface. It reports what happened (honest: the dispatch
+// fired), never a claim of live monitoring.
+func dispatchProgress(tool string, args map[string]any) string {
+	switch tool {
+	case "send_to_agent", "delegate":
+		if a, _ := args["agent"].(string); a != "" {
+			return "→ handing this to **" + a + "**…"
+		}
+	case "deploy_app":
+		if n, _ := args["name"].(string); n != "" {
+			return "→ hosting **" + n + "**…"
+		}
+	}
+	return ""
+}
+
 // firstLine returns the first non-empty line of s, trimmed and length-capped —
 // used as a one-line role summary from an agent's system prompt.
 func firstLine(s string) string {

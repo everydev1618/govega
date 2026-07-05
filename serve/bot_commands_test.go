@@ -87,3 +87,23 @@ func TestFormatStatusCommand(t *testing.T) {
 		t.Error("status command returned empty output")
 	}
 }
+
+func TestDispatchProgress(t *testing.T) {
+	cases := []struct {
+		tool string
+		args map[string]any
+		want string
+	}{
+		{"send_to_agent", map[string]any{"agent": "sage"}, "→ handing this to **sage**…"},
+		{"delegate", map[string]any{"agent": "river"}, "→ handing this to **river**…"},
+		{"deploy_app", map[string]any{"name": "pacman"}, "→ hosting **pacman**…"},
+		{"read_file", map[string]any{"path": "x"}, ""}, // routine tools are silent
+		{"exec", map[string]any{"command": "ls"}, ""},
+		{"send_to_agent", map[string]any{}, ""}, // missing agent → nothing
+	}
+	for _, c := range cases {
+		if got := dispatchProgress(c.tool, c.args); got != c.want {
+			t.Errorf("dispatchProgress(%q,%v) = %q, want %q", c.tool, c.args, got, c.want)
+		}
+	}
+}

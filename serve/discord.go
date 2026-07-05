@@ -585,7 +585,14 @@ func (d *DiscordBot) handle(ctx context.Context, m *discordgo.MessageCreate, tex
 		}
 	}()
 
-	resp, err := d.exch.run(ctx, name, text, userID)
+	// Surface dispatch/progress as plain in-channel messages so the user sees
+	// the multi-agent work happening, not just the final reply.
+	onProgress := func(msg string) {
+		if _, err := d.session.ChannelMessageSend(channelID, msg); err != nil {
+			slog.Debug("discord: progress send failed", "error", err)
+		}
+	}
+	resp, err := d.exch.run(ctx, name, text, userID, onProgress)
 	close(stopTyping)
 	if err != nil {
 		slog.Warn("discord: SendToAgent failed", "error", err)

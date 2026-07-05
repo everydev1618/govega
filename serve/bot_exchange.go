@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	vega "github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/dsl"
 )
 
@@ -51,7 +52,12 @@ func memoryUserID(ctx context.Context) string {
 // run executes one bot turn against `agent` (the routed agent, which may
 // differ from baseAgent via the "!agent" prefix). platformUserID is the
 // surface-native user id; it is passed to the resolver only.
-func (b *botExchange) run(ctx context.Context, agent, text, platformUserID string) (string, error) {
+//
+// onProgress, when non-nil, receives short interim status lines as the turn
+// runs (e.g. "→ handing this to sage…" when the orchestrator dispatches to a
+// sub-agent) so the user gets visibility into the multi-agent work a linear
+// chat window otherwise hides. nil disables progress (silent turn).
+func (b *botExchange) run(ctx context.Context, agent, text, platformUserID string, onProgress func(string)) (string, error) {
 	// Resolver first: it may attach claims that determine the memory
 	// namespace for everything below.
 	ctx = applyResolver(ctx, b.resolver, platformUserID)
@@ -83,8 +89,28 @@ func (b *botExchange) run(ctx context.Context, agent, text, platformUserID strin
 	// Add memory context so tools can access the store.
 	ctx = ContextWithMemory(ctx, b.store, memUser, b.baseAgent)
 
-	resp, err := b.interp.SendToAgent(ctx, agent, text)
+	// Stream the turn so we can surface dispatch/progress to the user. The
+	// setup above (hydration, memory, persistence) is unchanged; only the send
+	// is now streaming. We consume events for progress and take the final text
+	// from the stream's accumulated response.
+	stream, err := b.interp.StreamToAgent(ctx, agent, text)
 	if err != nil {
+		return "", err
+	}
+	seen := make(map[string]bool)
+	for ev := range stream.Events() {
+		if onProgress == nil {
+			continue
+		}
+		if ev.Type == vega.ChatEventToolStart {
+			if msg := dispatchProgress(ev.ToolName, ev.Arguments); msg != "" && !seen[msg] {
+				seen[msg] = true
+				onProgress(msg)
+			}
+		}
+	}
+	resp := stream.Response()
+	if err := stream.Err(); err != nil {
 		return "", err
 	}
 
