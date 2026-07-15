@@ -82,8 +82,7 @@ Use `SendStream` for simple text-only streaming, or `Send` for a blocking call.
 ### CLI Tool
 
 ```bash
-# Homebrew (macOS / Linux)
-brew trust everydev1618/tap        # one-time: allow Homebrew to use our tap
+# Homebrew (macOS / Linux) — the tap-qualified name self-authorizes the tap
 brew install everydev1618/tap/vega
 
 # Go install

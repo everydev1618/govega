@@ -5,8 +5,7 @@ Get your first AI agent team running in 5 minutes.
 ## Installation
 
 ```bash
-# macOS / Linux (Homebrew)
-brew trust everydev1618/tap        # one-time: allow Homebrew to use our tap
+# macOS / Linux (Homebrew) — always use the tap-qualified name
 brew install everydev1618/tap/vega
 
 # Linux
