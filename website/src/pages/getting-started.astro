@@ -58,12 +58,13 @@ const version = '0.7.0'
     <div class="section-body">
       <h2 class="display display-section">Install and run.</h2>
       <p class="lede" style="margin-top: 1.25rem;">
-        Two commands. After the second one you have a Vega runtime
-        listening on <span class="mono">localhost:8080</span> with the
-        dashboard, REST API, and event stream live.
+        A few commands. After <span class="mono">vega serve</span> you have a
+        Vega runtime listening on <span class="mono">localhost:8080</span> with
+        the dashboard, REST API, and event stream live.
       </p>
 
       <div class="code" style="margin-top: 1.75rem;">
+        <p><span class="c-com">$</span> brew trust <span class="c-tag">everydev1618/tap</span></p>
         <p><span class="c-com">$</span> brew install <span class="c-tag">everydev1618/tap/vega</span></p>
         <p><span class="c-com">$</span> export <span class="c-key">ANTHROPIC_API_KEY</span>=<span class="c-str">sk-ant-...</span></p>
         <p><span class="c-com">$</span> vega serve</p>

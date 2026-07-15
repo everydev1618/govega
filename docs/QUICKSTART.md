@@ -5,8 +5,9 @@ Get your first AI agent team running in 5 minutes.
 ## Installation
 
 ```bash
-# macOS
-brew install vega
+# macOS / Linux (Homebrew)
+brew trust everydev1618/tap        # one-time: allow Homebrew to use our tap
+brew install everydev1618/tap/vega
 
 # Linux
 curl -fsSL https://get.vega.dev | sh

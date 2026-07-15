@@ -59,7 +59,7 @@ const version = '0.8.9'
 
         <div class="hero-actions">
           <div class="install-line code" aria-label="Install command">
-            <span class="c-com">$</span>&nbsp;brew install <span class="c-tag">everydev1618/tap/vega</span>
+            <span class="c-com">$</span>&nbsp;brew trust <span class="c-tag">everydev1618/tap</span> &amp;&amp; brew install <span class="c-tag">everydev1618/tap/vega</span>
           </div>
           <a href={`${BASE}getting-started`} class="action-link">read the docs</a>
         </div>
@@ -89,6 +89,7 @@ const version = '0.8.9'
 
       <div class="run-block">
         <div class="code">
+          <p><span class="c-com">$</span> brew trust <span class="c-tag">everydev1618/tap</span></p>
           <p><span class="c-com">$</span> brew install <span class="c-tag">everydev1618/tap/vega</span></p>
           <p><span class="c-com">$</span> export <span class="c-key">ANTHROPIC_API_KEY</span>=<span class="c-str">sk-ant-...</span></p>
           <p><span class="c-com">$</span> vega serve</p>
