@@ -47,10 +47,7 @@ func (s *Server) notifyChannelTeammate(channelName, targetAgent, poster, message
 	// Inject memory so the agent has context.
 	s.hydrateAgent(proc, targetAgent)
 
-	preview := message
-	if len(preview) > 300 {
-		preview = preview[:300] + "..."
-	}
+	preview := dsl.TruncatePreview(message, 300, "...")
 
 	var prompt string
 	if social {

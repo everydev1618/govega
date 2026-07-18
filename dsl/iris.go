@@ -439,10 +439,7 @@ func newIrisListAgentsTool(interp *Interpreter) tools.ToolDef {
 			for name, def := range doc.Agents {
 				summary := def.Title
 				if summary == "" {
-					summary = def.System
-					if len(summary) > 200 {
-						summary = summary[:200] + "..."
-					}
+					summary = TruncatePreview(def.System, 200, "...")
 				}
 				agents = append(agents, agentInfo{
 					Name:    name,
@@ -846,10 +843,7 @@ func newCheckStatusTool(interp *Interpreter, backend ChannelBackend, orchestrato
 					continue
 				}
 				for _, m := range msgs {
-					content := m.Content
-					if len(content) > 150 {
-						content = content[:150] + "…(truncated, use read_channel)"
-					}
+					content := TruncatePreview(m.Content, 150, "…(truncated, use read_channel)")
 					sb.WriteString(fmt.Sprintf("  - **%s**: %s\n", m.Agent, content))
 				}
 			}

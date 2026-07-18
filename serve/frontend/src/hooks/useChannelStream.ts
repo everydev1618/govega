@@ -57,6 +57,40 @@ export function useChannelStream(channelName: string) {
         case 'channel.typing':
           setTypingAgents(prev => new Set(prev).add(event.agent))
           break
+        case 'channel.message':
+          // A finalized post from another participant — a teammate reacting
+          // via post_to_channel, or a delegation response — arriving while
+          // this stream is open. The primary agent's own reply does NOT come
+          // through here (it streams via text_delta + channel.done), so this
+          // won't double-render it.
+          //
+          // Skip role 'user': the poster's own message is already shown
+          // optimistically, and the relay replays it here with a real id.
+          if (event.role === 'user') break
+          setMessages(prev => {
+            // Dedup by id — history replay, prior loads (getChannelMessages),
+            // and repeated events all carry the same message_id.
+            if (event.message_id != null &&
+                prev.some(m => (m as { id?: number }).id === event.message_id)) {
+              return prev
+            }
+            const posted: StreamingMessage = {
+              id: event.message_id,
+              agent: event.agent || '',
+              sender: event.sender,
+              role: event.role || 'assistant',
+              content: event.content || '',
+              streaming: false,
+            }
+            // Keep any actively-streaming assistant placeholder pinned to the
+            // bottom so the live reply stays last.
+            const msgs = [...prev]
+            let at = msgs.length
+            while (at > 0 && (msgs[at - 1] as StreamingMessage).streaming) at--
+            msgs.splice(at, 0, posted)
+            return msgs
+          })
+          break
         case 'channel.text_delta':
           setMessages(prev => {
             const msgs = [...prev]
