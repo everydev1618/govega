@@ -479,11 +479,18 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		//     per-agent allow-list left custom personas read-only-by-prompt:
 		//     they'd see the injected MEMORY.md but couldn't drill into
 		//     linked pages or write back. Memory is first-class for all.
+		//   - channel tools (post_to_channel/read_channel/list_my_channels).
+		//     An agent added to a channel's team but missing post_to_channel
+		//     is mute there and improvises (saving files, asking the human to
+		//     relay). Channel participation is first-class for all.
 		// (App hosting is not force-added: deploy_app is a normal builtin that
 		// workers get via their allow-list / DefaultNonMetaToolNames, and
 		// meta-agents are stripped of it below.)
 		always := make(map[string]bool, 16)
 		for _, n := range tools.WikiMemoryToolNames() {
+			always[n] = true
+		}
+		for _, n := range ChannelToolNames() {
 			always[n] = true
 		}
 		for _, schema := range i.tools.Schema() {

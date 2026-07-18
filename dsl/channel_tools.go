@@ -74,6 +74,19 @@ type ChannelPostCallback func(channelName, agent, content string, msgID int64, t
 // covers the agent-driven tool path that bypasses HTTP.
 type ChannelLifecycleCallback func(id, name, description, createdBy string, team []string, mode string)
 
+// ChannelToolNames is the canonical list of channel tools every agent gets in
+// its tool surface. The spawn filter pulls this into the always-available
+// bucket so a per-agent Tools allow-list never gates channel participation:
+// every agent can post updates, read the full backlog, and list its channels.
+//
+// Gating these behind a per-agent allow-list left custom personas mute in
+// channels — they'd be added to a channel's team but couldn't post, so they
+// improvised (saving files, asking the human to relay). Channel participation
+// is first-class for all, mirroring WikiMemoryToolNames for the shared wiki.
+func ChannelToolNames() []string {
+	return []string{"post_to_channel", "read_channel", "list_my_channels"}
+}
+
 // RegisterChannelTools registers channel tools on the interpreter.
 func RegisterChannelTools(interp *Interpreter, backend ChannelBackend, onPost ChannelPostCallback, onReactive ChannelReactiveCallback, onLifecycle ChannelLifecycleCallback) {
 	t := interp.Tools()
