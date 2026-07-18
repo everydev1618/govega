@@ -993,14 +993,16 @@ func (s *Server) Start(ctx context.Context) error {
 
 		// Publish SSE events so connected clients see it in real time.
 		cs := s.getOrCreateChannelStream(chName)
-		cs.publish(ChannelEvent{
+		ev := ChannelEvent{
 			Type:      "channel.message",
 			Channel:   chName,
 			MessageID: msgID,
 			Agent:     from,
 			Role:      "assistant",
 			Content:   message,
-		})
+		}
+		cs.publish(ev)
+		s.mirrorChannelMessageToBroker(ev)
 		if response != "" && msgID > 0 {
 			cs.publish(ChannelEvent{
 				Type:      "channel.thread_reply",
@@ -1882,14 +1884,16 @@ func (s *Server) buildChannelCallbacks() (dsl.ChannelPostCallback, dsl.ChannelRe
 				Content:   content,
 			})
 		} else {
-			cs.publish(ChannelEvent{
+			ev := ChannelEvent{
 				Type:      "channel.message",
 				Channel:   channelName,
 				MessageID: msgID,
 				Agent:     agent,
 				Role:      "assistant",
 				Content:   content,
-			})
+			}
+			cs.publish(ev)
+			s.mirrorChannelMessageToBroker(ev)
 		}
 	}
 	channelReactiveCb := func(channelName string, team []string, poster string, message string, depth int, triggerMsgID int64) {

@@ -23,7 +23,7 @@ export function useSSE(url: string = '/api/v1/events', maxEvents: number = 200) 
     }
 
     // Listen for all event types we care about
-    for (const type of ['process.started', 'process.completed', 'process.failed', 'workflow.completed', 'workflow.failed', 'agent.created', 'agent.deleted', 'chat.update']) {
+    for (const type of ['process.started', 'process.completed', 'process.failed', 'workflow.completed', 'workflow.failed', 'agent.created', 'agent.deleted', 'chat.update', 'channel.message']) {
       es.addEventListener(type, handler)
     }
 

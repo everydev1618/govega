@@ -1,18 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { api } from '../lib/api'
-import type { ChannelEvent, ChannelMessage, ChatEventMetrics } from '../lib/types'
-
-interface StreamingMessage {
-  id?: number
-  agent: string
-  sender?: string
-  role: string
-  content: string
-  streaming: boolean
-  toolCalls?: { id: string; name: string; arguments: Record<string, unknown>; result?: string; duration_ms?: number; status: 'running' | 'completed' | 'error'; collapsed: boolean }[]
-  error?: string
-  metrics?: ChatEventMetrics
-}
+import type { ChannelEvent, ChannelMessage } from '../lib/types'
+import { applyChannelMessageEvent, type StreamingMessage } from '../lib/channelMessages'
 
 export function useChannelStream(channelName: string) {
   const [messages, setMessages] = useState<(ChannelMessage | StreamingMessage)[]>([])
@@ -62,34 +51,8 @@ export function useChannelStream(channelName: string) {
           // via post_to_channel, or a delegation response — arriving while
           // this stream is open. The primary agent's own reply does NOT come
           // through here (it streams via text_delta + channel.done), so this
-          // won't double-render it.
-          //
-          // Skip role 'user': the poster's own message is already shown
-          // optimistically, and the relay replays it here with a real id.
-          if (event.role === 'user') break
-          setMessages(prev => {
-            // Dedup by id — history replay, prior loads (getChannelMessages),
-            // and repeated events all carry the same message_id.
-            if (event.message_id != null &&
-                prev.some(m => (m as { id?: number }).id === event.message_id)) {
-              return prev
-            }
-            const posted: StreamingMessage = {
-              id: event.message_id,
-              agent: event.agent || '',
-              sender: event.sender,
-              role: event.role || 'assistant',
-              content: event.content || '',
-              streaming: false,
-            }
-            // Keep any actively-streaming assistant placeholder pinned to the
-            // bottom so the live reply stays last.
-            const msgs = [...prev]
-            let at = msgs.length
-            while (at > 0 && (msgs[at - 1] as StreamingMessage).streaming) at--
-            msgs.splice(at, 0, posted)
-            return msgs
-          })
+          // won't double-render it. Shared reducer; see channelMessages.ts.
+          setMessages(prev => applyChannelMessageEvent(prev, event))
           break
         case 'channel.text_delta':
           setMessages(prev => {

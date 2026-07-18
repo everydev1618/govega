@@ -431,14 +431,16 @@ func (s *Server) handleChannelStream(w http.ResponseWriter, r *http.Request) {
 			Content:   req.Message,
 		})
 	} else {
-		cs.publish(ChannelEvent{
+		ev := ChannelEvent{
 			Type:      "channel.message",
 			Channel:   name,
 			MessageID: msgID,
 			Role:      "user",
 			Sender:    sender,
 			Content:   req.Message,
-		})
+		}
+		cs.publish(ev)
+		s.mirrorChannelMessageToBroker(ev)
 	}
 
 	// Prefix message with sender name so agents know who's talking.
@@ -468,6 +470,23 @@ func (s *Server) handleChannelStreamReconnect(w http.ResponseWriter, r *http.Req
 }
 
 // --- Internal ---
+
+// mirrorChannelMessageToBroker republishes a finalized top-level channel post
+// to the global event broker so persistent SSE clients (useSSE → /api/v1/events)
+// see it live even when they have no active per-channel stream open — i.e. a
+// user idly viewing a channel while an agent posts spontaneously. Only
+// finalized channel.message posts are mirrored, never the high-frequency
+// text_delta stream, which would flood every connected client. The full
+// ChannelEvent rides in Data so the frontend reducer can consume it unchanged;
+// dedup-by-id makes double delivery (stream + broker) a no-op.
+func (s *Server) mirrorChannelMessageToBroker(ev ChannelEvent) {
+	s.broker.Publish(BrokerEvent{
+		Type:      ev.Type,
+		Agent:     ev.Agent,
+		Data:      ev,
+		Timestamp: time.Now(),
+	})
+}
 
 func (s *Server) getOrCreateChannelStream(name string) *channelStream {
 	channelStreamsMu.Lock()

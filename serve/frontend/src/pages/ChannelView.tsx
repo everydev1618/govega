@@ -4,7 +4,9 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api } from '../lib/api'
 import { useChannelStream } from '../hooks/useChannelStream'
-import type { AgentResponse, Channel, ChannelMessage } from '../lib/types'
+import { useSSE } from '../hooks/useSSE'
+import { applyChannelMessageEvent } from '../lib/channelMessages'
+import type { AgentResponse, Channel, ChannelEvent, ChannelMessage } from '../lib/types'
 import { AgentAvatar, UserAvatar } from '../components/chat/AgentAvatar'
 import { ThreadPanel } from '../components/chat/ThreadPanel'
 import { ScrollToBottom } from '../components/chat/ScrollToBottom'
@@ -27,6 +29,30 @@ export function ChannelView() {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const { messages, setMessages, typingAgents, postMessage, isStreaming, loadMessages } = useChannelStream(channelName)
+
+  // Idle live-viewing: a persistent broker subscription surfaces posts that
+  // arrive while no per-channel stream is open — e.g. an agent posting
+  // spontaneously via post_to_channel while the user is just watching. The
+  // active post stream (useChannelStream) delivers the same events; the shared
+  // reducer dedups by id, so applying both paths is safe. Reprocessing the
+  // rolling event buffer is a no-op for messages already present.
+  const { events: brokerEvents } = useSSE()
+  const channelPosts = useMemo(
+    () => brokerEvents.filter(e =>
+      e.type === 'channel.message' && (e.data as ChannelEvent | undefined)?.channel === channelName),
+    [brokerEvents, channelName],
+  )
+  useEffect(() => {
+    if (channelPosts.length === 0) return
+    setMessages(prev => {
+      let next = prev
+      // useSSE buffers newest-first; apply oldest-first to preserve order.
+      for (let i = channelPosts.length - 1; i >= 0; i--) {
+        next = applyChannelMessageEvent(next, channelPosts[i].data as ChannelEvent)
+      }
+      return next
+    })
+  }, [channelPosts, setMessages])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
