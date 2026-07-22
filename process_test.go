@@ -2,6 +2,7 @@ package vega
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -792,5 +793,61 @@ func TestCountUserMessages(t *testing.T) {
 	}
 	if got := countUserMessages(nil); got != 0 {
 		t.Errorf("countUserMessages(nil) = %d, want 0", got)
+	}
+}
+
+// TestBuildMessagesInjectsCurrentDate guards the fix for the frozen-date bug:
+// long-lived chat processes were baking time.Now() into a StaticPrompt at
+// spawn, so an agent booted in mid-July kept reporting mid-July on July 21.
+// buildMessages runs on every LLM call, so the date it injects must be
+// current — recomputed per turn, not frozen.
+func TestBuildMessagesInjectsCurrentDate(t *testing.T) {
+	t.Setenv("VEGA_TIMEZONE", "")
+	p := &Process{
+		Agent:    &Agent{System: StaticPrompt("You are a helpful agent.")},
+		messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
+	}
+
+	msgs := p.buildMessages()
+	if len(msgs) == 0 || msgs[0].Role != llm.RoleSystem {
+		t.Fatalf("expected first message to be system, got %+v", msgs)
+	}
+	sys := msgs[0].Content
+
+	want := time.Now().UTC().Format("January 2, 2006")
+	if !strings.Contains(sys, want) {
+		t.Errorf("system prompt missing current date %q:\n%s", want, sys)
+	}
+	if !strings.Contains(sys, "You are a helpful agent.") {
+		t.Errorf("system prompt dropped the persona:\n%s", sys)
+	}
+}
+
+// TestCurrentDateLineHonorsTimezone confirms the injected date resolves in the
+// tenant's configured zone (VEGA_TIMEZONE, set by the customer at deploy time),
+// not the machine's UTC — otherwise "tonight" is off-by-one near midnight for
+// non-UTC users.
+func TestCurrentDateLineHonorsTimezone(t *testing.T) {
+	t.Setenv("VEGA_TIMEZONE", "America/Chicago")
+	loc, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+
+	got := currentDateLine()
+	want := time.Now().In(loc).Format("Monday, January 2, 2006")
+	if !strings.Contains(got, want) {
+		t.Errorf("currentDateLine() = %q, want it to contain %q", got, want)
+	}
+}
+
+// TestCurrentDateLineDefaultsToUTC confirms an unset/invalid timezone falls
+// back to UTC rather than erroring or going blank.
+func TestCurrentDateLineDefaultsToUTC(t *testing.T) {
+	t.Setenv("VEGA_TIMEZONE", "Not/AZone")
+	got := currentDateLine()
+	want := time.Now().UTC().Format("Monday, January 2, 2006")
+	if !strings.Contains(got, want) {
+		t.Errorf("currentDateLine() = %q, want it to contain UTC date %q", got, want)
 	}
 }

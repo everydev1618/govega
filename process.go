@@ -3,6 +3,7 @@ package vega
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -774,6 +775,13 @@ func (p *Process) buildMessages() []llm.Message {
 		if extra != "" {
 			systemContent += "\n\n" + extra
 		}
+		// Ground the agent in real wall-clock time on every turn. Chat
+		// agents are long-lived, reused processes, so a date computed at
+		// spawn goes stale — the model then falls back on its training-data
+		// sense of "today" and confidently reports the wrong date. Because
+		// buildMessages runs on every LLM call, this stays current. Day
+		// granularity keeps the cached system block stable within a day.
+		systemContent += "\n\nToday's date is " + currentDateLine() + "."
 		messages = append(messages, llm.Message{
 			Role:    llm.RoleSystem,
 			Content: systemContent,
@@ -803,4 +811,22 @@ func (p *Process) buildMessages() []llm.Message {
 	}
 
 	return filtered
+}
+
+// currentDateLine returns the current date for the system prompt, e.g.
+// "Monday, July 21, 2026 (CDT)". The timezone comes from VEGA_TIMEZONE (an
+// IANA name the customer sets when deploying their agent) and falls back to
+// UTC when unset or invalid — so tenants in non-UTC zones don't get an
+// off-by-one date near midnight. Day granularity is deliberate: the whole
+// system prompt is prompt-cached as one block, and a per-turn changing time
+// would add nothing but cache churn.
+func currentDateLine() string {
+	loc := time.UTC
+	if tz := os.Getenv("VEGA_TIMEZONE"); tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+		}
+	}
+	now := time.Now().In(loc)
+	return now.Format("Monday, January 2, 2006") + " (" + now.Format("MST") + ")"
 }

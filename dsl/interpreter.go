@@ -379,11 +379,20 @@ func (i *Interpreter) spawnAgent(name string, def *Agent) error {
 		}
 	}
 
-	// Inject current date so agents know what day it is.
-	systemStr += "\nToday's date is " + time.Now().Format("January 2, 2006") + "."
+	// NOTE: the current date is intentionally NOT injected here. Chat agents
+	// are long-lived, reused processes, so a date baked in at spawn goes stale
+	// within a day. It is injected per turn in vega.Process.buildMessages
+	// instead — see currentDateLine there.
 
 	// Universal brevity directive — applies to ALL agents.
 	systemStr += "\n\n## Communication style\nBe direct and concise. Lead with the answer, not the reasoning. 1-3 sentences for simple responses. Use bullet points only when listing concrete items — never for padding. No filler phrases, no restating the question, no sign-offs. The user's time is sacred."
+
+	// Universal grounding/honesty directive — applies to ALL agents. Without
+	// this, agents narrate lookups they never performed ("let me check
+	// Baseball Reference") and invent concrete real-time facts. They can only
+	// fetch a URL they already know, and web search exists only when a search
+	// tool is actually connected.
+	systemStr += "\n\n## Facts and freshness\nYou have no open-ended web browsing. You can only fetch a URL when a fetch/search tool is actually connected and you call it — never claim you looked something up unless you made a tool call in this turn, and never invent a source. For anything time-sensitive you can't verify (scores, schedules, news, prices, availability), say you can't confirm it live rather than guessing specifics. If you're unsure of the current date, rely on the date provided in your system prompt, not your training data."
 
 	// Inject workspace path and deliverable URL so agents know where files go
 	// and how to serve them. Meta-agents (orchestrator, builder) get the
