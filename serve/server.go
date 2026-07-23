@@ -211,6 +211,16 @@ type Config struct {
 	// the standard interpreter-backed dispatch. Applied only when peering
 	// is enabled (VEGA_PEERING_ADDR).
 	WrapPeeringDispatcher func(peering.Dispatcher) peering.Dispatcher
+
+	// OrchestratorExtraTools are additional tool names granted to the
+	// orchestrator's allow-list, on top of the built-in extras. Embedding
+	// products use this to expose a host-registered tool (e.g. a
+	// search_my_memory tool over an external memory store) to the agent the
+	// user actually chats with — registering the tool on the interpreter is
+	// not enough on its own, since a custom tool must also be in the agent's
+	// allow-list to be callable. The names must already be registered on the
+	// interpreter before Start.
+	OrchestratorExtraTools []string
 }
 
 // ExtraSystemProvider returns additional system-prompt content for a
@@ -1847,7 +1857,7 @@ func (s *Server) injectHera() {
 
 // injectIris adds the orchestrator (default: Iris) to the interpreter.
 func (s *Server) injectIris() {
-	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, irisExtras(s.peeringEnabled())...); err != nil {
+	if err := dsl.InjectIris(s.interp, s.cfg.Orchestrator, s.store, irisExtras(s.peeringEnabled(), s.cfg.OrchestratorExtraTools...)...); err != nil {
 		slog.Warn("failed to inject Iris agent", "error", err)
 	}
 }
@@ -1857,7 +1867,7 @@ func (s *Server) injectIris() {
 // remember/recall/forget surface so Iris's writes land in memory_pages
 // (visible in /memory) instead of memory_items (invisible). Peering tools
 // gated on the federation toggle.
-func irisExtras(peeringEnabled bool) []string {
+func irisExtras(peeringEnabled bool, configured ...string) []string {
 	extras := []string{
 		"memory_read", "memory_list", "memory_search",
 		"memory_write", "memory_append", "memory_edit",
@@ -1867,6 +1877,14 @@ func irisExtras(peeringEnabled bool) []string {
 	}
 	if peeringEnabled {
 		extras = append(extras, peeringToolNames...)
+	}
+	// Host-configured orchestrator tools (serve.Config.OrchestratorExtraTools)
+	// come last so an embedding product can grant a tool it registered on the
+	// interpreter (e.g. search_my_memory).
+	for _, name := range configured {
+		if name != "" {
+			extras = append(extras, name)
+		}
 	}
 	return extras
 }

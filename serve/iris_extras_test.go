@@ -49,6 +49,32 @@ func TestIrisExtras_HasWikiNotLegacy(t *testing.T) {
 	}
 }
 
+// TestIrisExtras_ConfiguredTools folds in host-configured orchestrator tools
+// (e.g. an embedding product's search_my_memory) on top of the built-in
+// extras — without them, a tool registered on the interpreter is never added
+// to the orchestrator's allow-list and the agent silently can't call it.
+func TestIrisExtras_ConfiguredTools(t *testing.T) {
+	got := irisExtras(false, "search_my_memory")
+
+	if !sliceContains(got, "search_my_memory") {
+		t.Errorf("configured tool not included (got %v)", got)
+	}
+	// Built-in extras must survive alongside configured ones.
+	if !sliceContains(got, "memory_read") {
+		t.Errorf("built-in extras dropped when configured tools added (got %v)", got)
+	}
+	// Peering stays gated regardless of configured tools.
+	for _, name := range peeringToolNames {
+		if sliceContains(got, name) {
+			t.Errorf("peering tool %q leaked with peering disabled (got %v)", name, got)
+		}
+	}
+	// No configured tools => no empty entries.
+	if sliceContains(irisExtras(false), "") {
+		t.Errorf("empty tool name leaked in with no configured tools")
+	}
+}
+
 // TestIrisExtras_PeeringGated keeps the federation toggle honest: peering
 // tools only appear when the caller passes peeringEnabled=true.
 func TestIrisExtras_PeeringGated(t *testing.T) {
