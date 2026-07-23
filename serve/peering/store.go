@@ -134,6 +134,10 @@ type Store interface {
 // LoadOrGenerateNodeID in node.go.
 const SettingNodeID = "local_node_id"
 
+// SettingNodeKey is the settings key holding the node's persistent Ed25519
+// identity seed (base64). Its did:key is the NodeID carried in signed HELLOs.
+const SettingNodeKey = "local_node_key"
+
 // ErrNilDB is returned by ApplySQLiteSchema / NewSQLiteStorage when handed a
 // nil *sql.DB. Better than a panic deep inside a database/sql call site.
 var ErrNilDB = errors.New("peering: nil *sql.DB")

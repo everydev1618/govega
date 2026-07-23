@@ -86,7 +86,7 @@ func TestIntegration_TwoNodesEndToEnd(t *testing.T) {
 	// Build the client-side TLS config — aire.DevTLSConfig produces a
 	// usable client config too (skips verify, sets ALPN).
 	dialerTLS := aire.DevTLSConfig()
-	dialer := NewDialer(storeA, nodeA.NodeID(), dialerTLS)
+	dialer := NewDialer(storeA, nodeA.Signer(), dialerTLS)
 	t.Cleanup(dialer.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -152,7 +152,7 @@ func TestIntegration_DenialPropagatesToCaller(t *testing.T) {
 		SharedSecret: secret, TrustLevel: TrustScoped,
 	})
 
-	dialer := NewDialer(storeA, nodeA.NodeID(), aire.DevTLSConfig())
+	dialer := NewDialer(storeA, nodeA.Signer(), aire.DevTLSConfig())
 	t.Cleanup(dialer.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

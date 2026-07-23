@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	aire "github.com/aire-protocol/aire-go"
 )
 
-func TestLoadOrGenerateNodeID_GeneratesOnFirstCall(t *testing.T) {
+func TestLoadOrGenerateIdentity_GeneratesOnFirstCall(t *testing.T) {
 	s := newTestStore(t)
-	id, err := LoadOrGenerateNodeID(s)
+	signer, err := LoadOrGenerateIdentity(s)
 	if err != nil {
-		t.Fatalf("LoadOrGenerateNodeID: %v", err)
+		t.Fatalf("LoadOrGenerateIdentity: %v", err)
 	}
-	if !strings.HasPrefix(id, "vega:") {
+	id := signer.DID()
+	if !strings.HasPrefix(id, "did:key:") {
 		t.Fatalf("NodeID should be prefixed 'vega:', got %q", id)
 	}
 	if len(id) < len("vega:")+8 {
@@ -20,26 +23,58 @@ func TestLoadOrGenerateNodeID_GeneratesOnFirstCall(t *testing.T) {
 	}
 }
 
-func TestLoadOrGenerateNodeID_StableAcrossCalls(t *testing.T) {
+func TestLoadOrGenerateIdentity_StableAcrossCalls(t *testing.T) {
 	s := newTestStore(t)
-	a, _ := LoadOrGenerateNodeID(s)
-	b, _ := LoadOrGenerateNodeID(s)
-	if a != b {
-		t.Fatalf("NodeID drifted: %q != %q", a, b)
-	}
-}
-
-func TestLoadOrGenerateNodeID_RespectsExistingValue(t *testing.T) {
-	s := newTestStore(t)
-	if err := s.SetSetting(SettingNodeID, "vega:preexisting-id"); err != nil {
-		t.Fatal(err)
-	}
-	id, err := LoadOrGenerateNodeID(s)
+	a, err := LoadOrGenerateIdentity(s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "vega:preexisting-id" {
-		t.Fatalf("did not respect existing value: %q", id)
+	b, err := LoadOrGenerateIdentity(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.DID() != b.DID() {
+		t.Fatalf("identity drifted: %q != %q", a.DID(), b.DID())
+	}
+}
+
+func TestLoadOrGenerateIdentity_IsDIDKey(t *testing.T) {
+	s := newTestStore(t)
+	signer, err := LoadOrGenerateIdentity(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(signer.DID(), "did:key:") {
+		t.Fatalf("NodeID must be a did:key under AIRE v0.2, got %q", signer.DID())
+	}
+	if _, err := aire.ParseDIDKey(signer.DID()); err != nil {
+		t.Fatalf("DID does not parse as did:key: %v", err)
+	}
+	// The DID is also persisted as the visible NodeID setting.
+	stored, _ := s.GetSetting(SettingNodeID)
+	if stored != signer.DID() {
+		t.Fatalf("SettingNodeID = %q, want %q", stored, signer.DID())
+	}
+}
+
+func TestLoadOrGenerateIdentity_SupersedesLegacyUUIDNodeID(t *testing.T) {
+	s := newTestStore(t)
+	// Pre-v0.2 nodes persisted "vega:<uuid>" NodeIDs, which are not valid
+	// DIDs and would be rejected at HELLO. A fresh keyed identity replaces
+	// the legacy value.
+	if err := s.SetSetting(SettingNodeID, "vega:preexisting-id"); err != nil {
+		t.Fatal(err)
+	}
+	signer, err := LoadOrGenerateIdentity(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(signer.DID(), "did:key:") {
+		t.Fatalf("legacy NodeID not superseded: %q", signer.DID())
+	}
+	stored, _ := s.GetSetting(SettingNodeID)
+	if stored != signer.DID() {
+		t.Fatalf("SettingNodeID still legacy: %q", stored)
 	}
 }
 
@@ -106,8 +141,8 @@ func TestNode_NodeID_LoadedAtConstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(n.NodeID(), "vega:") {
-		t.Fatalf("node should expose its NodeID; got %q", n.NodeID())
+	if !strings.HasPrefix(n.NodeID(), "did:key:") {
+		t.Fatalf("node should expose its did:key NodeID; got %q", n.NodeID())
 	}
 	// And persisted in store.
 	stored, _ := s.GetSetting(SettingNodeID)

@@ -320,9 +320,9 @@ type rowScanner interface {
 
 func scanPeer(r rowScanner) (*Peer, error) {
 	var (
-		p          Peer
-		trust      string
-		lastSeen   sql.NullTime
+		p        Peer
+		trust    string
+		lastSeen sql.NullTime
 	)
 	err := r.Scan(&p.NodeID, &p.Handle, &p.Endpoint, &p.SharedSecret, &trust,
 		&p.AddedBy, &p.AddedAt, &lastSeen, &p.Notes)

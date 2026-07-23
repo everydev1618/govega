@@ -20,6 +20,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/aire-protocol/aire-go v0.0.0-20260509053352-78cc4cbe6e44 h1:w8ldrAXT9q4OAc5sM28rx+5qjFxj+GD1fgWCbJnAeVs=
 github.com/aire-protocol/aire-go v0.0.0-20260509053352-78cc4cbe6e44/go.mod h1:TcLrM7eKtZfBa85UwIFyIV/jte328+r0+T/WejsfIaA=
+github.com/aire-protocol/aire-go v0.0.0-20260612125704-6b4285627f4c h1:PZBYaoZnXLtqfVZpXrcgXskDo7vgfQ95ZHas5ugGk1g=
+github.com/aire-protocol/aire-go v0.0.0-20260612125704-6b4285627f4c/go.mod h1:TcLrM7eKtZfBa85UwIFyIV/jte328+r0+T/WejsfIaA=
 github.com/bwmarrin/discordgo v0.29.0 h1:FmWeXFaKUwrcL3Cx65c20bTRW+vOb6k8AnaP+EgjDno=
 github.com/bwmarrin/discordgo v0.29.0/go.mod h1:NJZpH+1AfhIcyQsPeuBKsUtYrRnjkyu0kIVMCHkZtRY=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=

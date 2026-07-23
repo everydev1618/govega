@@ -66,7 +66,7 @@ func (s *Server) startPeering(_ context.Context) {
 	}
 	s.peeringStore = pStore
 	s.peeringNode = node
-	s.peeringDialer = peering.NewDialer(pStore, node.NodeID(), tlsConf)
+	s.peeringDialer = peering.NewDialer(pStore, node.Signer(), tlsConf)
 
 	// Register the federation toolset on the interpreter so injectIris
 	// (called next) can include them in Iris's tool schema.

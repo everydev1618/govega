@@ -2,7 +2,10 @@ package peering
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +13,6 @@ import (
 	"time"
 
 	aire "github.com/aire-protocol/aire-go"
-	"github.com/google/uuid"
 )
 
 // jsonUnmarshal is aliased to keep node.go's switch readable.
@@ -43,6 +45,7 @@ type NodeConfig struct {
 // network setup happens in Start; Stop drains.
 type Node struct {
 	cfg    NodeConfig
+	signer aire.Signer
 	nodeID string
 
 	mu       sync.Mutex
@@ -64,24 +67,31 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 	if cfg.Dispatcher == nil {
 		return nil, errors.New("peering: NewNode: dispatcher is required")
 	}
-	id, err := LoadOrGenerateNodeID(cfg.Store)
+	signer, err := LoadOrGenerateIdentity(cfg.Store)
 	if err != nil {
-		return nil, fmt.Errorf("peering: NewNode: load node id: %w", err)
+		return nil, fmt.Errorf("peering: NewNode: load identity: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Node{
 		cfg:    cfg,
-		nodeID: id,
+		signer: signer,
+		nodeID: signer.DID(),
 		ctx:    ctx,
 		cancel: cancel,
 	}, nil
 }
 
-// NodeID returns the locally-persistent identifier surfaced to peers during
-// the HELLO exchange. Stable across restarts; rotated only by an operator
-// explicitly clearing the settings row.
+// NodeID returns the node's did:key — the identity carried in its signed
+// HELLO. Stable across restarts; rotated only by an operator explicitly
+// clearing the settings rows (which breaks existing pairings).
 func (n *Node) NodeID() string {
 	return n.nodeID
+}
+
+// Signer returns the node's persistent identity signer, for wiring outbound
+// components (the Dialer) to the same identity.
+func (n *Node) Signer() aire.Signer {
+	return n.signer
 }
 
 // Start opens an AIRE listener on addr (e.g., ":4433") with the given TLS
@@ -125,7 +135,7 @@ func (n *Node) Addr() string {
 // sides will exchange an HMAC auth-op before dispatch is accepted.
 func (n *Node) localNodeConfig() aire.NodeConfig {
 	return aire.NodeConfig{
-		NodeID: n.nodeID,
+		Signer: n.signer,
 		Capabilities: []aire.Capability{
 			{Name: SharedSecretCapName, Version: 1, Required: true},
 		},
@@ -133,8 +143,10 @@ func (n *Node) localNodeConfig() aire.NodeConfig {
 }
 
 // SharedSecretCapName is the AIRE capability name peers advertise to commit
-// to the shared-secret auth protocol implemented in auth.go. v0.1 stopgap;
-// dropped when AIRE v0.2 DIDs ship.
+// to the shared-secret auth protocol implemented in auth.go. With v0.2, DIDs
+// + signed HELLOs provide *identity*; the shared secret remains the pairing
+// *authorization* (proof the operator admitted this peer) until grants are
+// anchored to DIDs directly.
 const SharedSecretCapName = "vega.shared-secret/1"
 
 // AgentIDVega is the single AIRE-level agent name a peer addresses for any
@@ -293,22 +305,41 @@ func (n *Node) Stop() error {
 	return nil
 }
 
-// LoadOrGenerateNodeID returns the locally-persistent NodeID, generating
-// one on first call. The format is "vega:" + uuidv4 so peers can recognize
-// it on sight as a Vega orchestrator (v0.2 DIDs will replace this).
-func LoadOrGenerateNodeID(s Store) (string, error) {
-	id, err := s.GetSetting(SettingNodeID)
+// LoadOrGenerateIdentity returns the node's persistent Ed25519 identity,
+// generating and persisting one on first call. The signer's did:key is the
+// NodeID carried in the signed HELLO (AIRE v0.2 §5). A legacy "vega:<uuid>"
+// NodeID from pre-v0.2 nodes is superseded: it is not a valid DID and peers
+// conforming to v0.2 MUST reject it at HELLO; existing pairings keyed on the
+// old ID must be re-paired.
+func LoadOrGenerateIdentity(s Store) (*aire.Ed25519DIDKeySigner, error) {
+	enc, err := s.GetSetting(SettingNodeKey)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if id != "" {
-		return id, nil
+	var seed []byte
+	if enc != "" {
+		seed, err = base64.StdEncoding.DecodeString(enc)
+		if err != nil || len(seed) != ed25519.SeedSize {
+			return nil, fmt.Errorf("peering: corrupt %s setting", SettingNodeKey)
+		}
+	} else {
+		seed = make([]byte, ed25519.SeedSize)
+		if _, err := rand.Read(seed); err != nil {
+			return nil, err
+		}
+		if err := s.SetSetting(SettingNodeKey, base64.StdEncoding.EncodeToString(seed)); err != nil {
+			return nil, err
+		}
 	}
-	id = "vega:" + uuid.NewString()
-	if err := s.SetSetting(SettingNodeID, id); err != nil {
-		return "", err
+	signer := aire.NewEd25519DIDKeySigner(ed25519.NewKeyFromSeed(seed))
+	// Keep the visible NodeID setting in sync with the keyed identity
+	// (also migrates any legacy "vega:<uuid>" value).
+	if cur, _ := s.GetSetting(SettingNodeID); cur != signer.DID() {
+		if err := s.SetSetting(SettingNodeID, signer.DID()); err != nil {
+			return nil, err
+		}
 	}
-	return id, nil
+	return signer, nil
 }
 
 // --- INVOKE payload codec ---

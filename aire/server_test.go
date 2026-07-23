@@ -43,7 +43,7 @@ func TestServer_LLMAgent_RoundTrip(t *testing.T) {
 	defer cancel()
 
 	backend := &stubLLM{response: "Paris"}
-	server := vaire.NewServer("did:key:test-server")
+	server := vaire.NewServer(nil)
 	if err := server.RegisterLLMAgent("iris", backend, "You are a geography expert."); err != nil {
 		t.Fatalf("RegisterLLMAgent: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestServer_LLMAgent_RoundTrip(t *testing.T) {
 	}
 	defer func() { _ = server.Stop() }()
 
-	client := vaire.NewClient("did:key:test-client")
+	client := vaire.NewClient()
 	client.TLSConfig = aireproto.DevTLSConfig()
 	client.Resolve = func(_ context.Context, _ string) (*aireproto.Address, error) {
 		return &aireproto.Address{Endpoint: server.Addr(), AgentID: "iris"}, nil
@@ -92,7 +92,7 @@ func TestServer_LLMAgent_BackendError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	server := vaire.NewServer("did:key:test-server")
+	server := vaire.NewServer(nil)
 	if err := server.RegisterLLMAgent("iris", &stubLLM{err: errors.New("model is down")}, ""); err != nil {
 		t.Fatalf("RegisterLLMAgent: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestServer_LLMAgent_BackendError(t *testing.T) {
 	}
 	defer func() { _ = server.Stop() }()
 
-	client := vaire.NewClient("did:key:test-client")
+	client := vaire.NewClient()
 	client.TLSConfig = aireproto.DevTLSConfig()
 	client.Resolve = func(_ context.Context, _ string) (*aireproto.Address, error) {
 		return &aireproto.Address{Endpoint: server.Addr(), AgentID: "iris"}, nil
@@ -127,7 +127,7 @@ func TestServer_LLMAgent_BackendError(t *testing.T) {
 }
 
 func TestServer_RegisterLLMAgent_NilBackend(t *testing.T) {
-	server := vaire.NewServer("did:key:test-server")
+	server := vaire.NewServer(nil)
 	if err := server.RegisterLLMAgent("x", nil, ""); err == nil {
 		t.Error("expected error registering with nil backend")
 	}

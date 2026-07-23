@@ -34,10 +34,12 @@ type ResolveFunc func(ctx context.Context, ref string) (*aireproto.Address, erro
 //
 // Client is safe for concurrent use.
 type Client struct {
-	// NodeID is the local node's identifier sent in HELLO. It SHOULD be a
-	// DID (per aire-spec §5); callers may use a did:key for ephemeral
-	// identities or a did:web for long-lived ones.
-	NodeID string
+	// Signer provides the local node's cryptographic identity for the
+	// signed HELLO (aire-spec §5.4): its DID is the NodeID on the wire.
+	// If nil, aire-go generates an ephemeral did:key signer per
+	// connection — fine for development; long-lived deployments should
+	// supply a stable Signer so peers can pin the identity.
+	Signer aireproto.Signer
 
 	// Resolve maps a reference to a peer Address. If nil, the package-level
 	// aireproto.Resolve (DNS TXT + HTTPS .well-known + DID Document fetch)
@@ -52,12 +54,11 @@ type Client struct {
 	conns map[string]*aireproto.Conn // key: resolved endpoint
 }
 
-// NewClient creates a Client with the given NodeID. The NodeID should be a
-// DID; for development, a did:key is sufficient.
-func NewClient(nodeID string) *Client {
+// NewClient creates a Client. Set Signer for a stable identity; left nil,
+// each connection handshakes with an ephemeral did:key.
+func NewClient() *Client {
 	return &Client{
-		NodeID: nodeID,
-		conns:  make(map[string]*aireproto.Conn),
+		conns: make(map[string]*aireproto.Conn),
 	}
 }
 
@@ -199,7 +200,7 @@ func (c *Client) getOrDialConn(ctx context.Context, endpoint string) (*aireproto
 	if err != nil {
 		return nil, fmt.Errorf("aire: dial %s: %w", endpoint, err)
 	}
-	if _, err := conn.Handshake(ctx, aireproto.NodeConfig{NodeID: c.NodeID}); err != nil {
+	if _, err := conn.Handshake(ctx, aireproto.NodeConfig{Signer: c.Signer}); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("aire: handshake %s: %w", endpoint, err)
 	}

@@ -17,6 +17,7 @@ import (
 // entry so the next call reopens.
 type Dialer struct {
 	store       Store
+	signer      aire.Signer
 	localNodeID string
 	tlsConf     *tls.Config
 
@@ -24,12 +25,15 @@ type Dialer struct {
 	conns map[string]*aire.Conn // peerNodeID → live conn
 }
 
-// NewDialer constructs a Dialer. tlsConf MUST include the AIRE ALPN (use
-// aire.DevTLSConfig for dev; provision proper certs in prod).
-func NewDialer(store Store, localNodeID string, tlsConf *tls.Config) *Dialer {
+// NewDialer constructs a Dialer using the node's identity signer (its DID is
+// the local NodeID in signed HELLOs — pass Node.Signer() so inbound and
+// outbound present the same identity). tlsConf MUST include the AIRE ALPN
+// (use aire.DevTLSConfig for dev; provision proper certs in prod).
+func NewDialer(store Store, signer aire.Signer, tlsConf *tls.Config) *Dialer {
 	return &Dialer{
 		store:       store,
-		localNodeID: localNodeID,
+		signer:      signer,
+		localNodeID: signer.DID(),
 		tlsConf:     tlsConf,
 		conns:       make(map[string]*aire.Conn),
 	}
@@ -116,7 +120,7 @@ func (d *Dialer) getConn(ctx context.Context, peer Peer) (*aire.Conn, error) {
 		return nil, err
 	}
 	state, err := conn.Handshake(ctx, aire.NodeConfig{
-		NodeID: d.localNodeID,
+		Signer: d.signer,
 		Capabilities: []aire.Capability{
 			{Name: SharedSecretCapName, Version: 1, Required: true},
 		},

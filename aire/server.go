@@ -44,11 +44,13 @@ type StreamChunk struct {
 	Error string `json:"error,omitempty"`
 }
 
-// NewServer creates a Server with the given AIRE node ID. The nodeID SHOULD
-// be a DID (per aire-spec §5); did:key is fine for development.
-func NewServer(nodeID string) *Server {
+// NewServer creates a Server whose identity is signer's DID, carried in the
+// signed HELLO (aire-spec §5.4). A nil signer gets an ephemeral did:key —
+// fine for development; long-lived deployments should supply a stable Signer
+// so peers can pin the identity.
+func NewServer(signer aireproto.Signer) *Server {
 	return &Server{
-		node: aireproto.NewNode(aireproto.NodeConfig{NodeID: nodeID}),
+		node: aireproto.NewNode(aireproto.NodeConfig{Signer: signer}),
 	}
 }
 

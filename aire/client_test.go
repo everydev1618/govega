@@ -17,7 +17,7 @@ func TestClient_Send_RoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	remote := aireproto.NewNode(aireproto.NodeConfig{NodeID: "did:web:example.com:agents:echo"})
+	remote := aireproto.NewNode(aireproto.NodeConfig{})
 	defer func() { _ = remote.Stop() }()
 	if err := remote.RegisterAgent("echo", aireproto.AgentFunc(func(_ context.Context, inv *aireproto.Invoke) error {
 		return inv.Op.Send(aireproto.Frame{
@@ -31,7 +31,7 @@ func TestClient_Send_RoundTrip(t *testing.T) {
 		t.Fatalf("remote Listen: %v", err)
 	}
 
-	client := vaire.NewClient("did:key:vega-A")
+	client := vaire.NewClient()
 	client.TLSConfig = aireproto.DevTLSConfig()
 	client.Resolve = func(_ context.Context, ref string) (*aireproto.Address, error) {
 		return &aireproto.Address{
@@ -58,7 +58,7 @@ func TestClient_PoolsConnections(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	remote := aireproto.NewNode(aireproto.NodeConfig{NodeID: "did:web:example.com:agents:counter"})
+	remote := aireproto.NewNode(aireproto.NodeConfig{})
 	defer func() { _ = remote.Stop() }()
 	if err := remote.RegisterAgent("counter", aireproto.AgentFunc(func(_ context.Context, inv *aireproto.Invoke) error {
 		return inv.Op.Send(aireproto.Frame{Type: aireproto.FrameStream, Payload: []byte("ok")})
@@ -72,7 +72,7 @@ func TestClient_PoolsConnections(t *testing.T) {
 	// Indirect proof of pooling: 50 Sends should run faster than the time
 	// to handshake 50 fresh QUIC connections. If the pool is broken, total
 	// time scales linearly with handshake cost rather than with frame RTT.
-	client := vaire.NewClient("did:key:vega-A")
+	client := vaire.NewClient()
 	client.TLSConfig = aireproto.DevTLSConfig()
 	client.Resolve = func(_ context.Context, _ string) (*aireproto.Address, error) {
 		return &aireproto.Address{

@@ -67,11 +67,11 @@ func samplePeer() Peer {
 
 func sampleGrant(peerNodeID string) Grant {
 	return Grant{
-		PeerNodeID:      peerNodeID,
-		LocalAgent:      "researcher",
-		MaxTokensPerOp:  8000,
-		MaxOpsPerHour:   30,
-		Active:          true,
+		PeerNodeID:     peerNodeID,
+		LocalAgent:     "researcher",
+		MaxTokensPerOp: 8000,
+		MaxOpsPerHour:  30,
+		Active:         true,
 	}
 }
 
@@ -244,15 +244,15 @@ func TestGrant_Revoke(t *testing.T) {
 
 func sampleAudit() AuditEntry {
 	return AuditEntry{
-		Direction:    DirectionInbound,
-		PeerNodeID:   "vega:peer-1",
-		PeerHandle:   "@alice@nous",
-		Agent:        "researcher",
-		OpID:         12345,
-		Status:       AuditStatusStarted,
-		TokensIn:     0,
-		TokensOut:    0,
-		CostUSD:      0,
+		Direction:  DirectionInbound,
+		PeerNodeID: "vega:peer-1",
+		PeerHandle: "@alice@nous",
+		Agent:      "researcher",
+		OpID:       12345,
+		Status:     AuditStatusStarted,
+		TokensIn:   0,
+		TokensOut:  0,
+		CostUSD:    0,
 	}
 }
 
