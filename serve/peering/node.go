@@ -274,7 +274,7 @@ func (n *Node) serveOp(cs *connState, op *aire.Operation) {
 		if n.cfg.WrapInboundContext != nil {
 			invokeCtx = n.cfg.WrapInboundContext(invokeCtx)
 		}
-		_ = HandleInbound(invokeCtx, cs.peerNodeID, handle, ia.Agent, ia.Message, io, n.cfg.Store, n.cfg.Dispatcher)
+		_ = HandleInbound(invokeCtx, cs.peerNodeID, handle, ia.Agent, ia.Message, ia.OnBehalfOf, io, n.cfg.Store, n.cfg.Dispatcher)
 	default:
 		_ = io.SendError(ErrCodeDenied, "unknown agent id: "+agentID)
 		_ = op.Close()

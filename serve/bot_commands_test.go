@@ -9,19 +9,19 @@ import (
 
 func TestBotCommandParsing(t *testing.T) {
 	cases := map[string]string{
-		"/agents":          "agents",
-		"agents":           "agents",
-		"  Agents ":        "agents",
-		"/team":            "agents",
-		"who":              "agents",
-		"/channels":        "channels",
-		"channels":         "channels",
-		"/status":          "status",
-		"status":           "status",
-		"activity":         "status",
-		"build me a game":  "",
-		"list the agents":  "", // only a bare command matches, not prose
-		"":                 "",
+		"/agents":         "agents",
+		"agents":          "agents",
+		"  Agents ":       "agents",
+		"/team":           "agents",
+		"who":             "agents",
+		"/channels":       "channels",
+		"channels":        "channels",
+		"/status":         "status",
+		"status":          "status",
+		"activity":        "status",
+		"build me a game": "",
+		"list the agents": "", // only a bare command matches, not prose
+		"":                "",
 	}
 	for in, want := range cases {
 		if got := botCommand(in); got != want {

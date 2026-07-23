@@ -203,6 +203,14 @@ type Config struct {
 	// The callback runs on the chat hot path: keep it fast and cache
 	// where appropriate.
 	ExtraSystemProvider ExtraSystemProvider
+
+	// WrapPeeringDispatcher, when non-nil, wraps the peering Dispatcher
+	// before it is wired to the AIRE node. Embedding products use this to
+	// add subject-keyed authorization (e.g. a LYRA gate verifying
+	// on-behalf-of credentials via peering.CallerAwareDispatcher) around
+	// the standard interpreter-backed dispatch. Applied only when peering
+	// is enabled (VEGA_PEERING_ADDR).
+	WrapPeeringDispatcher func(peering.Dispatcher) peering.Dispatcher
 }
 
 // ExtraSystemProvider returns additional system-prompt content for a

@@ -40,7 +40,10 @@ func (s *Server) startPeering(_ context.Context) {
 	}
 	pStore := provider.PeeringStore()
 
-	dispatcher := newPeeringDispatcher(s.interp)
+	var dispatcher peering.Dispatcher = newPeeringDispatcher(s.interp)
+	if s.cfg.WrapPeeringDispatcher != nil {
+		dispatcher = s.cfg.WrapPeeringDispatcher(dispatcher)
+	}
 	cfg := peering.NodeConfig{Store: pStore, Dispatcher: dispatcher}
 	if s.callerResolver != nil {
 		// Background path: no peer-supplied user identity yet (AIRE v0.2

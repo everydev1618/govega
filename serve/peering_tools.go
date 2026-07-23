@@ -46,6 +46,7 @@ func (s *Server) newSendToRemoteAgentTool() tools.ToolDef {
 			peerRef, _ := params["peer"].(string)
 			agent, _ := params["agent"].(string)
 			message, _ := params["message"].(string)
+			onBehalfOf, _ := params["on_behalf_of_ec"].(string)
 			if peerRef == "" || agent == "" || message == "" {
 				return "", fmt.Errorf("peer, agent, and message are required")
 			}
@@ -54,7 +55,7 @@ func (s *Server) newSendToRemoteAgentTool() tools.ToolDef {
 				return "", err
 			}
 			var collected strings.Builder
-			remErr, callErr := s.peeringDialer.SendToRemoteAgent(ctx, *p, agent, message, func(b []byte) error {
+			remErr, callErr := s.peeringDialer.SendToRemoteAgentAs(ctx, *p, agent, message, onBehalfOf, func(b []byte) error {
 				collected.Write(b)
 				return nil
 			})
@@ -67,9 +68,10 @@ func (s *Server) newSendToRemoteAgentTool() tools.ToolDef {
 			return collected.String(), nil
 		}),
 		Params: map[string]tools.ParamDef{
-			"peer":    {Type: "string", Description: "Peer handle ('@alice@nous') or NodeID ('vega:...')", Required: true},
-			"agent":   {Type: "string", Description: "Local agent name on the peer (e.g. 'researcher')", Required: true},
-			"message": {Type: "string", Description: "Task or question for the remote agent", Required: true},
+			"peer":            {Type: "string", Description: "Peer handle ('@alice@nous') or NodeID ('did:key:...')", Required: true},
+			"agent":           {Type: "string", Description: "Local agent name on the peer (e.g. 'researcher')", Required: true},
+			"message":         {Type: "string", Description: "Task or question for the remote agent", Required: true},
+			"on_behalf_of_ec": {Type: "string", Description: "Optional opaque credential (e.g. LYRA Entrustment Credential) naming the human this request acts for", Required: false},
 		},
 	}
 }

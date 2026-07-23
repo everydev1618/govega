@@ -13,6 +13,30 @@ import (
 type InvokeArgs struct {
 	Agent   string `json:"agent"`
 	Message string `json:"message"`
+	// OnBehalfOf is an OPAQUE credential asserting which human principal
+	// this invoke acts for (e.g. a LYRA Entrustment Credential). Peering
+	// carries it verbatim and hands it to the Dispatcher; verification and
+	// subject-keyed authorization belong to higher layers plugged in via
+	// CallerAwareDispatcher. Empty means node-level trust only.
+	OnBehalfOf string `json:"on_behalf_of,omitempty"`
+}
+
+// CallerInfo is what a CallerAwareDispatcher learns about an inbound invoke:
+// the cryptographically authenticated peer node (signed HELLO) and the opaque
+// on-behalf-of credential, if any.
+type CallerInfo struct {
+	PeerNodeID string
+	PeerHandle string
+	OnBehalfOf string
+}
+
+// CallerAwareDispatcher is an optional Dispatcher extension. When the wired
+// dispatcher implements it, HandleInbound routes through DispatchAs with the
+// caller's identity attached — the hook subject-keyed authorization layers
+// plug into.
+type CallerAwareDispatcher interface {
+	Dispatcher
+	DispatchAs(ctx context.Context, caller CallerInfo, agent, message string, emit func([]byte) error) (DispatchStats, error)
 }
 
 // DispatchStats is the accounting summary returned by a local Dispatcher
@@ -73,6 +97,7 @@ func HandleInbound(
 	peerNodeID, peerHandle string,
 	agentID string,
 	message string,
+	onBehalfOf string,
 	op InboundOp,
 	store Store,
 	dispatcher Dispatcher,
@@ -138,8 +163,17 @@ func HandleInbound(
 		return nil
 	}
 
-	// 4. Dispatch + stream.
-	stats, dispatchErr := dispatcher.Dispatch(ctx, canonical, message, op.SendChunk)
+	// 4. Dispatch + stream. Caller-aware dispatchers additionally receive
+	// the authenticated peer identity + the opaque on-behalf-of credential.
+	var stats DispatchStats
+	var dispatchErr error
+	if ca, ok := dispatcher.(CallerAwareDispatcher); ok {
+		stats, dispatchErr = ca.DispatchAs(ctx,
+			CallerInfo{PeerNodeID: peerNodeID, PeerHandle: peerHandle, OnBehalfOf: onBehalfOf},
+			canonical, message, op.SendChunk)
+	} else {
+		stats, dispatchErr = dispatcher.Dispatch(ctx, canonical, message, op.SendChunk)
+	}
 
 	// 5. Finalize audit + report failures.
 	duration := int(time.Since(start).Milliseconds())

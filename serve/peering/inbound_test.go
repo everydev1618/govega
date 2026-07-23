@@ -94,7 +94,7 @@ func TestHandleInbound_HappyPath(t *testing.T) {
 
 	err := HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", "hi",
+		"researcher", "hi", "",
 		op, s, disp)
 	if err != nil {
 		t.Fatalf("HandleInbound: %v", err)
@@ -129,7 +129,7 @@ func TestHandleInbound_UnknownPeerDeniesAndAudits(t *testing.T) {
 
 	err := HandleInbound(context.Background(),
 		"vega:nobody", "",
-		"researcher", "hi",
+		"researcher", "hi", "",
 		op, s, disp)
 	if err != nil {
 		t.Fatalf("HandleInbound: %v", err)
@@ -165,7 +165,7 @@ func TestHandleInbound_NoGrantDenies(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", "hi",
+		"researcher", "hi", "",
 		op, s, disp)
 
 	rows, _ := s.ListAudit(AuditFilter{Limit: 10})
@@ -184,7 +184,7 @@ func TestHandleInbound_EmptyMessageRejected(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", "",
+		"researcher", "", "",
 		op, s, disp)
 	if disp.gotAgent != "" {
 		t.Fatal("dispatcher should not run on empty message")
@@ -202,7 +202,7 @@ func TestHandleInbound_DispatcherErrorAuditedAsError(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", "hi",
+		"researcher", "hi", "",
 		op, s, disp)
 
 	if len(op.errMsgs) != 1 || !strings.Contains(op.errMsgs[0].Message, "exploded") {
@@ -222,7 +222,7 @@ func TestHandleInbound_DurationRecorded(t *testing.T) {
 	start := time.Now()
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"researcher", "hi",
+		"researcher", "hi", "",
 		op, s, disp)
 	elapsed := time.Since(start)
 
@@ -239,7 +239,7 @@ func TestHandleInbound_AgentCanonicalized(t *testing.T) {
 
 	_ = HandleInbound(context.Background(),
 		p.NodeID, p.Handle,
-		"Researcher:proc-12345", "hi",
+		"Researcher:proc-12345", "hi", "",
 		op, s, disp)
 
 	if disp.gotAgent != "researcher" {
@@ -251,5 +251,58 @@ func TestHandleInbound_AgentCanonicalized(t *testing.T) {
 	}
 	if rows[0].Agent != "researcher" {
 		t.Fatalf("audit should record canonicalized agent name; got %q", rows[0].Agent)
+	}
+}
+
+// callerAwareDispatcher records the CallerInfo it was dispatched with.
+type callerAwareDispatcher struct {
+	fakeDispatcher
+	gotCaller CallerInfo
+}
+
+func (d *callerAwareDispatcher) DispatchAs(ctx context.Context, caller CallerInfo, agent, message string, emit func([]byte) error) (DispatchStats, error) {
+	d.gotCaller = caller
+	return d.fakeDispatcher.Dispatch(ctx, agent, message, emit)
+}
+
+// TestHandleInbound_CallerAwareDispatcherSeesOnBehalfOf: when the dispatcher
+// implements CallerAwareDispatcher, it receives the authenticated peer NodeID
+// and the opaque on-behalf-of credential carried in the invoke — the hook a
+// subject-keyed authorization layer (e.g. LYRA) plugs into. The credential is
+// opaque here by design: peering carries it, higher layers verify it.
+func TestHandleInbound_CallerAwareDispatcherSeesOnBehalfOf(t *testing.T) {
+	s, p := grantedSetup(t)
+	op := &fakeOp{opID: 7}
+	disp := &callerAwareDispatcher{fakeDispatcher: fakeDispatcher{chunks: []string{"ok"}}}
+
+	err := HandleInbound(context.Background(),
+		p.NodeID, p.Handle,
+		"researcher", "hi", "opaque-credential-jws",
+		op, s, disp)
+	if err != nil {
+		t.Fatalf("HandleInbound: %v", err)
+	}
+	if disp.gotCaller.PeerNodeID != p.NodeID || disp.gotCaller.OnBehalfOf != "opaque-credential-jws" {
+		t.Fatalf("CallerInfo = %+v", disp.gotCaller)
+	}
+	if disp.gotAgent != "researcher" {
+		t.Fatalf("agent = %q", disp.gotAgent)
+	}
+}
+
+// TestHandleInbound_PlainDispatcherUnaffected: a Dispatcher that does not
+// implement CallerAwareDispatcher keeps working, credential or not.
+func TestHandleInbound_PlainDispatcherUnaffected(t *testing.T) {
+	s, p := grantedSetup(t)
+	op := &fakeOp{opID: 8}
+	disp := &fakeDispatcher{chunks: []string{"ok"}}
+	if err := HandleInbound(context.Background(),
+		p.NodeID, p.Handle,
+		"researcher", "hi", "some-credential",
+		op, s, disp); err != nil {
+		t.Fatalf("HandleInbound: %v", err)
+	}
+	if disp.gotAgent != "researcher" {
+		t.Fatalf("agent = %q", disp.gotAgent)
 	}
 }

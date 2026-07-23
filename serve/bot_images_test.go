@@ -72,7 +72,7 @@ func TestDownloadImageBlock(t *testing.T) {
 func TestChatImagesToBlocks(t *testing.T) {
 	blocks := chatImagesToBlocks([]chatImagePayload{
 		{MediaType: "image/png", Data: "aGVsbG8="},
-		{MediaType: "text/html", Data: "x"},   // not an image → dropped
+		{MediaType: "text/html", Data: "x"},    // not an image → dropped
 		{MediaType: "image/jpeg", Data: ""},    // empty → dropped
 		{MediaType: "image/jpg", Data: "YWJj"}, // normalized to image/jpeg
 	})

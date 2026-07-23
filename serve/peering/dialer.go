@@ -51,11 +51,24 @@ func (d *Dialer) SendToRemoteAgent(
 	agent, message string,
 	onChunk func([]byte) error,
 ) (*RemoteError, error) {
+	return d.SendToRemoteAgentAs(ctx, peer, agent, message, "", onChunk)
+}
+
+// SendToRemoteAgentAs is SendToRemoteAgent carrying an opaque on-behalf-of
+// credential (e.g. a LYRA Entrustment Credential): "this invoke acts for the
+// human this credential names". Peering transports it verbatim; the remote
+// side's dispatcher decides what it means.
+func (d *Dialer) SendToRemoteAgentAs(
+	ctx context.Context,
+	peer Peer,
+	agent, message, onBehalfOf string,
+	onChunk func([]byte) error,
+) (*RemoteError, error) {
 	conn, err := d.getConn(ctx, peer)
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}
-	args, err := json.Marshal(InvokeArgs{Agent: agent, Message: message})
+	args, err := json.Marshal(InvokeArgs{Agent: agent, Message: message, OnBehalfOf: onBehalfOf})
 	if err != nil {
 		return nil, fmt.Errorf("encode args: %w", err)
 	}
