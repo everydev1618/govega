@@ -12,9 +12,9 @@ import (
 
 	"github.com/everydev1618/govega"
 	"github.com/everydev1618/govega/events"
+	"github.com/everydev1618/govega/internal/skills"
 	"github.com/everydev1618/govega/llm"
 	"github.com/everydev1618/govega/mcp"
-	"github.com/everydev1618/govega/internal/skills"
 	"github.com/everydev1618/govega/reactive"
 	"github.com/everydev1618/govega/tools"
 )
@@ -46,27 +46,27 @@ type DelegationObserver func(ctx context.Context, fromAgent, toAgent, message, r
 
 // Interpreter executes DSL workflows.
 type Interpreter struct {
-	doc               *Document
-	orch              *vega.Orchestrator
-	agents            map[string]*vega.Process
-	tools             *tools.Tools
-	skillsLoader      *skills.Loader
-	delegationConfigs map[string]*DelegationDef
-	lazySpawn         bool
-	llmOverride       llm.LLM               // set by WithLLM; applied per-agent in spawnAgent
-	eventPublish      func(e events.Event)  // set by SetEventPublisher; nil = no-op (spine)
-	delegationObserver DelegationObserver
-	inboxBackend      InboxBackend   // for async dispatch completion notifications
-	channelBackend    ChannelBackend // for posting completion summaries to channels
-	memoryInjector       func(proc *vega.Process, agentName string) // injects memory into agent before send
+	doc                    *Document
+	orch                   *vega.Orchestrator
+	agents                 map[string]*vega.Process
+	tools                  *tools.Tools
+	skillsLoader           *skills.Loader
+	delegationConfigs      map[string]*DelegationDef
+	lazySpawn              bool
+	llmOverride            llm.LLM              // set by WithLLM; applied per-agent in spawnAgent
+	eventPublish           func(e events.Event) // set by SetEventPublisher; nil = no-op (spine)
+	delegationObserver     DelegationObserver
+	inboxBackend           InboxBackend                                                // for async dispatch completion notifications
+	channelBackend         ChannelBackend                                              // for posting completion summaries to channels
+	memoryInjector         func(proc *vega.Process, agentName string)                  // injects memory into agent before send
 	delegationCtxDecorator func(ctx context.Context, agentName string) context.Context // rewrites ctx before delegation
-	channelPostCb      func(channelName, agent, content string, msgID int64, threadID *int64)
-	onDispatchStart    func(agentName string) // fires when a dispatched agent begins working
-	onDispatchComplete func(ctx context.Context, agentName, callerName, message, response string, err error) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty); ctx carries the dispatched goroutine's values including the BYOK API key so downstream pokes can authenticate as the original caller
-	onDispatchEvent    func(agentName string, ev vega.ChatEvent)                        // fires for each ChatEvent from a dispatched run, so the serve layer can stream tool calls / text deltas back to the user via SSE
-	serverBaseURL      string                 // set by serve package so agents know their public URL
-	yamlAgents         map[string]bool        // original YAML-defined agent names (survives reset)
-	stepObserver       StepObserver           // set by SetStepObserver; receives workflow step lifecycle events
+	channelPostCb          func(channelName, agent, content string, msgID int64, threadID *int64)
+	onDispatchStart        func(agentName string)                                                                // fires when a dispatched agent begins working
+	onDispatchComplete     func(ctx context.Context, agentName, callerName, message, response string, err error) // fires when a dispatched agent finishes; callerName is the agent that called send_to_agent (may be empty); ctx carries the dispatched goroutine's values including the BYOK API key so downstream pokes can authenticate as the original caller
+	onDispatchEvent        func(agentName string, ev vega.ChatEvent)                                             // fires for each ChatEvent from a dispatched run, so the serve layer can stream tool calls / text deltas back to the user via SSE
+	serverBaseURL          string                                                                                // set by serve package so agents know their public URL
+	yamlAgents             map[string]bool                                                                       // original YAML-defined agent names (survives reset)
+	stepObserver           StepObserver                                                                          // set by SetStepObserver; receives workflow step lifecycle events
 
 	// dispatchSem caps the number of simultaneously-running dispatched
 	// agent goroutines. Each dispatch holds its own conversation history
@@ -75,7 +75,7 @@ type Interpreter struct {
 	// kills. Default 4; tunable via WithMaxConcurrentDispatches.
 	dispatchSem chan struct{}
 
-	mu                sync.RWMutex
+	mu sync.RWMutex
 }
 
 // DefaultMaxConcurrentDispatches is the default cap on simultaneous
@@ -1680,6 +1680,33 @@ func (i *Interpreter) AddAgent(name string, def *Agent) error {
 		i.mu.Lock()
 		delete(i.doc.Agents, name)
 		i.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// EnsureSessionAgent makes sure a per-session instance of a base agent is
+// spawned under the composite name (e.g. "ea:session123"). It shallow-copies
+// the base definition so the session inherits its persona, tools, and model,
+// but gets its own process and — because chat history is keyed by agent name —
+// its own conversation thread. Idempotent: a no-op if the session agent is
+// already registered. This lets a guest-facing agent hold an isolated
+// conversation per session without a first-class session dimension in the store.
+func (i *Interpreter) EnsureSessionAgent(name, base string) error {
+	if i.HasAgent(name) {
+		return nil
+	}
+	baseDef, ok := i.agentDefLocked(base)
+	if !ok {
+		return fmt.Errorf("base agent '%s' not found", base)
+	}
+	clone := *baseDef
+	clone.Name = name
+	if err := i.AddAgent(name, &clone); err != nil {
+		// A concurrent request may have registered it first; treat as success.
+		if strings.Contains(err.Error(), "already exists") {
+			return nil
+		}
 		return err
 	}
 	return nil

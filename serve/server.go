@@ -193,6 +193,15 @@ type Config struct {
 	// inside it, so the first entry runs outermost relative to the rest.
 	Middleware []func(http.Handler) http.Handler
 
+	// SessionedAgents names agents that should get per-session isolation. For
+	// such an agent, a chat URL of the form "<agent>:<session>" spawns a
+	// per-session clone with its own process and chat thread (and, when the
+	// product sets per-request claims, its own memory namespace) instead of
+	// collapsing to the base agent. Products set this for a guest-facing agent
+	// so each guest link is an isolated conversation. Nil/empty preserves the
+	// single-thread-per-agent behavior for every agent.
+	SessionedAgents map[string]bool
+
 	// ExtraSystemProvider, when non-nil, supplies additional system-prompt
 	// content on every chat turn — appended after the standard
 	// memory/project/company blocks. Use this to inject per-session

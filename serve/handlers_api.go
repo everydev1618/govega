@@ -400,6 +400,25 @@ func collapseLegacyCloneName(name string) string {
 	return name
 }
 
+// resolveSessionName maps a chat URL's {name} to the process/storage key and
+// the base-agent identity. For an agent listed in `sessioned`, a non-empty
+// "base:session" suffix is preserved (isSession=true) so each session is an
+// isolated process + chat thread; the caller spawns the per-session instance
+// via Interpreter.EnsureSessionAgent. For every other agent a ":suffix"
+// collapses to the base (the legacy per-user-clone behavior), leaving
+// non-sessioned traffic byte-for-byte unchanged.
+func resolveSessionName(raw string, sessioned map[string]bool) (name, base string, isSession bool) {
+	base = raw
+	idx := strings.Index(raw, ":")
+	if idx >= 0 {
+		base = raw[:idx]
+	}
+	if idx >= 0 && idx+1 < len(raw) && sessioned[base] {
+		return raw, base, true
+	}
+	return base, base, false
+}
+
 // hydrateAgent loads persisted chat history into a process that has no
 // conversation history (e.g. freshly spawned after restart). This gives
 // agents continuity across server restarts.
@@ -425,8 +444,7 @@ func hydrateProcess(store Store, proc *vega.Process, agentName string) {
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
-	name := collapseLegacyCloneName(r.PathValue("name"))
-	baseAgent := name
+	name, baseAgent, isSession := resolveSessionName(r.PathValue("name"), s.cfg.SessionedAgents)
 	userID := chatUserID(r)
 
 	var req struct {
@@ -435,6 +453,19 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "message is required"})
 		return
+	}
+
+	// A sessioned agent ("<base>:<session>") gets its own spawned clone of the
+	// base def, so its process + chat thread are isolated per session. name is
+	// the full session key (used for process/history/persistence); baseAgent is
+	// the base identity (used for memory namespace, budget, extra-system, and
+	// the response reviewer).
+	if isSession {
+		if err := s.interp.EnsureSessionAgent(name, baseAgent); err != nil {
+			slog.Error("failed to ensure session agent", "name", name, "base", baseAgent, "error", err)
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "could not start session"})
+			return
+		}
 	}
 
 	// Budget enforcement — refuse subsequent turns with a canned
