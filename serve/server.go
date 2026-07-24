@@ -572,6 +572,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Hydrate provider env vars from settings so a fresh container with a
 	// restored database boots ready to talk to those providers.
 	s.hydrateGmailRefreshToken()
+	s.hydrateGcalRefreshToken()
 
 	// Resolve company identity.
 	s.company = s.resolveCompany()
@@ -1233,6 +1234,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// REST API
 	mux.HandleFunc("GET /auth/gmail/start", s.handleGmailAuthStart)
 	mux.HandleFunc("GET /auth/gmail/callback", s.handleGmailAuthCallback)
+	mux.HandleFunc("GET /auth/gcal/start", s.handleGcalAuthStart)
+	mux.HandleFunc("GET /auth/gcal/callback", s.handleGcalAuthCallback)
 	mux.HandleFunc("GET /api/v1/company", s.handleGetCompany)
 	mux.HandleFunc("GET /api/v1/processes", s.handleListProcesses)
 	mux.HandleFunc("GET /api/v1/processes/{id}", s.handleGetProcess)
