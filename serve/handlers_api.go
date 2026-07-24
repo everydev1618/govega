@@ -507,6 +507,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Second-pass disclosure screen (no-op unless a reviewer is configured).
+	// We persist and return the reviewed text, so history reflects exactly
+	// what the user saw.
+	response = s.reviewChatResponse(ctx, name, baseAgent, userID, response)
+
 	// Persist assistant response.
 	if err := s.store.InsertChatMessage(name, "assistant", response, nil); err != nil {
 		slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
@@ -532,6 +537,19 @@ func chatResponseWithRecall(response string, ledger *RecallLedger) map[string]an
 		out["recalled"] = toWireRecall(entries)
 	}
 	return out
+}
+
+// reviewChatResponse applies the configured ChatResponseReviewer to a
+// generated reply, returning the text to deliver. No-op when no reviewer is
+// set, on an empty response, or when the reviewer returns "" (keep original).
+func (s *Server) reviewChatResponse(ctx context.Context, agentName, baseAgent, userID, response string) string {
+	if s == nil || s.cfg.ChatResponseReviewer == nil || response == "" {
+		return response
+	}
+	if reviewed := s.cfg.ChatResponseReviewer(ctx, agentName, baseAgent, userID, response); reviewed != "" {
+		return reviewed
+	}
+	return response
 }
 
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {

@@ -204,6 +204,17 @@ type Config struct {
 	// where appropriate.
 	ExtraSystemProvider ExtraSystemProvider
 
+	// ChatResponseReviewer, when non-nil, receives the final assistant reply
+	// for a NON-STREAMING chat turn and returns the text actually delivered to
+	// (and persisted for) the user — unchanged if safe, or rewritten/redacted.
+	// Embedding products use this as a second-pass disclosure screen on
+	// guest-facing agents. It runs only on the non-streaming /chat path, so an
+	// agent that must be reviewed should be reachable only via /chat (not
+	// /chat/stream). Return "" for a no-op (keep the original).
+	//
+	// Runs on the chat hot path after generation: keep it reasonably fast.
+	ChatResponseReviewer ChatResponseReviewer
+
 	// WrapPeeringDispatcher, when non-nil, wraps the peering Dispatcher
 	// before it is wired to the AIRE node. Embedding products use this to
 	// add subject-keyed authorization (e.g. a LYRA gate verifying
@@ -231,6 +242,11 @@ type Config struct {
 //   - baseAgent is the un-namespaced agent name, e.g. "guide".
 //   - userID is the authenticated user (empty in self-hosted mode).
 type ExtraSystemProvider func(ctx context.Context, agentName, baseAgent, userID string) string
+
+// ChatResponseReviewer screens a generated chat reply before delivery. See
+// Config.ChatResponseReviewer. It returns the text to deliver, or "" for a
+// no-op (deliver the original unchanged).
+type ChatResponseReviewer func(ctx context.Context, agentName, baseAgent, userID, response string) string
 
 // Server is the HTTP server for the Vega dashboard and REST API.
 type Server struct {
