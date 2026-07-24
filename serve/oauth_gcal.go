@@ -18,7 +18,11 @@ import (
 // endpoints reuse the gmail* package vars so tests can point both at one
 // httptest server.
 const (
-	gcalScope                  = "https://www.googleapis.com/auth/calendar.readonly"
+	// calendar.readonly lists calendars + free/busy; calendar.events allows
+	// creating holds. The token is write-capable, but the AGENT's power is
+	// bounded by the tools the embedder exposes (a create-only book_hold, no
+	// delete/modify tool) — not by this scope.
+	gcalScope                  = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events"
 	gcalRefreshTokenSettingKey = "gcal.refresh_token"
 	gcalCallbackPath           = "/auth/gcal/callback"
 )
@@ -158,7 +162,7 @@ func (s *Server) handleGcalAuthCallback(w http.ResponseWriter, r *http.Request) 
 	_, _ = io.WriteString(w, `<!doctype html>
 <html><body style="font-family: system-ui, sans-serif; max-width: 40ch; margin: 4rem auto; line-height: 1.5">
 <h1>Google Calendar connected</h1>
-<p>Read-only calendar access is stored. Your assistant can now check your availability (free/busy). It cannot create or change events.</p>
+<p>Your assistant can now check your availability (free/busy) and place tentative holds for you to confirm. It cannot delete or rewrite existing events.</p>
 <p><small>This page is served from your Vega instance, not Google.</small></p>
 </body></html>`)
 }
