@@ -272,6 +272,13 @@ func (p *Process) SetExtraSystem(content string) {
 	p.extraSystem = content
 }
 
+// ExtraSystem returns the currently-set extra system content (empty if none).
+func (p *Process) ExtraSystem() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.extraSystem
+}
+
 // DefaultTurnTimeout bounds a single conversation turn (one Send/SendStream/
 // SendStreamRich) when neither the caller's context nor the process sets a
 // tighter deadline. It is the backstop against a stalled LLM stream or a hung

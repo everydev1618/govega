@@ -1854,8 +1854,14 @@ func (i *Interpreter) SendToAgent(ctx context.Context, agentName string, message
 		}
 	}
 
-	// Inject memory so the agent has context from prior conversations.
-	if i.memoryInjector != nil {
+	// Inject memory so the agent has context from prior conversations — but
+	// ONLY when the caller hasn't already composed an extra-system for this
+	// process. A user-facing chat handler sets the full extra-system (memory +
+	// project + company + its ExtraSystemProvider hook) before calling us;
+	// re-injecting here would overwrite that richer content (dropping the
+	// hook's output). Fresh/ephemeral delegated procs have no extra-system yet,
+	// so they still get memory injected.
+	if i.memoryInjector != nil && proc.ExtraSystem() == "" {
 		i.memoryInjector(proc, agentName)
 	}
 
