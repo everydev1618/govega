@@ -224,15 +224,17 @@ var modelPricing = map[string]struct {
 	OutputPer1M float64
 }{
 	// Current generation
-	"claude-fable-5":      {10.00, 50.00},
-	"claude-mythos-5":     {10.00, 50.00},
-	"claude-opus-4-8":     {5.00, 25.00},
-	"claude-opus-4-7":     {5.00, 25.00},
-	"claude-opus-4-6":     {5.00, 25.00},
-	"claude-opus-4-5":     {5.00, 25.00},
-	"claude-sonnet-4-6":   {3.00, 15.00},
-	"claude-sonnet-4-5":   {3.00, 15.00},
-	"claude-haiku-4-5":    {1.00, 5.00},
+	"claude-fable-5":    {10.00, 50.00},
+	"claude-mythos-5":   {10.00, 50.00},
+	"claude-opus-5":     {5.00, 25.00},
+	"claude-sonnet-5":   {3.00, 15.00},
+	"claude-opus-4-8":   {5.00, 25.00},
+	"claude-opus-4-7":   {5.00, 25.00},
+	"claude-opus-4-6":   {5.00, 25.00},
+	"claude-opus-4-5":   {5.00, 25.00},
+	"claude-sonnet-4-6": {3.00, 15.00},
+	"claude-sonnet-4-5": {3.00, 15.00},
+	"claude-haiku-4-5":  {1.00, 5.00},
 
 	// Dated aliases
 	"claude-haiku-4-5-20251001": {1.00, 5.00},
@@ -280,8 +282,14 @@ type ModelCapabilities struct {
 var modelCapabilities = map[string]ModelCapabilities{
 	// Fable 5 / Mythos 5: thinking is always on (an explicit adaptive block
 	// is accepted); sampling params removed; 128K output, 1M context.
-	"claude-fable-5":    {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
-	"claude-mythos-5":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	"claude-fable-5":  {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	"claude-mythos-5": {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	// Opus 5: thinking on by default (an explicit adaptive block is
+	// accepted); sampling params removed; full effort ladder; 128K output.
+	"claude-opus-5": {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
+	// Sonnet 5: adaptive thinking on by default; non-default sampling
+	// params rejected; 128K output.
+	"claude-sonnet-5": {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
 	// Opus 4.8 keeps the same request surface as 4.7.
 	"claude-opus-4-8":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},
 	"claude-opus-4-7":   {AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000},

@@ -10,11 +10,13 @@ import (
 
 func TestCalculateCostCurrentModels(t *testing.T) {
 	tests := []struct {
-		model        string
-		inputPer1M   float64
-		outputPer1M  float64
+		model       string
+		inputPer1M  float64
+		outputPer1M float64
 	}{
 		{"claude-fable-5", 10.00, 50.00},
+		{"claude-opus-5", 5.00, 25.00},
+		{"claude-sonnet-5", 3.00, 15.00},
 		{"claude-opus-4-8", 5.00, 25.00},
 		{"claude-opus-4-7", 5.00, 25.00},
 		{"claude-opus-4-6", 5.00, 25.00},
@@ -78,6 +80,11 @@ func TestCapabilitiesCurrentModels(t *testing.T) {
 		// Fable 5: thinking always on (adaptive accepted), effort supported,
 		// sampling params removed, structured outputs, 128K output.
 		{"claude-fable-5", ModelCapabilities{AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000}},
+		// Opus 5: thinking on by default (adaptive accepted), sampling
+		// params removed, full effort ladder, 128K output.
+		{"claude-opus-5", ModelCapabilities{AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000}},
+		// Sonnet 5: adaptive on by default, non-default sampling rejected.
+		{"claude-sonnet-5", ModelCapabilities{AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000}},
 		// Opus 4.8: same request surface as 4.7.
 		{"claude-opus-4-8", ModelCapabilities{AdaptiveThinking: true, SupportsEffort: true, SupportsTemperature: false, SupportsStructuredOutputs: true, MaxOutputTokens: 128000}},
 	}
