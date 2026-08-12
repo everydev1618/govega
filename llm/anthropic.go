@@ -36,6 +36,10 @@ type AnthropicLLM struct {
 	// retryBase is the exponential-backoff base for retries (default 5s
 	// when zero). Tests shrink it.
 	retryBase time.Duration
+	// webSearch declares Anthropic's server-side web search and web fetch
+	// tools on every request. Server-executed: no client tool loop runs;
+	// results come back as content blocks in the same response.
+	webSearch bool
 }
 
 // AnthropicOption configures the Anthropic client.
@@ -88,6 +92,17 @@ func WithMaxConcurrent(n int) AnthropicOption {
 func WithEffort(effort string) AnthropicOption {
 	return func(a *AnthropicLLM) {
 		a.effort = effort
+	}
+}
+
+// WithWebSearch enables Anthropic's server-side web search and web fetch
+// tools (web_search_20260209 / web_fetch_20260209). Requires a model that
+// supports them (Opus 4.6+ / Sonnet 4.6+ generations); searches bill
+// separately from tokens. A paused server-side loop surfaces as
+// StopReasonPause, which the process loop already resumes.
+func WithWebSearch() AnthropicOption {
+	return func(a *AnthropicLLM) {
+		a.webSearch = true
 	}
 }
 
@@ -188,24 +203,29 @@ type contentBlock struct {
 	IsError   bool           `json:"is_error,omitempty"`
 }
 
-
 type anthropicTool struct {
+	// Type is set only for Anthropic-defined server tools (e.g.
+	// web_search_20260209); custom tools omit it.
+	Type         string         `json:"type,omitempty"`
 	Name         string         `json:"name"`
-	Description  string         `json:"description"`
-	InputSchema  map[string]any `json:"input_schema"`
+	Description  string         `json:"description,omitempty"`
+	InputSchema  map[string]any `json:"input_schema,omitempty"`
 	CacheControl *cacheControl  `json:"cache_control,omitempty"`
 }
 
 // anthropicResponse is the API response format.
 type anthropicResponse struct {
-	ID           string         `json:"id"`
-	Type         string         `json:"type"`
-	Role         string         `json:"role"`
-	Content      []contentBlock `json:"content"`
-	Model        string         `json:"model"`
-	StopReason   string         `json:"stop_reason"`
-	StopSequence string         `json:"stop_sequence"`
-	Usage struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Role string `json:"role"`
+	// Content stays raw per block: server-side tool blocks (e.g.
+	// web_search_tool_result, whose content is an array) do not fit the
+	// typed contentBlock, and replaying a paused turn needs them verbatim.
+	Content      []json.RawMessage `json:"content"`
+	Model        string            `json:"model"`
+	StopReason   string            `json:"stop_reason"`
+	StopSequence string            `json:"stop_sequence"`
+	Usage        struct {
 		InputTokens              int `json:"input_tokens"`
 		OutputTokens             int `json:"output_tokens"`
 		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
@@ -489,6 +509,16 @@ func (a *AnthropicLLM) buildRequestCtx(ctx context.Context, messages []Message, 
 		}
 	}
 
+	// Server-side web tools ride along after the custom tools. Anthropic
+	// executes these; no client tool loop is involved, and their definitions
+	// are API-owned so they carry no schema.
+	if a.webSearch {
+		req.Tools = append(req.Tools,
+			anthropicTool{Type: "web_search_20260209", Name: "web_search"},
+			anthropicTool{Type: "web_fetch_20260209", Name: "web_fetch"},
+		)
+	}
+
 	return req
 }
 
@@ -566,6 +596,15 @@ func blocksToAnthropic(blocks []ContentBlock) []any {
 				blk["is_error"] = true
 			}
 			out = append(out, blk)
+		case BlockOpaque:
+			if len(b.Raw) == 0 {
+				continue
+			}
+			var m map[string]any
+			if err := json.Unmarshal(b.Raw, &m); err != nil {
+				continue
+			}
+			out = append(out, m)
 		case BlockImage:
 			if b.Data == "" {
 				continue
@@ -882,7 +921,29 @@ func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Durat
 
 	// Parse content blocks — kept both as the legacy flat fields and as
 	// ordered typed Blocks so callers can replay the turn losslessly.
-	for _, block := range resp.Content {
+	for _, raw := range resp.Content {
+		var head struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &head); err != nil {
+			slog.Warn("unparseable content block", "err", err)
+			continue
+		}
+
+		// Anything but the three typed kinds — server_tool_use,
+		// web_search_tool_result, and whatever the API grows next — is kept
+		// verbatim, because a paused server-side turn resumes only if the
+		// assistant turn is replayed with these blocks intact.
+		if head.Type != "text" && head.Type != "tool_use" && head.Type != "thinking" {
+			result.Blocks = append(result.Blocks, ContentBlock{Type: BlockOpaque, Raw: raw})
+			continue
+		}
+
+		var block contentBlock
+		if err := json.Unmarshal(raw, &block); err != nil {
+			slog.Warn("unparseable content block", "type", head.Type, "err", err)
+			continue
+		}
 		switch block.Type {
 		case "text":
 			result.Content += block.Text

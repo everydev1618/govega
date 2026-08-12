@@ -127,10 +127,10 @@ func TestParseResponseBuildsBlocks(t *testing.T) {
 	resp := &anthropicResponse{
 		Model:      "claude-sonnet-4-6",
 		StopReason: "tool_use",
-		Content: []contentBlock{
-			{Type: "thinking", Thinking: "I should check the weather", Signature: "sig-xyz"},
-			{Type: "text", Text: "Let me check."},
-			{Type: "tool_use", ID: "tu-9", Name: "get_weather", Input: map[string]any{"city": "PDX"}},
+		Content: []json.RawMessage{
+			json.RawMessage(`{"type":"thinking","thinking":"I should check the weather","signature":"sig-xyz"}`),
+			json.RawMessage(`{"type":"text","text":"Let me check."}`),
+			json.RawMessage(`{"type":"tool_use","id":"tu-9","name":"get_weather","input":{"city":"PDX"}}`),
 		},
 	}
 

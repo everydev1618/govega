@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 )
@@ -35,6 +36,10 @@ const (
 	BlockToolUse    = "tool_use"
 	BlockToolResult = "tool_result"
 	BlockImage      = "image"
+	// BlockOpaque carries a content block govega does not model — server-side
+	// tool blocks like server_tool_use and web_search_tool_result — verbatim
+	// in Raw, so replaying the turn stays lossless.
+	BlockOpaque = "opaque"
 )
 
 // ContentBlock is one typed unit of message content. Exactly one group of
@@ -67,6 +72,10 @@ type ContentBlock struct {
 	// (e.g. "image/png"). Vision-capable models read these on user turns.
 	MediaType string `json:"media_type,omitempty"`
 	Data      string `json:"data,omitempty"`
+
+	// Raw is the verbatim API block for BlockOpaque — block types govega
+	// does not model, preserved so turn replay is lossless.
+	Raw json.RawMessage `json:"raw,omitempty"`
 }
 
 // Role identifies the message sender.
