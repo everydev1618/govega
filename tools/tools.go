@@ -154,8 +154,21 @@ type ToolDef struct {
 	Params      map[string]ParamDef
 }
 
-// ToolMiddleware wraps tool execution.
+// ToolMiddleware wraps tool execution. The executing tool's name is
+// available via ToolNameFromContext, so one middleware can gate or observe
+// specific tools (approval prompts, auditing, rate limits).
 type ToolMiddleware func(ToolFunc) ToolFunc
+
+// toolNameCtxKey carries the executing tool's name through Execute so
+// middleware and tool functions can read it.
+type toolNameCtxKey struct{}
+
+// ToolNameFromContext returns the name of the tool currently executing, or
+// "" outside a tool execution.
+func ToolNameFromContext(ctx context.Context) string {
+	name, _ := ctx.Value(toolNameCtxKey{}).(string)
+	return name
+}
 
 // ToolFunc is the signature for tool execution.
 type ToolFunc func(ctx context.Context, params map[string]any) (string, error)
@@ -394,6 +407,9 @@ func (t *Tools) Execute(ctx context.Context, name string, params map[string]any)
 	for i := len(middleware) - 1; i >= 0; i-- {
 		exec = middleware[i](exec)
 	}
+
+	// Name the execution so middleware and tool functions can read it.
+	ctx = context.WithValue(ctx, toolNameCtxKey{}, name)
 
 	// Recover from panics in tool functions or middleware. A malformed
 	// model-supplied argument (e.g. a missing/mistyped param that a built-in
