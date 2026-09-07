@@ -303,11 +303,37 @@ func toolResultsMessage(results []llm.ContentBlock) llm.Message {
 	return llm.Message{Role: llm.RoleUser, Blocks: results}
 }
 
-// tryCompactContext compacts the agent's context manager after a
-// context-window overflow. Returns false when the agent has no compactable
-// context (or compaction failed) — the caller should surface
-// ErrContextWindowExceeded instead of retrying.
+// ContextPressureHook is consulted on a context-window overflow BEFORE
+// compaction. Returning true means the pressure was relieved externally —
+// e.g. a local-model harness grew the backing server's context window — and
+// the request should be retried with the conversation intact instead of
+// compacted. Products register one at startup via SetContextPressureHook.
+type ContextPressureHook func(p *Process) bool
+
+var (
+	contextPressureMu   sync.RWMutex
+	contextPressureHook ContextPressureHook
+)
+
+// SetContextPressureHook installs the process-wide hook (nil clears it).
+func SetContextPressureHook(hook ContextPressureHook) {
+	contextPressureMu.Lock()
+	defer contextPressureMu.Unlock()
+	contextPressureHook = hook
+}
+
+// tryCompactContext resolves a context-window overflow: first by the
+// registered pressure hook (grow the window, keep the conversation), then by
+// compacting the agent's context manager. Returns false when neither works —
+// the caller should surface ErrContextWindowExceeded instead of retrying.
 func (p *Process) tryCompactContext() bool {
+	contextPressureMu.RLock()
+	hook := contextPressureHook
+	contextPressureMu.RUnlock()
+	if hook != nil && hook(p) {
+		slog.Info("context pressure relieved by hook; retrying without compaction", "process_id", p.ID)
+		return true
+	}
 	cc, ok := p.Agent.Context.(memory.CompactableContext)
 	if !ok || p.llm == nil {
 		return false
