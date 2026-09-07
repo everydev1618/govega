@@ -1193,9 +1193,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// Start server in goroutine.
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("vega serve started", "addr", addr)
-		fmt.Printf("Dashboard: %s\n", baseURL)
-		fmt.Printf("API:       %s/api/v1/stats\n", baseURL)
+		slog.Info("vega serve started", "addr", addr, "api", baseURL+"/api/v1/stats")
+		fmt.Printf("dashboard: %s\n", baseURL)
 		if err := srv.Serve(ln); err != http.ErrServerClosed {
 			errCh <- err
 		}
