@@ -18,8 +18,6 @@ github.com/MicahParks/keyfunc/v3 v3.8.0 h1:Hx2dgIjAXGk9slakM6rV9BOeaWDPEXXZ4Us8g
 github.com/MicahParks/keyfunc/v3 v3.8.0/go.mod h1:z66bkCviwqfg2YUp+Jcc/xRE9IXLcMq6DrgV/+Htru0=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/aire-protocol/aire-go v0.0.0-20260509053352-78cc4cbe6e44 h1:w8ldrAXT9q4OAc5sM28rx+5qjFxj+GD1fgWCbJnAeVs=
-github.com/aire-protocol/aire-go v0.0.0-20260509053352-78cc4cbe6e44/go.mod h1:TcLrM7eKtZfBa85UwIFyIV/jte328+r0+T/WejsfIaA=
 github.com/aire-protocol/aire-go v0.0.0-20260612125704-6b4285627f4c h1:PZBYaoZnXLtqfVZpXrcgXskDo7vgfQ95ZHas5ugGk1g=
 github.com/aire-protocol/aire-go v0.0.0-20260612125704-6b4285627f4c/go.mod h1:TcLrM7eKtZfBa85UwIFyIV/jte328+r0+T/WejsfIaA=
 github.com/bwmarrin/discordgo v0.29.0 h1:FmWeXFaKUwrcL3Cx65c20bTRW+vOb6k8AnaP+EgjDno=
@@ -47,8 +45,8 @@ github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
-github.com/everydev1618/vega-population v0.1.0 h1:gDwft0qTqHTiE9X8Lljr/TbYTnQ/N7Zlu2xSuhqihOc=
-github.com/everydev1618/vega-population v0.1.0/go.mod h1:SGx3PqxUd2L7oFuw5U1wQrOPTgQOEoobbcVgQke903o=
+github.com/everydev1618/vega-population v0.1.1 h1:YJ6F4G9rjxmammvlEsMKEsbGuK3LHDt45lFBAS+YlPE=
+github.com/everydev1618/vega-population v0.1.1/go.mod h1:SGx3PqxUd2L7oFuw5U1wQrOPTgQOEoobbcVgQke903o=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

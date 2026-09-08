@@ -7,7 +7,7 @@ require (
 	github.com/aire-protocol/aire-go v0.0.0-20260612125704-6b4285627f4c
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/docker/docker v28.5.2+incompatible
-	github.com/everydev1618/vega-population v0.1.0
+	github.com/everydev1618/vega-population v0.1.1
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0

@@ -81,7 +81,7 @@ func TestBuildTeamPromptEmpty(t *testing.T) {
 }
 
 func TestBuildTeamPromptPreservesSystem(t *testing.T) {
-	system := "You are a veteran coach. Coach founders."
+	system := "You are a veteran startup coach. Coach founders."
 	result := BuildTeamPrompt(system, []string{"ann"}, nil, true)
 	if !strings.HasPrefix(result, system) {
 		t.Error("should preserve original system prompt as prefix")
