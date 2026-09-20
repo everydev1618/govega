@@ -779,19 +779,23 @@ func (p *Process) buildMessages() []llm.Message {
 		p.mu.RLock()
 		extra := p.extraSystem
 		p.mu.RUnlock()
-		if extra != "" {
-			systemContent += "\n\n" + extra
-		}
 		// Ground the agent in real wall-clock time on every turn. Chat
 		// agents are long-lived, reused processes, so a date computed at
 		// spawn goes stale — the model then falls back on its training-data
 		// sense of "today" and confidently reports the wrong date. Because
 		// buildMessages runs on every LLM call, this stays current. Day
-		// granularity keeps the cached system block stable within a day.
+		// granularity keeps the cached system block stable within a day, and
+		// the date is identical across processes, so it belongs in the
+		// cacheable half.
 		systemContent += "\n\nToday's date is " + currentDateLine() + "."
+		// Extra system content is per-process by definition (see
+		// SetExtraSystem) — user identity, memory, project context. Keeping it
+		// out of Content is what lets every process share one cached prefix
+		// instead of writing a byte-unique one of its own.
 		messages = append(messages, llm.Message{
-			Role:    llm.RoleSystem,
-			Content: systemContent,
+			Role:     llm.RoleSystem,
+			Content:  systemContent,
+			Volatile: extra,
 		})
 	}
 

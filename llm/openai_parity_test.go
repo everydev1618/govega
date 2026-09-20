@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -113,5 +114,23 @@ func TestAnthropicStreamMessageEndCarriesCost(t *testing.T) {
 	want := 3.00 + 15.00 // sonnet-4-6: 1M in + 1M out
 	if math.Abs(cost-want) > 0.0001 {
 		t.Errorf("message_end CostUSD = %.4f, want %.4f", cost, want)
+	}
+}
+
+// The OpenAI backend has no cache breakpoints to place, but it must not drop
+// the volatile half of a split system prompt on the floor.
+func TestOpenAIKeepsVolatileSystemContent(t *testing.T) {
+	o := &OpenAILLM{model: "gpt-4o"}
+	req := o.buildRequest([]Message{
+		{Role: RoleSystem, Content: "you are sven.", Volatile: "You are talking to Ada."},
+		{Role: RoleUser, Content: "hi"},
+	}, nil, false)
+
+	if len(req.Messages) == 0 || req.Messages[0].Role != "system" {
+		t.Fatalf("first message = %+v, want a system message", req.Messages)
+	}
+	got := req.Messages[0].Content
+	if !strings.Contains(got, "you are sven.") || !strings.Contains(got, "You are talking to Ada.") {
+		t.Errorf("system content = %q, want both halves", got)
 	}
 }

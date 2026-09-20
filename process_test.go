@@ -851,3 +851,54 @@ func TestCurrentDateLineDefaultsToUTC(t *testing.T) {
 		t.Errorf("currentDateLine() = %q, want it to contain UTC date %q", got, want)
 	}
 }
+
+// TestBuildMessagesRoutesExtraSystemToVolatile covers the per-process half of
+// the prompt-caching fix. SetExtraSystem carries per-process context (user
+// identity, memory) that is byte-unique per process; concatenating it onto the
+// shared persona made every process write its own cache entry and read none.
+// It belongs in Message.Volatile, which the Anthropic backend renders as a
+// second, uncached system block behind the cached prefix.
+func TestBuildMessagesRoutesExtraSystemToVolatile(t *testing.T) {
+	t.Setenv("VEGA_TIMEZONE", "")
+	p := &Process{
+		Agent:    &Agent{System: StaticPrompt("You are Sven.")},
+		messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
+	}
+	p.SetExtraSystem("You are talking to Ada. You remember she runs platform.")
+
+	msgs := p.buildMessages()
+	if len(msgs) == 0 || msgs[0].Role != llm.RoleSystem {
+		t.Fatalf("expected first message to be system, got %+v", msgs)
+	}
+	sys := msgs[0]
+
+	if !strings.Contains(sys.Content, "You are Sven.") {
+		t.Errorf("static half dropped the persona:\n%s", sys.Content)
+	}
+	if strings.Contains(sys.Content, "Ada") {
+		t.Errorf("per-process context leaked into the cacheable half:\n%s", sys.Content)
+	}
+	// The date is the same for every process on a given day, so it stays in
+	// the cacheable half — moving it out would cost a block for nothing.
+	if want := time.Now().UTC().Format("January 2, 2006"); !strings.Contains(sys.Content, want) {
+		t.Errorf("static half missing current date %q:\n%s", want, sys.Content)
+	}
+	if !strings.Contains(sys.Volatile, "You are talking to Ada.") {
+		t.Errorf("Volatile = %q, want the extra system content", sys.Volatile)
+	}
+}
+
+// With no extra system content the system message must be exactly what it was
+// before the split — one block, persona then date.
+func TestBuildMessagesLeavesVolatileEmptyWithoutExtraSystem(t *testing.T) {
+	t.Setenv("VEGA_TIMEZONE", "")
+	p := &Process{
+		Agent:    &Agent{System: StaticPrompt("You are Sven.")},
+		messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
+	}
+
+	msgs := p.buildMessages()
+	if msgs[0].Volatile != "" {
+		t.Errorf("Volatile = %q, want empty", msgs[0].Volatile)
+	}
+}

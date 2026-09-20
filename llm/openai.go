@@ -125,10 +125,10 @@ type openaiStreamOptions struct {
 }
 
 type openaiMsg struct {
-	Role       string            `json:"role"`
-	Content    string            `json:"content,omitempty"`
-	ToolCalls  []openaiToolCall  `json:"tool_calls,omitempty"`
-	ToolCallID string            `json:"tool_call_id,omitempty"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
+	ToolCalls  []openaiToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
 type openaiTool struct {
@@ -267,9 +267,16 @@ func (o *OpenAILLM) buildRequest(messages []Message, tools []ToolSchema, stream 
 
 	for _, msg := range messages {
 		if msg.Role == RoleSystem {
+			// OpenAI caches prefixes automatically with no breakpoint to
+			// place, so the volatile tail just rides along at the end —
+			// where it still keeps the stable prefix ahead of it intact.
+			content := msg.Content
+			if msg.Volatile != "" {
+				content += "\n\n" + msg.Volatile
+			}
 			req.Messages = append(req.Messages, openaiMsg{
 				Role:    "system",
-				Content: msg.Content + toolNudge,
+				Content: content + toolNudge,
 			})
 			toolNudge = "" // Only add once.
 			continue

@@ -127,8 +127,8 @@ func TestBuildRequestSerializesAdaptiveAndEffort(t *testing.T) {
 
 func TestBuildRequestMaxTokensFromCapability(t *testing.T) {
 	tests := []struct {
-		model        string
-		stream       bool
+		model         string
+		stream        bool
 		wantMaxTokens int
 	}{
 		// Streaming uses the model ceiling
@@ -185,11 +185,11 @@ func TestBuildRequestNoBudgetTokens(t *testing.T) {
 // next call reads it.
 //
 // Contract:
-//   * Last message with string content → converted to a single text block
+//   - Last message with string content → converted to a single text block
 //     carrying cache_control.
-//   * Last message with structured blocks (tool_use / tool_result) →
+//   - Last message with structured blocks (tool_use / tool_result) →
 //     cache_control on the LAST block.
-//   * Existing system + last-tool breakpoints stay.
+//   - Existing system + last-tool breakpoints stay.
 func TestBuildRequestCachesTrailingMessage(t *testing.T) {
 	t.Run("string content trailing message", func(t *testing.T) {
 		a := newTestClient(WithModel("claude-sonnet-4-6"))
@@ -279,5 +279,99 @@ func TestBuildRequestCachesTrailingMessage(t *testing.T) {
 		a := newTestClient(WithModel("claude-sonnet-4-6"))
 		// system-only message should still produce a valid request.
 		_ = a.buildRequest([]Message{{Role: RoleSystem, Content: "sys"}}, nil, false)
+	})
+}
+
+// TestBuildRequestSplitsVolatileSystemContent covers the second half of the
+// caching story: a system prompt that ends in per-conversation context (who
+// the user is, what the agent remembers about them) is byte-unique per
+// conversation, so a single cached system block is never shared. Splitting
+// the volatile tail into its own uncached block lets every conversation read
+// the same cached prefix.
+func TestBuildRequestSplitsVolatileSystemContent(t *testing.T) {
+	t.Run("volatile tail becomes a second uncached block", func(t *testing.T) {
+		a := newTestClient(WithModel("claude-sonnet-4-6"))
+		req := a.buildRequest([]Message{
+			{Role: RoleSystem, Content: "you are sven.", Volatile: "You are talking to Ada."},
+			{Role: RoleUser, Content: "hi"},
+		}, nil, false)
+
+		blocks, ok := req.System.([]systemBlock)
+		if !ok {
+			t.Fatalf("System = %T, want []systemBlock", req.System)
+		}
+		if len(blocks) != 2 {
+			t.Fatalf("system blocks = %d, want 2", len(blocks))
+		}
+		if blocks[0].Text != "you are sven." {
+			t.Errorf("block 0 text = %q, want the static prompt", blocks[0].Text)
+		}
+		if blocks[0].CacheControl == nil {
+			t.Error("static block missing cache_control — nothing would be cached")
+		}
+		if blocks[1].Text != "You are talking to Ada." {
+			t.Errorf("block 1 text = %q, want the volatile tail", blocks[1].Text)
+		}
+		if blocks[1].CacheControl != nil {
+			t.Error("volatile block carries cache_control — that breakpoint can never be read")
+		}
+	})
+
+	t.Run("empty volatile stays a single block", func(t *testing.T) {
+		a := newTestClient(WithModel("claude-sonnet-4-6"))
+		req := a.buildRequest([]Message{
+			{Role: RoleSystem, Content: "you are sven."},
+			{Role: RoleUser, Content: "hi"},
+		}, nil, false)
+
+		blocks, _ := req.System.([]systemBlock)
+		if len(blocks) != 1 {
+			t.Fatalf("system blocks = %d, want 1", len(blocks))
+		}
+		if blocks[0].CacheControl == nil {
+			t.Error("system prompt cache_control regressed")
+		}
+	})
+
+	t.Run("breakpoints stay within the API limit of four", func(t *testing.T) {
+		a := newTestClient(WithModel("claude-sonnet-4-6"))
+		tools := []ToolSchema{
+			{Name: "a", Description: "a", InputSchema: map[string]any{"type": "object"}},
+			{Name: "b", Description: "b", InputSchema: map[string]any{"type": "object"}},
+		}
+		req := a.buildRequest([]Message{
+			{Role: RoleSystem, Content: "sys", Volatile: "vol"},
+			{Role: RoleUser, Content: "hi"},
+		}, tools, false)
+
+		n := 0
+		blocks, _ := req.System.([]systemBlock)
+		for _, b := range blocks {
+			if b.CacheControl != nil {
+				n++
+			}
+		}
+		for _, tl := range req.Tools {
+			if tl.CacheControl != nil {
+				n++
+			}
+		}
+		for _, m := range req.Messages {
+			if content, ok := m.Content.([]any); ok {
+				for _, blk := range content {
+					if b, ok := blk.(map[string]any); ok {
+						if _, has := b["cache_control"]; has {
+							n++
+						}
+					}
+				}
+			}
+		}
+		if n > 4 {
+			t.Errorf("cache breakpoints = %d, want at most 4", n)
+		}
+		if n != 3 {
+			t.Errorf("cache breakpoints = %d, want 3 (static system, last tool, trailing message)", n)
+		}
 	})
 }

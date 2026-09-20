@@ -180,8 +180,10 @@ func TestBotExchangeMemoryScopedToDefaultUser(t *testing.T) {
 	if len(msgs) == 0 || msgs[0].Role != llm.RoleSystem {
 		t.Fatal("expected a system message first")
 	}
-	if !strings.Contains(msgs[0].Content, "jackal game lives at") {
-		t.Fatalf("web-scoped (\"default\") wiki memory was not injected on the bot surface; system prompt:\n%s", msgs[0].Content)
+	// Memory rides in the volatile half of the system prompt (it is
+	// per-process context), so assert against the whole thing.
+	if system := msgs[0].SystemText(); !strings.Contains(system, "jackal game lives at") {
+		t.Fatalf("web-scoped (\"default\") wiki memory was not injected on the bot surface; system prompt:\n%s", system)
 	}
 }
 

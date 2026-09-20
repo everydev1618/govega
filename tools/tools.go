@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -68,7 +69,13 @@ func (ps *projectState) set(name string) {
 
 // Tools is a collection of callable tools.
 type Tools struct {
-	tools      map[string]*tool
+	tools map[string]*tool
+	// order is the registration order of the keys in tools. Schema() reports
+	// tools in this order rather than iterating the map, because Go
+	// randomizes map iteration and the tools array is the first thing an
+	// Anthropic prompt-cache prefix hashes — a reshuffle on every request
+	// invalidates system and messages behind it, so nothing ever reads cache.
+	order      []string
 	middleware []ToolMiddleware
 	sandbox    string
 	baseURL    string            // Server base URL for constructing deliverable URLs
@@ -336,6 +343,7 @@ func (t *Tools) Register(name string, fn any) error {
 	}
 
 	t.tools[name] = tl
+	t.order = append(t.order, name)
 	return nil
 }
 
@@ -483,6 +491,51 @@ func (t *Tools) executeInContainer(ctx context.Context, name string, params map[
 	return output, nil
 }
 
+// orderedNames returns the registered tool names in registration order.
+// Callers must hold at least the read lock. A name in the map but missing
+// from order — a mutation site that forgot to record one — is appended
+// sorted, so the oversight degrades to a stable order rather than a tool
+// vanishing from the schema.
+func (t *Tools) orderedNames() []string {
+	names := make([]string, 0, len(t.tools))
+	listed := make(map[string]bool, len(t.tools))
+	for _, name := range t.order {
+		if _, ok := t.tools[name]; !ok || listed[name] {
+			continue
+		}
+		names = append(names, name)
+		listed[name] = true
+	}
+	if len(names) == len(t.tools) {
+		return names
+	}
+	rest := make([]string, 0, len(t.tools)-len(names))
+	for name := range t.tools {
+		if !listed[name] {
+			rest = append(rest, name)
+		}
+	}
+	sort.Strings(rest)
+	return append(names, rest...)
+}
+
+// forget drops name from the registration order. Callers must hold the write
+// lock. Without it a delete-then-re-register cycle — an MCP server that
+// reconnects — would leave the name in order twice. The slice is rebuilt
+// rather than shifted in place because WithSkillsRef copies share its array.
+func (t *Tools) forget(name string) {
+	for i, n := range t.order {
+		if n != name {
+			continue
+		}
+		next := make([]string, 0, len(t.order)-1)
+		next = append(next, t.order[:i]...)
+		next = append(next, t.order[i+1:]...)
+		t.order = next
+		return
+	}
+}
+
 // Schema returns the schemas for all tools.
 // If a skillsRef is set, tools declared by matched skills are also included.
 func (t *Tools) Schema() []llm.ToolSchema {
@@ -492,7 +545,8 @@ func (t *Tools) Schema() []llm.ToolSchema {
 	t.mu.RLock()
 	seen := make(map[string]bool, len(t.tools))
 	schemas := make([]llm.ToolSchema, 0, len(t.tools))
-	for _, tl := range t.tools {
+	for _, name := range t.orderedNames() {
+		tl := t.tools[name]
 		schemas = append(schemas, tl.schema)
 		seen[tl.name] = true
 	}
@@ -541,9 +595,13 @@ func (t *Tools) Filter(names ...string) *Tools {
 		nameSet[n] = true
 	}
 
-	for name, tl := range t.tools {
+	// Walk the parent's registration order, not names — the caller's argument
+	// order is incidental, and a filtered view has to hash the same way on
+	// every call for the prompt cache to hold.
+	for _, name := range t.orderedNames() {
 		if nameSet[name] {
-			filtered.tools[name] = tl
+			filtered.tools[name] = t.tools[name]
+			filtered.order = append(filtered.order, name)
 		}
 	}
 
@@ -555,6 +613,7 @@ func (t *Tools) Filter(names ...string) *Tools {
 func (t *Tools) WithSkillsRef(sp SkillsRef) *Tools {
 	return &Tools{
 		tools:      t.tools,
+		order:      t.order,
 		middleware: t.middleware,
 		sandbox:    t.sandbox,
 		container:  t.container,

@@ -4,6 +4,33 @@ Notable changes to govega. Newest first. Versions ship to v39a tenants via the
 pipeline in `docs/` — each govega `vX.Y.Z` is paired with a v39avega release and
 an `apps.version` migration (see the v39avega-image-pipeline notes).
 
+## v0.9.3 — prompt caching actually caches (2026-09-20)
+
+Two bugs meant agents wrote a cache entry on every request and read almost
+none of them. The `cache_control` breakpoints were all in place; the content
+behind them just never repeated byte-for-byte.
+
+- **`tools.Schema()` no longer shuffles.** It iterated `tools map[string]*tool`
+  directly, and Go randomizes map iteration — so the tools array came out in a
+  different order on every LLM turn. Tools render first in an Anthropic cache
+  prefix, so a reshuffle invalidated system and messages behind it and no
+  request ever hit cache. `Tools` now tracks registration order and reports it;
+  `Filter`/`FilterMCP` views inherit the parent's order.
+- **Per-process system content moved out of the cached block.**
+  `SetExtraSystem` content (user identity, memory, project context) was
+  concatenated onto the shared persona, making the cached system block
+  byte-unique per process. It now travels in the new `llm.Message.Volatile`
+  field, which the Anthropic backend renders as a second, **uncached** system
+  block behind the cached prefix — so every process shares one cached
+  tools+system prefix. The OpenAI backend appends it (no breakpoints to place).
+  Breakpoint count is unchanged at three: static system, last tool, trailing
+  message.
+- `llm.Message.SystemText()` returns both halves for callers to whom the split
+  is an implementation detail (assertions, logging).
+
+Ordering note for existing `SetExtraSystem` users: the rendered prompt is now
+persona → date → extra, where it was persona → extra → date. Same content.
+
 ## v0.8.13 — voice input + richer URL reading (2026-07-05)
 
 - **Discord voice notes**: audio attachments are downloaded and transcribed

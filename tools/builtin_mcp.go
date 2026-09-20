@@ -155,6 +155,7 @@ func (t *Tools) DisconnectBuiltinServer(name string) error {
 	defer t.mu.Unlock()
 	for toolName := range server.tools {
 		delete(t.tools, name+"__"+toolName)
+		t.forget(name + "__" + toolName)
 	}
 	return nil
 }

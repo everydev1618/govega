@@ -176,6 +176,7 @@ func (t *Tools) DisconnectMCPServer(name string) error {
 	for toolName := range t.tools {
 		if strings.HasPrefix(toolName, prefix) {
 			delete(t.tools, toolName)
+			t.forget(toolName)
 		}
 	}
 	t.mu.Unlock()
@@ -315,10 +316,11 @@ func (t *Tools) FilterMCP(patterns ...string) *Tools {
 		mcpClients: t.mcpClients,
 	}
 
-	for name, tl := range t.tools {
+	for _, name := range t.orderedNames() {
 		for _, pattern := range patterns {
 			if matchToolPattern(name, pattern) {
-				filtered.tools[name] = tl
+				filtered.tools[name] = t.tools[name]
+				filtered.order = append(filtered.order, name)
 				break
 			}
 		}

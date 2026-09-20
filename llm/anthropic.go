@@ -444,11 +444,18 @@ func (a *AnthropicLLM) buildRequestCtx(ctx context.Context, messages []Message, 
 	var anthropicMsgs []anthropicMsg
 	for _, msg := range messages {
 		if msg.Role == RoleSystem {
-			req.System = []systemBlock{{
+			// The breakpoint goes on the static block, not the last one: the
+			// volatile tail differs per conversation, so a breakpoint behind
+			// it could never be read. Cached prefix = tools + static system.
+			blocks := []systemBlock{{
 				Type:         "text",
 				Text:         msg.Content,
 				CacheControl: &cacheControl{Type: "ephemeral"},
 			}}
+			if msg.Volatile != "" {
+				blocks = append(blocks, systemBlock{Type: "text", Text: msg.Volatile})
+			}
+			req.System = blocks
 			continue
 		}
 

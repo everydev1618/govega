@@ -27,6 +27,28 @@ type Message struct {
 	Role    Role
 	Content string
 	Blocks  []ContentBlock `json:"Blocks,omitempty"`
+
+	// Volatile is per-conversation system content — who the agent is talking
+	// to, what it remembers about them — that belongs in the system prompt but
+	// is byte-unique per conversation. Meaningful only on a RoleSystem
+	// message. Providers that support prompt caching render it as a second,
+	// uncached system block after Content, so every conversation shares one
+	// cached prefix instead of writing its own. Empty ⇒ one block, as before.
+	Volatile string `json:"Volatile,omitempty"`
+}
+
+// SystemText returns the whole system prompt as the model sees it: the
+// cacheable Content followed by the per-conversation Volatile tail. Use it
+// anywhere the split is an implementation detail — assertions, logging,
+// estimates — rather than reading Content and silently missing half of it.
+func (m Message) SystemText() string {
+	if m.Volatile == "" {
+		return m.Content
+	}
+	if m.Content == "" {
+		return m.Volatile
+	}
+	return m.Content + "\n\n" + m.Volatile
 }
 
 // Content block types.
