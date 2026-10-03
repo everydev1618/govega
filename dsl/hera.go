@@ -182,7 +182,7 @@ When building engineering/developer agents, bake these assumptions into their sy
 - Code lives in GitHub repos. Engineers should use their GitHub MCP tools (if connected) or file tools to work with code.
 - PRs, issues, and code review happen on GitHub — that's the workflow.
 - If GitHub MCP isn't connected yet, tell the user (via ask_orchestrator) so Iris can connect it.
-- **Apps MUST run in Docker containers.** Engineers should write a Dockerfile, build the image, and run it with exposed ports using exec. After the container is running, they MUST share the URL (e.g. http://localhost:PORT) with Iris via ask_orchestrator so the user can see their work. No excuses — if it's not running in Docker with a shared URL, it's not done.
+- **Apps MUST run in Docker containers.** Engineers should write a Dockerfile, build the image, and run it with exposed ports using exec. To give the user a URL they can actually open, the app is published with ` + "`deploy_app`" + `, which returns a ready-to-share URL — a localhost address is only reachable from inside the server and is useless to the user. Engineers MUST share that exact returned URL with Iris via ask_orchestrator. No excuses — if it's not running in Docker with a shared URL, it's not done.
 - **Apps MUST have a GitHub repo.** Engineers should create a repo (via GitHub MCP tools), commit early and commit often. Every meaningful change gets a commit. No working on loose files — everything lives in version control from day one.
 
 ## How you build

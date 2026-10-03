@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { CompanySwitcher } from './CompanySwitcher'
 import { PeeringPill } from './PeeringPill'
+import { OnboardingGate } from './OnboardingGate'
 import { AgentAvatar } from './chat/AgentAvatar'
 import { api } from '../lib/api'
 import type { AgentResponse, Channel, InboxItem, ProcessResponse, TenantConfigResponse } from '../lib/types'
@@ -385,6 +386,10 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* First-run setup. Renders nothing unless the server says it needs an
+          answer it could not deduce — today, this instance's public URL. */}
+      <OnboardingGate />
     </div>
   )
 }

@@ -26,6 +26,14 @@ Notes:
   orchestrator (chief of staff) and **Hera** (agent builder) are
   injected automatically. Pass a YAML file to bring your own agents:
   `./bin/vega serve examples/dev-team.vega.yaml ...`
+- Agents put links to their work (`…/workspace/…`, deployed apps) in
+  chat, and need to know this server's **public** address to do it. On
+  loopback that is just `http://localhost:PORT`. On an instance bound
+  to `0.0.0.0` it is not: Vega learns the right value from the hostname
+  you open the dashboard with, and asks on first run if it can't. Pin
+  it with `--public-url http://vega.const` (or `PUBLIC_URL`) when the
+  address people use isn't the one they'd browse to — a reverse proxy
+  in front, say. See `serve/public_url.go`.
 
 ## The tour
 

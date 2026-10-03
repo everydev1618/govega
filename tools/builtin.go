@@ -161,13 +161,14 @@ func (t *Tools) RegisterBuiltins() {
 				t.OnFileWrite(ctx, path, "write", desc)
 			}
 			msg := "File written successfully"
-			// Include accessible URL when a server base URL is configured,
-			// signed with a capability token when the host gates /workspace/.
-			if t.baseURL != "" && t.sandbox != "" {
+			// Include accessible URL when a server base URL is known, signed
+			// with a capability token when the host gates /workspace/. The
+			// request origin wins over the boot-time value — see base_url.go.
+			if base := t.baseURLFor(ctx); base != "" && t.sandbox != "" {
 				relPath, err := filepath.Rel(t.sandbox, path)
 				if err == nil && !strings.HasPrefix(relPath, "..") {
 					urlPath := "/workspace/" + relPath
-					msg += "\nAccessible at: " + t.signDeliverableURL(t.baseURL+urlPath, urlPath)
+					msg += "\nAccessible at: " + t.signDeliverableURL(base+urlPath, urlPath)
 				}
 			}
 			return msg, nil

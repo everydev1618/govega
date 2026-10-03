@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	vega "github.com/everydev1618/govega"
@@ -30,6 +31,7 @@ func serveCmd(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", "", "HTTP listen address (default: loopback on an auto-assigned port; use e.g. :8080 or 0.0.0.0:8080 to expose)")
 	dbPath := fs.String("db", vega.DefaultDBPath(), "SQLite database path")
+	publicURL := fs.String("public-url", "", "Externally-reachable base URL for this server, e.g. http://vega.const (default: PUBLIC_URL, else learned from the dashboard's own requests)")
 
 	fs.Usage = func() {
 		fmt.Println(`Usage: vega serve [file.vega.yaml] [options]
@@ -46,7 +48,8 @@ Examples:
   vega serve
   vega serve team.vega.yaml
   vega serve team.vega.yaml --addr :8080
-  vega serve team.vega.yaml --db ~/.vega/custom.db`)
+  vega serve team.vega.yaml --db ~/.vega/custom.db
+  vega serve --addr 0.0.0.0:8822 --public-url http://vega.const`)
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -116,7 +119,7 @@ Examples:
 		DBPath:        *dbPath,
 		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		TelegramAgent: os.Getenv("TELEGRAM_AGENT"),
-		PublicURL:     os.Getenv("PUBLIC_URL"),
+		PublicURL:     pickPublicURL(*publicURL, os.Getenv("PUBLIC_URL")),
 		Company:       company,
 	}
 
@@ -130,4 +133,15 @@ Examples:
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// pickPublicURL resolves the externally-reachable base URL: the flag when
+// given, else PUBLIC_URL. Leaving both empty is fine — the server learns its
+// public name from the dashboard's own requests and asks during onboarding
+// only when it can't (see serve/public_url.go).
+func pickPublicURL(flagVal, envVal string) string {
+	if v := strings.TrimSpace(flagVal); v != "" {
+		return v
+	}
+	return strings.TrimSpace(envVal)
 }

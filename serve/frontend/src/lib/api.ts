@@ -51,6 +51,14 @@ export const api = {
   getReactiveActivity: (limit = 200) =>
     fetchAPI<{ events: ReactiveEvent[]; count: number }>(`/reactive/activity?limit=${limit}`),
 
+  // First-run onboarding (public URL for deliverable links).
+  getOnboarding: () => fetchAPI<import('./types').OnboardingStatus>('/onboarding'),
+  setOnboarding: (body: { public_url?: string; dismiss?: boolean }) =>
+    fetchAPI<import('./types').OnboardingStatus>('/onboarding', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   // Company
   getCompany: () => fetchAPI<import('./types').CompanyResponse>('/company'),
   getTenantConfig: () => fetchAPI<import('./types').TenantConfigResponse>('/tenant/config'),

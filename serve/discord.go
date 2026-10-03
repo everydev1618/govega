@@ -175,6 +175,8 @@ func (s *Server) startDiscordBot(parent context.Context, cfg DiscordBotConfig) (
 	if err != nil {
 		return nil, err
 	}
+	// Bot replies get the same localhost-link scrubbing as web chat.
+	bot.exch.sanitize = s.sanitizeOutbound
 	if s.callerResolver != nil {
 		bot.SetCallerResolver(s.callerResolver)
 	}

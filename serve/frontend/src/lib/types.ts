@@ -599,3 +599,14 @@ export interface AuditDTO {
   denial_reason?: string
   duration_ms: number
 }
+
+// OnboardingStatus mirrors serve.OnboardingStatus — what the first-run
+// wizard renders. Today the only question is the public URL agents put in
+// deliverable links; the shape is meant to grow.
+export interface OnboardingStatus {
+  completed: boolean
+  needs_public_url: boolean
+  public_url: string
+  public_url_source: 'config' | 'explicit' | 'observed' | 'fallback'
+  suggestions?: string[]
+}

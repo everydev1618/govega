@@ -271,14 +271,19 @@ func WithBaseURL(url string) ToolsOption {
 	}
 }
 
-// BaseURL returns the configured server base URL.
+// BaseURL returns the configured server base URL. Guarded because the serve
+// layer now updates it at runtime, as the instance learns its public name.
 func (t *Tools) BaseURL() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	return t.baseURL
 }
 
 // SetBaseURL sets the server base URL after construction.
 func (t *Tools) SetBaseURL(url string) {
-	t.baseURL = url
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.baseURL = strings.TrimRight(url, "/")
 }
 
 // WithContainer enables container-based tool execution.

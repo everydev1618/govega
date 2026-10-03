@@ -543,6 +543,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// what the user saw.
 	response = s.reviewChatResponse(ctx, name, baseAgent, userID, response)
 
+	// Scrub any link to our own loopback address the model typed from
+	// memory. Tool-minted links are already correct; this covers the rest.
+	response = s.sanitizeOutbound(ctx, response)
+
 	// Persist assistant response.
 	if err := s.store.InsertChatMessage(name, "assistant", response, nil); err != nil {
 		slog.Error("failed to persist assistant chat message", "agent", name, "error", err)
@@ -714,6 +718,15 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 		response := stream.Response()
 		streamErr := stream.Err()
+
+		// Scrub our own loopback links from the finished text — the copy
+		// that is persisted, and the one a reconnecting client fetches.
+		// Live deltas are deliberately left alone: a URL arrives split
+		// across chunks, so rewriting mid-stream would need a buffer that
+		// stalls the first-token latency this path exists to protect. The
+		// tool layer already mints correct links; this catches a URL the
+		// model typed from memory, and a reload shows the fixed text.
+		response = s.sanitizeOutbound(ctx, response)
 
 		// Compute per-response metrics delta.
 		finalMetrics := proc.Metrics()

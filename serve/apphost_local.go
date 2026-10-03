@@ -63,17 +63,23 @@ func (h *LocalAppHost) SetSigner(s *capabilitySigner) {
 	h.signer = s
 }
 
-func (h *LocalAppHost) urlFor(name string) string {
+func (h *LocalAppHost) urlFor(ctx context.Context, name string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.urlForLocked(name)
+	return h.urlForLocked(ctx, name)
 }
 
 // urlForLocked builds the app URL, signed with a capability token when a signer
-// is wired. Caller must hold h.mu.
-func (h *LocalAppHost) urlForLocked(name string) string {
+// is wired. Caller must hold h.mu. The origin the request arrived on wins over
+// the boot-time base URL, which on a self-hosted box is only a guess — see
+// tools/base_url.go.
+func (h *LocalAppHost) urlForLocked(ctx context.Context, name string) string {
 	path := "/apps/" + name + "/"
-	url := h.baseURL + path
+	base := h.baseURL
+	if o := tools.BaseURLFrom(ctx); o != "" {
+		base = o
+	}
+	url := base + path
 	if h.signer != nil {
 		url += "?sig=" + h.signer.SignURLPath(path)
 	}
@@ -122,7 +128,7 @@ func (h *LocalAppHost) Deploy(ctx context.Context, spec tools.AppSpec) (tools.Ap
 	h.deps[spec.Name] = dep
 	h.mu.Unlock()
 
-	return tools.AppDeployment{ID: spec.Name, Name: spec.Name, URL: h.urlFor(spec.Name), Provider: "local"}, nil
+	return tools.AppDeployment{ID: spec.Name, Name: spec.Name, URL: h.urlFor(ctx, spec.Name), Provider: "local"}, nil
 }
 
 // Destroy stops and removes a deployment.
@@ -144,7 +150,7 @@ func (h *LocalAppHost) List(ctx context.Context) ([]tools.AppDeployment, error) 
 	defer h.mu.Unlock()
 	out := make([]tools.AppDeployment, 0, len(h.deps))
 	for name := range h.deps {
-		out = append(out, tools.AppDeployment{ID: name, Name: name, URL: h.urlForLocked(name), Provider: "local"})
+		out = append(out, tools.AppDeployment{ID: name, Name: name, URL: h.urlForLocked(ctx, name), Provider: "local"})
 	}
 	return out, nil
 }

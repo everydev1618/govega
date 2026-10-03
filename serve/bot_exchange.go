@@ -34,6 +34,11 @@ type botExchange struct {
 	// onExchange receives the resolver-enriched ctx (identity, BYOK key)
 	// plus the memory-scoped userID — NOT the platform user id.
 	onExchange func(ctx context.Context, userID, agent, userMsg, response string)
+
+	// sanitize, when set, rewrites this server's own localhost links in the
+	// reply before it is persisted or sent. Bot turns have no request to
+	// learn an origin from, so they lean on the persisted public URL.
+	sanitize func(ctx context.Context, text string) string
 }
 
 // memoryUserID returns the memory namespace owner for a bot exchange:
@@ -120,6 +125,9 @@ func (b *botExchange) run(ctx context.Context, agent, text, platformUserID strin
 	resp := stream.Response()
 	if err := stream.Err(); err != nil {
 		return "", err
+	}
+	if b.sanitize != nil {
+		resp = b.sanitize(ctx, resp)
 	}
 
 	// Persist assistant response.

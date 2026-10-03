@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAPI } from '../hooks/useAPI'
 import { api } from '../lib/api'
+import { PublicURLSetting } from '../components/PublicURLSetting'
 
 export function Settings() {
   const { data: settings, loading, refetch } = useAPI(() => api.getSettings())
@@ -69,6 +70,8 @@ export function Settings() {
       {error && (
         <div className="p-3 rounded bg-red-900/30 text-red-400 text-sm">{error}</div>
       )}
+
+      <PublicURLSetting />
 
       {/* Add / Edit form */}
       <div className="p-4 rounded-lg bg-card border border-border space-y-3">

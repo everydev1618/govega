@@ -305,6 +305,14 @@ type Server struct {
 	cfg       Config
 	startedAt time.Time
 
+	// publicURL resolves the base URL agents put in deliverable links. A
+	// self-hosted instance can't know its own public name, so this layers
+	// operator config over what the SPA's requests reveal — see
+	// public_url.go. publicPort is the listener's port, used to recognise
+	// our own localhost URLs in agent output.
+	publicURL  *publicURLResolver
+	publicPort string
+
 	// callerResolver, when set, enriches the ctx for any background work
 	// path (scheduler tick, Telegram inbound, peering inbound) with the
 	// caller's identity + per-user credentials before dispatch. Set via
@@ -528,20 +536,6 @@ func resolveAddr(addr string) (net.Listener, string, error) {
 		return nil, "", err
 	}
 	return ln, ln.Addr().String(), nil
-}
-
-// publicBaseURL resolves the base URL agents embed in deliverable links
-// (…/workspace/…): Config.PublicURL when set, else the PUBLIC_URL env var
-// (passed in by Start) so embedders that build their own Config on a hosted
-// instance don't silently hand users localhost links, else localhost:port.
-func publicBaseURL(cfgURL, envURL, port string) string {
-	if u := strings.TrimRight(cfgURL, "/"); u != "" {
-		return u
-	}
-	if u := strings.TrimRight(envURL, "/"); u != "" {
-		return u
-	}
-	return fmt.Sprintf("http://localhost:%s", port)
 }
 
 // Start initializes the store, wires callbacks, registers routes, and
@@ -1161,15 +1155,19 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 
-	// Extract the port from the resolved address and build a clean base URL.
-	// Prefer s.cfg.PublicURL (set by operators / v39a) so file links the
-	// agent generates point at the customer-visible hostname, not the
-	// container's localhost.
+	// Extract the port from the resolved address and resolve the base URL
+	// agents put in deliverable links. Operator config (Config.PublicURL /
+	// PUBLIC_URL) wins; otherwise the instance learns its own public name
+	// from the dashboard's requests, falling back to localhost and warning
+	// about it. See public_url.go.
 	_, port, _ := net.SplitHostPort(addr)
-	baseURL := publicBaseURL(s.cfg.PublicURL, os.Getenv("PUBLIC_URL"), port)
-	s.interp.SetServerBaseURL(baseURL)
-	if s.localHost != nil {
-		s.localHost.SetBaseURL(baseURL)
+	s.initPublicURL(s.cfg.PublicURL, os.Getenv("PUBLIC_URL"), port, addr)
+	s.restorePublicURL()
+	baseURL := s.publicURL.Base()
+	if s.publicURL.NeedsSetup() {
+		slog.Warn("no public URL configured: agents will hand out localhost links that only work on this machine; "+
+			"set PUBLIC_URL, pass --public-url, or answer the prompt in the dashboard",
+			"fallback", baseURL, "addr", addr)
 	}
 
 	authCfg, err := LoadAuthConfig(ctx)
@@ -1183,7 +1181,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Product middleware runs innermost so any claims injected via
 	// WithClaims are immediately visible to handlers' ClaimsFrom calls.
 	srv := &http.Server{
-		Handler: corsMiddleware(LoadCORSConfig())(authMiddleware(authCfg)(composeMiddleware(s.cfg.Middleware, mux))),
+		Handler: corsMiddleware(LoadCORSConfig())(authMiddleware(authCfg)(s.publicURLMiddleware(composeMiddleware(s.cfg.Middleware, mux)))),
 		// Bound the time to read request headers to blunt Slowloris-style
 		// slow-header attacks. WriteTimeout is intentionally left unset because
 		// SSE responses are long-lived.
@@ -1396,6 +1394,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/prompt-history/{id}", s.handleDeletePromptHistory)
 
 	// Config
+	mux.HandleFunc("GET /api/v1/onboarding", s.handleGetOnboarding)
+	mux.HandleFunc("POST /api/v1/onboarding", s.handleSetOnboarding)
 	mux.HandleFunc("GET /api/v1/config", s.handleGetConfig)
 	mux.HandleFunc("POST /api/v1/config/upload", s.handleConfigUpload)
 	mux.HandleFunc("GET /api/v1/identity", s.handleGetIdentity)
