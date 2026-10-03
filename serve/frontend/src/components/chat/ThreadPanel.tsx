@@ -2,6 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../../lib/api'
 import type { ChannelMessage, ChannelEvent, ChatEventMetrics } from '../../lib/types'
 import { AgentAvatar, UserAvatar } from './AgentAvatar'
+import { AttachmentChips, DropOverlay } from './Attachments'
+import { useFileDrop } from '../../hooks/useFileDrop'
+import { useAttachments } from '../../hooks/useAttachments'
+import { composeMessage } from '../../lib/attachments'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -54,10 +58,17 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
     ta.style.height = Math.min(ta.scrollHeight, 4 * 24) + 'px'
   }, [input])
 
+  // Same contract as the channel composer: dropped files go to the
+  // workspace and the reply carries their paths.
+  const attachments = useAttachments()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { dragging, dropProps } = useFileDrop(attachments.add, sending)
+
   const sendReply = useCallback(async () => {
-    const msg = input.trim()
+    const msg = composeMessage(input.trim(), attachments.files)
     if (!msg || sending) return
     setInput('')
+    attachments.clear()
 
     const userReply: StreamingReply = { agent: '', sender: '', role: 'user', content: msg, streaming: false }
     setReplies(prev => [...prev, userReply])
@@ -107,7 +118,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
       setSending(false)
       abortRef.current = null
     }
-  }, [input, sending, channelName, messageId])
+  }, [input, sending, channelName, messageId, attachments.files, attachments.clear])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -195,8 +206,36 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
       </div>
 
       {/* Reply input */}
-      <div className="p-3 border-t border-border">
+      <div className="relative p-3 border-t border-border" {...dropProps}>
+        {dragging && <DropOverlay label="Drop files to attach to this thread" />}
+        <AttachmentChips
+          files={attachments.files}
+          uploading={attachments.uploading}
+          error={attachments.error}
+          onRemove={attachments.remove}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={e => {
+            if (e.target.files) void attachments.add(Array.from(e.target.files))
+            e.target.value = ''
+          }}
+        />
         <div className="flex gap-2 items-end">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+            className="p-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 transition-colors flex-shrink-0"
+            aria-label="Attach file"
+            title="Attach file"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+            </svg>
+          </button>
           <textarea
             ref={textareaRef}
             rows={1}
@@ -210,7 +249,7 @@ export function ThreadPanel({ channelName, messageId, agentDisplayInfo, onClose 
           />
           <button
             onClick={sendReply}
-            disabled={sending || !input.trim()}
+            disabled={sending || (!input.trim() && attachments.files.length === 0)}
             className="p-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 flex-shrink-0"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

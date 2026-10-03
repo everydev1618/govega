@@ -169,6 +169,16 @@ export const api = {
     fetchAPI<import('./types').FileContentResponse>(`/files/read?path=${encodeURIComponent(path)}`),
   deleteFile: (path: string) =>
     fetchAPI<{ status: string; path: string }>(`/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+  // Push a local file into the workspace. Multipart, so it deliberately
+  // bypasses fetchAPI's JSON Content-Type.
+  uploadFile: async (file: File, dir?: string): Promise<import('./types').UploadedFile> => {
+    const form = new FormData()
+    form.append('file', file)
+    if (dir) form.append('dir', dir)
+    const res = await fetch(`${BASE}/files/upload`, { method: 'POST', body: form })
+    if (!res.ok) throw await parseErrorResponse(res)
+    return res.json()
+  },
   getFileMetadata: (agent?: string) => {
     const params = agent ? `?agent=${encodeURIComponent(agent)}` : ''
     return fetchAPI<import('./types').FileMetadataResponse>(`/files/metadata${params}`)

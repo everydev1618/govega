@@ -2,7 +2,9 @@ package serve
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -341,4 +343,157 @@ func isTextContentType(ct string) bool {
 		return true
 	}
 	return false
+}
+
+// uploadMaxFileBytes caps a single user upload at 10 MB — the same ceiling
+// handleReadFile will later read it back under, so an accepted upload is
+// always one the UI and the agents can actually open again.
+const uploadMaxFileBytes int64 = 10 << 20
+
+// defaultUploadDir is where a dropped file lands when the caller doesn't
+// name a directory. Keeping uploads out of the workspace root means an
+// agent's deliverables stay the only thing at the top level.
+const defaultUploadDir = "uploads"
+
+// handleUploadFile accepts a multipart upload and writes it into the
+// workspace, returning the workspace-relative path.
+//
+// This is the write half of the Files API: the chat composer uses it so a
+// file dragged onto a conversation becomes something the agent can reach
+// with read_file, rather than bytes that only ever existed in the browser.
+// POST /api/v1/files/upload
+func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
+	// Cap the body before parsing so a large upload can't exhaust memory
+	// ahead of the per-file check below. The slack covers multipart
+	// framing so a file at exactly the limit still reaches FormFile.
+	r.Body = http.MaxBytesReader(w, r.Body, uploadMaxFileBytes+1<<20)
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "file upload required (multipart field 'file')"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > uploadMaxFileBytes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, ErrorResponse{Error: "file exceeds 10 MB limit"})
+		return
+	}
+
+	dir := strings.TrimSpace(r.FormValue("dir"))
+	if dir == "" {
+		dir = defaultUploadDir
+	}
+	// A traversing dir is refused rather than clamped: the caller asked
+	// for somewhere specific, and quietly writing elsewhere is worse
+	// than an error.
+	absDir, err := safePath(dir)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := os.MkdirAll(absDir, 0o755); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	name := sanitizeUploadFilename(header.Filename)
+	absPath, relPath, err := uniqueUploadPath(absDir, name)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	body, err := io.ReadAll(file)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "failed to read upload: " + err.Error()})
+		return
+	}
+	if int64(len(body)) > uploadMaxFileBytes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, ErrorResponse{Error: "file exceeds 10 MB limit"})
+		return
+	}
+	if err := os.WriteFile(absPath, body, 0o644); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Record it the same way an agent's write_file is recorded, so the
+	// Files page's metadata view shows uploads alongside agent output.
+	// An empty Agent marks it as the user's own.
+	if s.store != nil {
+		if err := s.store.InsertWorkspaceFile(WorkspaceFile{
+			Path:        relPath,
+			Operation:   "upload",
+			Description: "uploaded by user",
+		}); err != nil {
+			slog.Error("failed to record uploaded file", "path", relPath, "error", err)
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, UploadedFile{
+		Name:        filepath.Base(relPath),
+		Path:        relPath,
+		ContentType: detectContentType(name),
+		Size:        int64(len(body)),
+	})
+}
+
+// sanitizeUploadFilename reduces a client-supplied filename to a safe base
+// name. Leading dots are stripped as well as path components: the file
+// listing hides dotfiles, so a name like ".env" would otherwise upload
+// successfully and then be invisible in the UI.
+func sanitizeUploadFilename(name string) string {
+	// Windows clients send backslash-separated paths; filepath.Base on a
+	// unix build wouldn't split those.
+	if i := strings.LastIndexAny(name, "/\\"); i >= 0 {
+		name = name[i+1:]
+	}
+	name = strings.TrimLeft(strings.TrimSpace(name), ".")
+	if name == "" {
+		return "upload"
+	}
+	return name
+}
+
+// uniqueUploadPath returns a non-colliding absolute path inside dir, plus
+// its workspace-relative form. An upload never overwrites an existing
+// file — agents put deliverables in the same tree, and a silent clobber
+// would destroy work no one asked to replace.
+func uniqueUploadPath(absDir, name string) (string, string, error) {
+	// safePath resolves symlinks when the target exists and doesn't when
+	// it doesn't, so one of these two can be the resolved form while the
+	// other isn't (on macOS a VEGA_HOME under /var resolves to
+	// /private/var). Resolving both makes filepath.Rel meaningful.
+	root := resolvedPath(vega.WorkspacePath())
+	absDir = resolvedPath(absDir)
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+
+	for i := 0; i < 1000; i++ {
+		candidate := name
+		if i > 0 {
+			candidate = fmt.Sprintf("%s-%d%s", stem, i, ext)
+		}
+		abs := filepath.Join(absDir, candidate)
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			rel, err := filepath.Rel(root, abs)
+			if err != nil {
+				return "", "", err
+			}
+			return abs, filepath.ToSlash(rel), nil
+		} else if err != nil {
+			return "", "", err
+		}
+	}
+	return "", "", &pathError{"too many files with that name"}
+}
+
+// resolvedPath returns p with symlinks resolved, or p unchanged when it
+// can't be resolved (most often because it doesn't exist yet).
+func resolvedPath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
 }

@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import type { FileEntry, FileContentResponse, WorkspaceFileMetadata, FileMetadataResponse } from '../lib/types'
+import { useFileDrop } from '../hooks/useFileDrop'
+import { DropOverlay } from '../components/chat/Attachments'
 
 type ViewMode = 'gallery' | 'tree' | 'agents'
 
@@ -657,8 +659,35 @@ export function Files() {
   const files = entries.filter(e => !e.is_dir).sort((a, b) => a.name.localeCompare(b.name))
   const sorted = [...dirs, ...files]
 
+  const [uploading, setUploading] = useState(0)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
+
+  // Uploads land in the directory being browsed rather than the chat's
+  // uploads/ default — dropping somewhere other than where you're looking
+  // would be the surprising behaviour here. "." is the workspace root.
+  const handleUpload = useCallback(async (local: File[]) => {
+    if (local.length === 0) return
+    setError(null)
+    setUploading(n => n + local.length)
+    for (const f of local) {
+      try {
+        await api.uploadFile(f, currentPath || '.')
+      } catch (e: any) {
+        setError(`${f.name}: ${e.message || 'upload failed'}`)
+      } finally {
+        setUploading(n => n - 1)
+      }
+    }
+    loadEntries(currentPath)
+  }, [currentPath, loadEntries])
+
+  const { dragging, dropProps } = useFileDrop(handleUpload)
+
   return (
-    <div className="space-y-4">
+    <div className="relative space-y-4" {...dropProps}>
+      {dragging && (
+        <DropOverlay label={`Drop files into ${currentPath ? `workspace/${currentPath}` : 'the workspace root'}`} />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -666,9 +695,31 @@ export function Files() {
           <p className="text-sm text-muted-foreground mt-0.5">
             {agentFilter
               ? <>Files by <span className="text-indigo-400 font-medium">{agentFilter}</span></>
-              : 'Browse workspace files created by agents'}
+              : uploading > 0
+                ? `Uploading ${uploading} file${uploading === 1 ? '' : 's'}…`
+                : 'Browse workspace files, or drop your own in'}
           </p>
         </div>
+        <input
+          ref={uploadInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={e => {
+            if (e.target.files) void handleUpload(Array.from(e.target.files))
+            e.target.value = ''
+          }}
+        />
+        <div className="flex items-center gap-2">
+        <button
+          onClick={() => uploadInputRef.current?.click()}
+          disabled={uploading > 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 transition-colors"
+          title={`Upload into ${currentPath ? `workspace/${currentPath}` : 'the workspace root'}`}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 10V2m0 0L4 5m3-3l3 3M1.5 10v1.5A1.5 1.5 0 003 13h8a1.5 1.5 0 001.5-1.5V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Upload
+        </button>
         <div className="flex items-center gap-1 bg-accent rounded-lg p-0.5">
           <button
             onClick={() => setViewMode('gallery')}
@@ -709,6 +760,7 @@ export function Files() {
               By Agent
             </span>
           </button>
+        </div>
         </div>
       </div>
 

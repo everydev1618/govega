@@ -1,0 +1,35 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - button "V Vega Agent Dashboard" [ref=e7]:
+      - generic [ref=e8]: V
+      - generic [ref=e10]:
+        - generic [ref=e11]: Vega
+        - generic [ref=e12]: Agent Dashboard
+    - navigation [ref=e13]:
+      - button "Direct Messages" [ref=e15] [cursor=pointer]
+      - generic [ref=e18]:
+        - button "Channels" [ref=e19] [cursor=pointer]
+        - link "Create channel" [ref=e22] [cursor=pointer]:
+          - /url: /channels/new
+      - paragraph [ref=e26]: No channels yet
+      - link "Inbox" [ref=e28] [cursor=pointer]:
+        - /url: /inbox
+      - link "Tasks" [ref=e34] [cursor=pointer]:
+        - /url: /tasks
+      - link "Memory" [ref=e39] [cursor=pointer]:
+        - /url: /memory
+      - link "Files" [ref=e44] [cursor=pointer]:
+        - /url: /files
+      - button "More" [ref=e49] [cursor=pointer]
+  - main [ref=e54]:
+    - generic [ref=e56]:
+      - heading "#general" [level=2] [ref=e59]
+      - generic [ref=e62]:
+        - heading "#general" [level=3] [ref=e63]
+        - paragraph [ref=e64]: Start the conversation by sending a message.
+      - generic [ref=e65]:
+        - generic [ref=e66]:
+          - button "Attach file" [ref=e67] [cursor=pointer]
+          - 'textbox "Message #general..." [ref=e70]'
+          - button [disabled] [ref=e71]
+        - paragraph [ref=e74]: Enter to send · Shift+Enter for new line · drop a file to attach

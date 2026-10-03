@@ -4,6 +4,43 @@ Notable changes to govega. Newest first. Versions ship to v39a tenants via the
 pipeline in `docs/` — each govega `vX.Y.Z` is paired with a v39avega release and
 an `apps.version` migration (see the v39avega-image-pipeline notes).
 
+## v0.9.4 — Generate streams; the repo gets a CI (2026-10-03)
+
+An audit of what the public repo actually offers the world. Source and
+`go install` were fine; everything downstream of a tag had been broken since
+the repo was recreated on 2026-09-08 without its Actions secrets, so v0.9.2 and
+v0.9.3 produced no binaries at all. Brew users were still on v0.9.1 — missing
+the prompt-cache fix that shipped in v0.9.3.
+
+- **`Generate` fetches over the streaming endpoint.** It built its request with
+  `stream=false`, so a whole generation was bounded by the sync client's
+  timeout, which spans the entire response body: a long answer is killed rather
+  than waited for. The new `reassembleSSE` rebuilds an `anthropicResponse` from
+  the event stream — text, thinking with its signature (so turn replay keeps
+  working), `tool_use` with accumulated `input_json` deltas, usage, cache tokens
+  and stop reason — preserving block order by stream index, then feeds the same
+  `parseResponse` the sync path used. Cost accounting and typed blocks are
+  unchanged. A stream ending before `message_stop` is now an error rather than a
+  partial answer returned as if complete. This was specified by two tests that
+  arrived already-failing in v0.8.9 and had never passed.
+- **Supervision no longer copies a lock.** `WithSupervision(s Supervision)` took
+  its config by value while the struct held a `sync.Mutex`, which `go vet`
+  flagged at five sites. The mutable half (mutex, failures, restarts, backoff)
+  moved behind an unexported pointer created on first use, so a zero-value
+  `Supervision` still works and the public API is unchanged.
+- **CI exists.** `go build`, `go test ./...`, `gofmt -l .` and `go vet ./...` now
+  run on every push and pull request. Nothing had guarded `main`, which is why
+  two red tests sat unnoticed for two and a half months.
+- **`go install` builds report their version.** Only GoReleaser stamped
+  `-X main.version`, so `vega version` from a source install said `dev`. It now
+  falls back to the module version from `debug.ReadBuildInfo()`.
+- Repo housekeeping: the README release badge pointed at `govega/releases`,
+  which is empty — releases live in `vega-releases` — so it publicly read "no
+  releases or repo not found". Added `CONTRIBUTING.md` and `SECURITY.md`,
+  enabled private vulnerability reporting, secret scanning and push protection,
+  set the repo topics and homepage, and formatted the 24 files that predated the
+  gofmt gate.
+
 ## v0.9.3 — prompt caching actually caches (2026-09-20)
 
 Two bugs meant agents wrote a cache entry on every request and read almost

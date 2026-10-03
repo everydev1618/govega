@@ -1309,6 +1309,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/transcribe", s.handleTranscribe)
 	mux.HandleFunc("GET /api/v1/files", s.handleListFiles)
 	mux.HandleFunc("GET /api/v1/files/read", s.handleReadFile)
+	mux.HandleFunc("POST /api/v1/files/upload", s.handleUploadFile)
 	mux.HandleFunc("DELETE /api/v1/files", s.handleDeleteFile)
 	mux.HandleFunc("GET /api/v1/files/metadata", s.handleListFileMetadata)
 

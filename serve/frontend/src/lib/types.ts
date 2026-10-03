@@ -261,6 +261,15 @@ export interface WorkspaceFileMetadata {
   created_at: string
 }
 
+// UploadedFile is the result of pushing a local file into the workspace.
+// path is workspace-relative — the form read_file and the Files page take.
+export interface UploadedFile {
+  name: string
+  path: string
+  content_type: string
+  size: number
+}
+
 export interface FileMetadataResponse {
   files: WorkspaceFileMetadata[]
   agents: string[]

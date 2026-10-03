@@ -11,6 +11,10 @@ import { AgentAvatar, UserAvatar } from '../components/chat/AgentAvatar'
 import { ThreadPanel } from '../components/chat/ThreadPanel'
 import { ScrollToBottom } from '../components/chat/ScrollToBottom'
 import { ToolCallBadges, statusEmoji, shortToolName, ActivityConstellation, ActivityNarrative } from '../components/chat/ToolCallDisplay'
+import { AttachmentChips, DropOverlay } from '../components/chat/Attachments'
+import { useFileDrop } from '../hooks/useFileDrop'
+import { useAttachments } from '../hooks/useAttachments'
+import { composeMessage } from '../lib/attachments'
 const META_AGENTS = new Set(['iris', 'hera'])
 
 // Strip per-user clone suffix (e.g. "iris:123" → "iris").
@@ -115,10 +119,18 @@ export function ChannelView() {
     ta.style.height = Math.min(ta.scrollHeight, 6 * 24) + 'px'
   }, [input])
 
+  // Dropped files are uploaded into the workspace and referenced by path.
+  // A channel post is text-only on the wire, so there is no inline-image
+  // path here the way there is in a DM.
+  const attachments = useAttachments()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { dragging, dropProps } = useFileDrop(attachments.add, isStreaming)
+
   const handleSend = () => {
-    const msg = input.trim()
+    const msg = composeMessage(input.trim(), attachments.files)
     if (!msg || isStreaming) return
     setInput('')
+    attachments.clear()
     postMessage(msg)
   }
 
@@ -281,14 +293,49 @@ export function ChannelView() {
         </div>
 
         {/* Input */}
-        <div className="px-4 pt-3 pb-4 border-t border-border">
+        <div className="relative px-4 pt-3 pb-4 border-t border-border" {...dropProps}>
+          {dragging && <DropOverlay label={`Drop files to attach to #${channelName}`} />}
+          <AttachmentChips
+            files={attachments.files}
+            uploading={attachments.uploading}
+            error={attachments.error}
+            onRemove={attachments.remove}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={e => {
+              if (e.target.files) void attachments.add(Array.from(e.target.files))
+              e.target.value = ''
+            }}
+          />
           <div className="flex gap-2 items-end">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming}
+              className="p-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 transition-colors flex-shrink-0"
+              aria-label="Attach file"
+              title="Attach file"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+              </svg>
+            </button>
             <textarea
               ref={textareaRef}
               rows={1}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={e => {
+                const pasted = Array.from(e.clipboardData.files || [])
+                if (pasted.length) {
+                  e.preventDefault()
+                  void attachments.add(pasted)
+                }
+              }}
               placeholder={`Message #${channelName}...`}
               disabled={isStreaming}
               className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:border-primary disabled:opacity-50 resize-none overflow-y-auto transition-colors"
@@ -296,7 +343,7 @@ export function ChannelView() {
             />
             <button
               onClick={handleSend}
-              disabled={isStreaming || !input.trim()}
+              disabled={isStreaming || (!input.trim() && attachments.files.length === 0)}
               className="p-2.5 rounded-xl bg-primary text-primary-foreground disabled:opacity-50 flex-shrink-0"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -304,7 +351,7 @@ export function ChannelView() {
               </svg>
             </button>
           </div>
-          <p className="text-xs text-muted-foreground px-1 mt-1">Enter to send · Shift+Enter for new line</p>
+          <p className="text-xs text-muted-foreground px-1 mt-1">Enter to send · Shift+Enter for new line · drop a file to attach</p>
         </div>
       </div>
 

@@ -408,6 +408,16 @@ type FileContentResponse struct {
 	Size        int64  `json:"size"`
 }
 
+// UploadedFile is the response for a user file upload into the workspace.
+// Path is workspace-relative, which is exactly the form read_file and the
+// Files page take, so the chat can hand it straight to an agent.
+type UploadedFile struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+}
+
 // FileMetadataResponse is the response for file metadata queries.
 type FileMetadataResponse struct {
 	Files  []WorkspaceFile `json:"files"`

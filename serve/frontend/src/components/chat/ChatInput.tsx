@@ -2,20 +2,10 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { AgentAvatar } from './AgentAvatar'
 import type { ChatImage } from '../../lib/types'
 import { api } from '../../lib/api'
-
-// fileToChatImage reads an image File into a ChatImage (base64, no data: prefix).
-async function fileToChatImage(file: File): Promise<ChatImage | null> {
-  if (!file.type.startsWith('image/')) return null
-  const dataURL: string = await new Promise((resolve, reject) => {
-    const fr = new FileReader()
-    fr.onload = () => resolve(String(fr.result))
-    fr.onerror = reject
-    fr.readAsDataURL(file)
-  })
-  const comma = dataURL.indexOf(',')
-  if (comma < 0) return null
-  return { media_type: file.type, data: dataURL.slice(comma + 1) }
-}
+import { AttachmentChips, DropOverlay } from './Attachments'
+import { useFileDrop } from '../../hooks/useFileDrop'
+import { useAttachments } from '../../hooks/useAttachments'
+import { chatImageFromFile, composeMessage, partitionDroppedFiles } from '../../lib/attachments'
 
 interface ChatInputProps {
   onSend: (text: string, images?: ChatImage[]) => void
@@ -125,22 +115,35 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
     setRecording(false)
   }, [])
 
+  // Images ride along in the turn as vision blocks; everything else is
+  // uploaded into the workspace and handed to the agent as a path, since
+  // the wire format has nowhere to put a .md or a .csv.
+  const attachments = useAttachments()
+
   const addFiles = useCallback(async (files: FileList | File[]) => {
+    const { images: imgFiles, uploads } = partitionDroppedFiles(Array.from(files))
     const next: ChatImage[] = []
-    for (const f of Array.from(files)) {
-      const img = await fileToChatImage(f)
+    for (const f of imgFiles) {
+      const img = await chatImageFromFile(f)
       if (img) next.push(img)
     }
     if (next.length) setImages(prev => [...prev, ...next].slice(0, 8))
-  }, [])
+    if (uploads.length) await attachments.add(uploads)
+  }, [attachments.add])
+
+  const { dragging, dropProps } = useFileDrop(
+    useCallback((files: File[]) => { void addFiles(files) }, [addFiles]),
+    sending,
+  )
 
   const submit = useCallback((msg: string) => {
     if (sending) return
-    if (!msg && images.length === 0) return
-    onSend(msg, images.length ? images : undefined)
+    if (!msg && images.length === 0 && attachments.files.length === 0) return
+    onSend(composeMessage(msg, attachments.files), images.length ? images : undefined)
     setInput('')
     setImages([])
-  }, [sending, images, onSend])
+    attachments.clear()
+  }, [sending, images, onSend, attachments.files, attachments.clear])
 
   // @-mention state
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -263,17 +266,23 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const files = Array.from(e.clipboardData.files || [])
-    const imgs = files.filter(f => f.type.startsWith('image/'))
-    if (imgs.length) {
+    if (files.length) {
       e.preventDefault()
-      void addFiles(imgs)
+      void addFiles(files)
     }
   }
 
   const borderClass = borderColor || 'border-rule focus:border-brand'
 
   return (
-    <div className="pt-3 border-t border-rule space-y-1.5">
+    <div className="relative pt-3 border-t border-rule space-y-1.5" {...dropProps}>
+      {dragging && <DropOverlay />}
+      <AttachmentChips
+        files={attachments.files}
+        uploading={attachments.uploading}
+        error={attachments.error}
+        onRemove={attachments.remove}
+      />
       {images.length > 0 && (
         <div className="flex flex-wrap gap-2 px-1">
           {images.map((img, i) => (
@@ -295,7 +304,6 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
         multiple
         className="hidden"
         onChange={e => { if (e.target.files) { void addFiles(e.target.files); e.target.value = '' } }}
@@ -305,8 +313,8 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
           onClick={() => fileInputRef.current?.click()}
           disabled={sending}
           className="p-2.5 rounded-sm border border-rule text-ink-faint hover:text-ink hover:border-ink disabled:opacity-40 transition-colors flex-shrink-0"
-          aria-label="Attach image"
-          title="Attach image"
+          aria-label="Attach file"
+          title="Attach file"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
@@ -365,7 +373,7 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
         </div>
         <button
           onClick={handleSendClick}
-          disabled={sending || (!input.trim() && images.length === 0)}
+          disabled={sending || (!input.trim() && images.length === 0 && attachments.files.length === 0)}
           className="p-2.5 rounded-sm bg-ink text-paper hover:bg-brand-deep disabled:opacity-40 disabled:hover:bg-ink transition-colors flex-shrink-0"
           aria-label="Send"
         >
@@ -374,7 +382,7 @@ export function ChatInput({ onSend, sending, placeholder, borderColor, agentName
           </svg>
         </button>
       </div>
-      <p className="text-xs text-ink-faint px-1">{recording ? '● Recording — tap the mic to stop' : transcribing ? 'Transcribing…' : `Enter to send · Shift+Enter for new line${agentNames?.length ? ' · @ to mention' : ''}`}</p>
+      <p className="text-xs text-ink-faint px-1">{recording ? '● Recording — tap the mic to stop' : transcribing ? 'Transcribing…' : `Enter to send · Shift+Enter for new line${agentNames?.length ? ' · @ to mention' : ''} · drop a file to attach`}</p>
     </div>
   )
 }
