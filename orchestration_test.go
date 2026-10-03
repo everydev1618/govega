@@ -389,14 +389,12 @@ func TestSupervisionReset(t *testing.T) {
 	}
 
 	// Verify internal state is reset
-	sup.mu.Lock()
-	if sup.restarts != 0 {
-		t.Errorf("restarts = %d, want 0 after reset", sup.restarts)
+	if got := sup.restartCount(); got != 0 {
+		t.Errorf("restarts = %d, want 0 after reset", got)
 	}
-	if len(sup.failures) != 1 { // The one failure we just recorded
-		t.Errorf("failures = %d, want 1 after reset and one new failure", len(sup.failures))
+	if got := sup.failureCount(); got != 1 { // The one failure we just recorded
+		t.Errorf("failures = %d, want 1 after reset and one new failure", got)
 	}
-	sup.mu.Unlock()
 }
 
 func TestStrategyString(t *testing.T) {

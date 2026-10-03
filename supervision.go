@@ -30,11 +30,51 @@ type Supervision struct {
 	// OnGiveUp is called when max restarts exceeded
 	OnGiveUp func(p *Process, err error)
 
-	// internal state
+	// state holds the mutex-guarded restart bookkeeping. It lives behind a
+	// pointer so that Supervision stays copyable: callers write config as a
+	// literal and pass it by value (WithSupervision), and a struct holding a
+	// sync.Mutex directly cannot be copied without tripping go vet. It is
+	// created on first use, so a zero-value Supervision is usable.
+	state *supervisionState
+}
+
+// supervisionState is the mutable half of a Supervision.
+type supervisionState struct {
 	mu          sync.Mutex
 	failures    []time.Time
 	restarts    int
 	lastBackoff time.Duration
+}
+
+// supervisionInit guards lazy creation of supervisionState. A package-level
+// lock keeps Supervision itself free of any non-copyable field; it is only
+// contended when supervision state is first touched, which is rare.
+var supervisionInit sync.Mutex
+
+// st returns the supervision state, creating it on first use.
+func (s *Supervision) st() *supervisionState {
+	supervisionInit.Lock()
+	defer supervisionInit.Unlock()
+	if s.state == nil {
+		s.state = &supervisionState{}
+	}
+	return s.state
+}
+
+// failureCount reports how many failures are currently inside the window.
+func (s *Supervision) failureCount() int {
+	st := s.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return len(st.failures)
+}
+
+// restartCount reports how many restarts have been prepared.
+func (s *Supervision) restartCount() int {
+	st := s.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.restarts
 }
 
 // Strategy determines restart behavior.
@@ -72,22 +112,23 @@ func (s Strategy) String() string {
 
 // recordFailure records a failure and returns whether restart should happen.
 func (s *Supervision) recordFailure(p *Process, err error) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	st := s.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
 
 	now := time.Now()
-	s.failures = append(s.failures, now)
+	st.failures = append(st.failures, now)
 
 	// Prune old failures outside the window
 	if s.Window > 0 {
 		cutoff := now.Add(-s.Window)
-		newFailures := make([]time.Time, 0, len(s.failures))
-		for _, t := range s.failures {
+		newFailures := make([]time.Time, 0, len(st.failures))
+		for _, t := range st.failures {
 			if t.After(cutoff) {
 				newFailures = append(newFailures, t)
 			}
 		}
-		s.failures = newFailures
+		st.failures = newFailures
 	}
 
 	// Call failure callback
@@ -100,7 +141,7 @@ func (s *Supervision) recordFailure(p *Process, err error) bool {
 		return false
 	}
 
-	if s.MaxRestarts >= 0 && len(s.failures) > s.MaxRestarts {
+	if s.MaxRestarts >= 0 && len(st.failures) > s.MaxRestarts {
 		// Exceeded max restarts
 		if s.OnGiveUp != nil {
 			s.OnGiveUp(p, err)
@@ -113,22 +154,25 @@ func (s *Supervision) recordFailure(p *Process, err error) bool {
 
 // prepareRestart prepares for a restart and returns the backoff delay.
 func (s *Supervision) prepareRestart(p *Process) time.Duration {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	st := s.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
 
-	s.restarts++
+	st.restarts++
 
 	// Call restart callback
 	if s.OnRestart != nil {
-		s.OnRestart(p, s.restarts)
+		s.OnRestart(p, st.restarts)
 	}
 
 	// Calculate backoff
-	return s.calculateBackoff()
+	delay := s.calculateBackoff(st.restarts)
+	st.lastBackoff = delay
+	return delay
 }
 
 // calculateBackoff returns the delay before next restart.
-func (s *Supervision) calculateBackoff() time.Duration {
+func (s *Supervision) calculateBackoff(restarts int) time.Duration {
 	if s.Backoff.Initial == 0 {
 		return 0
 	}
@@ -141,10 +185,10 @@ func (s *Supervision) calculateBackoff() time.Duration {
 		if multiplier == 0 {
 			multiplier = 2.0
 		}
-		delay = time.Duration(float64(s.Backoff.Initial) * math.Pow(multiplier, float64(s.restarts-1)))
+		delay = time.Duration(float64(s.Backoff.Initial) * math.Pow(multiplier, float64(restarts-1)))
 
 	case BackoffLinear:
-		delay = s.Backoff.Initial * time.Duration(s.restarts)
+		delay = s.Backoff.Initial * time.Duration(restarts)
 
 	case BackoffConstant:
 		delay = s.Backoff.Initial
@@ -161,18 +205,18 @@ func (s *Supervision) calculateBackoff() time.Duration {
 		delay = time.Duration(float64(delay) + jitter)
 	}
 
-	s.lastBackoff = delay
 	return delay
 }
 
 // reset resets the supervision state.
 func (s *Supervision) reset() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	st := s.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
 
-	s.failures = nil
-	s.restarts = 0
-	s.lastBackoff = 0
+	st.failures = nil
+	st.restarts = 0
+	st.lastBackoff = 0
 }
 
 // HealthMonitor monitors process health.
