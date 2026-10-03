@@ -23,6 +23,12 @@ the prompt-cache fix that shipped in v0.9.3.
   unchanged. A stream ending before `message_stop` is now an error rather than a
   partial answer returned as if complete. This was specified by two tests that
   arrived already-failing in v0.8.9 and had never passed.
+- **The API key no longer lands in the log on a failed request.** Both non-200
+  paths logged the whole outbound header map, `X-Api-Key` included, so any 401,
+  429 or transient 500 wrote the caller's key out in full — a customer
+  credential in a shared log on a multi-tenant host. Values for `X-Api-Key`,
+  `Authorization`, `Proxy-Authorization`, `Cookie` and `X-Auth-Token` are now
+  masked; the header names survive so a missing key is still diagnosable.
 - **Supervision no longer copies a lock.** `WithSupervision(s Supervision)` took
   its config by value while the struct held a `sync.Mutex`, which `go vet`
   flagged at five sites. The mutable half (mutex, failures, restarts, backoff)
