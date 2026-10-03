@@ -215,6 +215,14 @@ const version = '0.7.0'
         on SSE. Production-grade login plugs into WorkOS or your IdP of
         choice.
       </p>
+      <p style="margin-top: 1.5rem; color: var(--ink-soft);">
+        Agents put links to their work in chat, so a deployed runtime has
+        to know its own public address. Vega learns it from the hostname
+        you open the dashboard with, and asks on first run if it can't.
+        Pin it with <span class="mono">--public-url</span> (or
+        <span class="mono">PUBLIC_URL</span>) when a reverse proxy sits
+        in front and the address people use isn't the one it sees.
+      </p>
     </div>
   </section>
 
