@@ -1,7 +1,7 @@
 # Vega
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/everydev1618/govega.svg)](https://pkg.go.dev/github.com/everydev1618/govega)
-[![Latest Release](https://img.shields.io/github/v/release/everydev1618/govega)](https://github.com/everydev1618/govega/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/everydev1618/vega-releases)](https://github.com/everydev1618/vega-releases/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/everydev1618/govega)](go.mod)
 
@@ -89,7 +89,7 @@ brew install everydev1618/tap/vega
 go install github.com/everydev1618/govega/cmd/vega@latest
 
 # Or download a binary from GitHub Releases
-# https://github.com/everydev1618/govega/releases
+# https://github.com/everydev1618/vega-releases/releases/latest
 ```
 
 ### Go Library

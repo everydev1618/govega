@@ -119,7 +119,6 @@ Examples:
 		return
 	}
 
-
 	// Confirm unless --yes.
 	if !*yes {
 		fmt.Print("Are you sure you want to delete all of the above? [y/N] ")

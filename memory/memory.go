@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +75,33 @@ type SlidingWindowContext struct {
 
 // NewSlidingWindowContext creates a context manager with a sliding window.
 // maxMessages is the number of recent messages to keep (0 = unlimited).
+// DefaultSummaryTimeout bounds the summarisation call that compacts a context
+// window. Summarising means prefilling a long prompt, and on a self-hosted
+// model that can run for minutes before a token comes back, so this is
+// generous on purpose: the bound is here to stop a wedged call, not to decide
+// how fast a backend ought to be. Losing it loses the compaction that keeps
+// the window from growing, which bites precisely when a conversation is long
+// enough to need it.
+const DefaultSummaryTimeout = 15 * time.Minute
+
+// summaryTimeout resolves the bound. VEGA_SUMMARY_TIMEOUT takes a Go duration
+// ("45s", "20m"); anything unparseable or non-positive falls back to the
+// default rather than yielding an already-expired context, which fails in a
+// way indistinguishable from a backend that never answers.
+func summaryTimeout() time.Duration {
+	v := os.Getenv("VEGA_SUMMARY_TIMEOUT")
+	if v == "" {
+		return DefaultSummaryTimeout
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		slog.Warn("ignoring unusable VEGA_SUMMARY_TIMEOUT; using default",
+			"value", v, "default", DefaultSummaryTimeout)
+		return DefaultSummaryTimeout
+	}
+	return d
+}
+
 func NewSlidingWindowContext(maxMessages int) *SlidingWindowContext {
 	return &SlidingWindowContext{
 		messages:    make([]llm.Message, 0),
@@ -173,7 +202,7 @@ func (c *SlidingWindowContext) Compact(l llm.LLM) error {
 	}
 
 	// Call LLM to generate summary
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), summaryTimeout())
 	defer cancel()
 
 	resp, err := l.Generate(ctx, []llm.Message{

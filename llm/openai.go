@@ -21,8 +21,17 @@ type OpenAILLM struct {
 	apiKey     string
 	baseURL    string
 	httpClient *http.Client
-	model      string
-	semaphore  chan struct{}
+	// streamClient serves the streaming path. It carries no overall Timeout:
+	// http.Client.Timeout spans the entire response body, so a fixed bound
+	// does not fail a slow stream, it truncates a working one mid-answer.
+	// Streams are cancelled by the caller's context instead. anthropic.go
+	// has split its clients this way from the start; sharing one bounded
+	// client here put a hard ceiling on every generation, which a local
+	// model — slow prefill on a long context, then a long answer — reaches
+	// in the course of ordinary work.
+	streamClient *http.Client
+	model        string
+	semaphore    chan struct{}
 	// Per-1M-token pricing for cost accounting. Zero (the default) means
 	// free — appropriate for local models; hosted deployments configure
 	// their rates via WithOpenAIPricing.
@@ -65,6 +74,12 @@ func WithOpenAIBaseURL(url string) OpenAIOption {
 	return func(o *OpenAILLM) { o.baseURL = url }
 }
 
+// WithOpenAITimeout bounds non-streaming requests. It deliberately does not
+// touch the streaming client, which must stay unbounded.
+func WithOpenAITimeout(d time.Duration) OpenAIOption {
+	return func(o *OpenAILLM) { o.httpClient.Timeout = d }
+}
+
 // WithOpenAIPricing sets per-1M-token USD rates used for cost accounting.
 // Unset (zero) rates report $0 — the right answer for local models.
 func WithOpenAIPricing(inputPer1M, outputPer1M float64) OpenAIOption {
@@ -83,6 +98,10 @@ func (o *OpenAILLM) cost(inputTokens, outputTokens int) float64 {
 const (
 	DefaultOpenAIModel   = "qwen-coder"
 	DefaultOpenAIBaseURL = "http://localhost:4000"
+
+	// DefaultOpenAITimeout bounds a non-streaming request end to end. It
+	// applies only to the sync path — see streamClient.
+	DefaultOpenAITimeout = 5 * time.Minute
 )
 
 // NewOpenAI creates a new OpenAI-compatible LLM client.
@@ -109,10 +128,11 @@ func NewOpenAI(opts ...OpenAIOption) *OpenAILLM {
 		apiKey:  apiKey,
 		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
+			Timeout: DefaultOpenAITimeout,
 		},
-		model:     model,
-		semaphore: make(chan struct{}, DefaultMaxConcurrent),
+		streamClient: &http.Client{},
+		model:        model,
+		semaphore:    make(chan struct{}, DefaultMaxConcurrent),
 	}
 
 	for _, opt := range opts {
@@ -248,7 +268,7 @@ func (o *OpenAILLM) GenerateStream(ctx context.Context, messages []Message, tool
 			return
 		}
 
-		httpResp, err := o.httpClient.Do(httpReq)
+		httpResp, err := o.streamClient.Do(httpReq)
 		if err != nil {
 			eventCh <- StreamEvent{Type: StreamEventError, Error: err}
 			return

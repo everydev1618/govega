@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -19,6 +20,9 @@ var (
 )
 
 func main() {
+	info, ok := debug.ReadBuildInfo()
+	version = resolveVersion(version, info, ok)
+
 	loadEnvFile()
 
 	if len(os.Args) < 2 {
@@ -427,4 +431,3 @@ func loadEnvFile() {
 		}
 	}
 }
-
