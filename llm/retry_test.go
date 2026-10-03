@@ -8,9 +8,14 @@ import (
 	"testing"
 )
 
-const okAnthropicJSON = `{"model":"claude-sonnet-4-6","stop_reason":"end_turn",` +
-	`"content":[{"type":"text","text":"ok"}],` +
-	`"usage":{"input_tokens":5,"output_tokens":2}}`
+// okAnthropicSSE is a complete streamed "ok" message. Generate fetches over
+// the streaming endpoint, so its fakes speak SSE.
+var okAnthropicSSE = sseEvent("message_start", `{"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":5}}}`) +
+	sseEvent("content_block_start", `{"index":0,"content_block":{"type":"text"}}`) +
+	sseEvent("content_block_delta", `{"index":0,"delta":{"type":"text_delta","text":"ok"}}`) +
+	sseEvent("content_block_stop", `{"index":0}`) +
+	sseEvent("message_delta", `{"delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`) +
+	sseEvent("message_stop", `{}`)
 
 // flakyServer fails the first n requests with the given status (or by
 // dropping the connection when status == 0), then serves the SSE/JSON body.
@@ -53,7 +58,7 @@ func fastRetryClient(t *testing.T, srv *httptest.Server) *AnthropicLLM {
 // TestGenerateRetries5xx verifies transient server errors on the
 // non-streaming path are retried instead of failing the call outright.
 func TestGenerateRetries5xx(t *testing.T) {
-	srv, calls := flakyServer(t, []int{500, 502}, okAnthropicJSON, "application/json")
+	srv, calls := flakyServer(t, []int{500, 502}, okAnthropicSSE, "text/event-stream")
 	defer srv.Close()
 
 	a := fastRetryClient(t, srv)
@@ -71,7 +76,7 @@ func TestGenerateRetries5xx(t *testing.T) {
 
 // TestGenerateRetriesTransportError verifies a dropped connection is retried.
 func TestGenerateRetriesTransportError(t *testing.T) {
-	srv, calls := flakyServer(t, []int{0}, okAnthropicJSON, "application/json")
+	srv, calls := flakyServer(t, []int{0}, okAnthropicSSE, "text/event-stream")
 	defer srv.Close()
 
 	a := fastRetryClient(t, srv)
@@ -89,7 +94,7 @@ func TestGenerateRetriesTransportError(t *testing.T) {
 
 // TestGenerateDoesNotRetry4xx verifies client errors fail immediately.
 func TestGenerateDoesNotRetry4xx(t *testing.T) {
-	srv, calls := flakyServer(t, []int{400, 400, 400}, okAnthropicJSON, "application/json")
+	srv, calls := flakyServer(t, []int{400, 400, 400}, okAnthropicSSE, "text/event-stream")
 	defer srv.Close()
 
 	a := fastRetryClient(t, srv)

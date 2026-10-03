@@ -2,7 +2,6 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,17 +13,8 @@ func captureKeyServer(t *testing.T, got *string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*got = r.Header.Get("x-api-key")
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":            "msg_test",
-			"type":          "message",
-			"role":          "assistant",
-			"model":         "claude-sonnet-4-6",
-			"content":       []any{map[string]any{"type": "text", "text": "ok"}},
-			"stop_reason":   "end_turn",
-			"stop_sequence": nil,
-			"usage":         map[string]any{"input_tokens": 1, "output_tokens": 1},
-		})
+		// Generate fetches over the streaming endpoint.
+		sseHandler(okAnthropicSSE)(w, r)
 	}))
 }
 

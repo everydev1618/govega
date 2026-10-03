@@ -264,16 +264,16 @@ func (a *AnthropicLLM) ValidateKey(ctx context.Context) error {
 func (a *AnthropicLLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
 	start := time.Now()
 
-	// Build request
-	req := a.buildRequestCtx(ctx, messages, tools, false)
+	// Fetch over the streaming endpoint and reassemble. See generate_sse.go
+	// for why: the sync path bounds a whole generation by the client timeout.
+	req := a.buildRequestCtx(ctx, messages, tools, true)
 
-	// Make request
-	resp, err := a.doRequest(ctx, req)
+	resp, err := a.doStreamRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse response
+	// Parse response — same path the sync response took.
 	return a.parseResponse(resp, time.Since(start))
 }
 
