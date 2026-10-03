@@ -104,7 +104,49 @@ Four contracts, each of which cost a bug:
 
 ### Tool registration pattern
 
-Tools use `tools.ToolDef` with a `ToolFunc` signature `func(ctx context.Context, params map[string]any) (string, error)`. Register on the interpreter's global `Tools()` collection. Context carries process info (`ContextWithProcess`) and memory info (`ContextWithMemory`).
+Tools use `tools.ToolDef` with a `ToolFunc` signature `func(ctx context.Context, params map[string]any) (string, error)`. Register on the interpreter's global `Tools()` collection. Context carries process info (`ContextWithProcess`), memory info (`ContextWithMemory`), and the request origin (`tools.ContextWithBaseURL` — see below).
+
+### Deliverable URLs (`serve/public_url.go`, `tools/base_url.go`)
+
+Agents hand users links to their work, and are told to quote them verbatim —
+so a wrong base URL is delivered to the user as an instruction to click it. A
+self-hosted instance cannot know its own public name: bound to `0.0.0.0:8822`
+on a box reachable as `http://vega.const`, everything it can see locally says
+`localhost:8822`. That shipped, and was the bug.
+
+`publicURLResolver` layers four sources, descending: **config**
+(`Config.PublicURL` / `PUBLIC_URL` / `--public-url`), **explicit** (the
+onboarding answer, settings key `public_url`), **observed** (the origin on the
+dashboard's own `/api/v1/*` requests, persisted as `public_url.observed`),
+**fallback** (`http://localhost:<port>`, which logs a warning).
+
+Three rules, each of which the code depends on:
+
+- **A tool that mints a URL reads `t.baseURLFor(ctx)`, never `t.baseURL`.** The
+  per-request origin is attached by `publicURLMiddleware` and wins over the
+  boot-time value, so links carry the name the user actually reached us by.
+  `write_file` and `LocalAppHost.urlFor` are the current call sites; a new one
+  that reaches for the field directly reintroduces the bug for everyone whose
+  hostname isn't the one the server booted believing in.
+- **Only `/api/v1/*` requests teach an origin**, and only authenticated ones
+  where auth is on. A `/workspace/` or `/apps/` link is exactly what someone
+  could be lured into opening against an attacker's hostname; learning our own
+  identity from that would persist it for every later Telegram and cron turn.
+- **Capability signatures are over the URL *path*** (`signDeliverableURL`,
+  `SignURLPath`), so swapping the host leaves tokens valid. Keep it that way —
+  signing the full URL would make the observed-origin layer impossible.
+
+The observed layer is persisted so turns with no request to learn from
+(Telegram, cron, dispatched sub-agents) inherit it across restarts. First-run
+onboarding (`serve/onboarding.go`, `OnboardingGate.tsx`) asks for the URL only
+when none of that deduced it — bound beyond loopback *and* never reached by
+any name but localhost. A loopback-bound laptop is correctly described by
+localhost and is never prompted.
+
+Agent prompts must not contain `localhost` examples: `deploy_app` returns a
+shareable URL and is what the prompts point at. `rewriteLocalhostURLs` scrubs
+our own loopback links from outbound chat text as a backstop, but it only
+covers finished text — live SSE deltas are deliberately left alone.
 
 ### Memory system (`serve/`)
 
