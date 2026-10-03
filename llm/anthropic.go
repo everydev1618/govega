@@ -909,6 +909,7 @@ func retryAfterDelay(resp *http.Response, attempt int, base time.Duration) time.
 
 func (a *AnthropicLLM) parseResponse(resp *anthropicResponse, latency time.Duration) (*LLMResponse, error) {
 	result := &LLMResponse{
+		Model:                    resp.Model,
 		InputTokens:              resp.Usage.InputTokens,
 		OutputTokens:             resp.Usage.OutputTokens,
 		CacheCreationInputTokens: resp.Usage.CacheCreationInputTokens,

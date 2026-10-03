@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,7 +31,21 @@ type OpenAILLM struct {
 	// retryBase is the exponential-backoff base for retries (default 5s
 	// when zero). Tests shrink it.
 	retryBase time.Duration
+
+	// Cached /v1/models lineup, used to decide whether a per-agent or
+	// per-step model override is actually servable here. See resolveModel.
+	lineupMu   sync.Mutex
+	lineup     map[string]bool
+	lineupAt   time.Time
+	lineupOK   bool
+	unservable sync.Map // model name -> warned once
 }
+
+// lineupTTL bounds how stale the cached /v1/models answer may get. Local
+// servers load and unload models while running, so the set is not static,
+// but probing it per request would put an HTTP round trip in front of every
+// generation.
+const lineupTTL = 5 * time.Minute
 
 // OpenAIOption configures the OpenAI-compatible client.
 type OpenAIOption func(*OpenAILLM)
@@ -154,6 +169,7 @@ type openaiToolCall struct {
 
 type openaiResponse struct {
 	ID      string `json:"id"`
+	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
 			Role      string           `json:"role"`
@@ -189,19 +205,29 @@ type openaiStreamChunk struct {
 func (o *OpenAILLM) Generate(ctx context.Context, messages []Message, tools []ToolSchema) (*LLMResponse, error) {
 	start := time.Now()
 
-	req := o.buildRequest(messages, tools, false)
+	req := o.buildRequest(ctx, messages, tools, false)
 
 	resp, err := o.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return o.parseResponse(resp, time.Since(start))
+	out, err := o.parseResponse(resp, time.Since(start))
+	if err != nil {
+		return nil, err
+	}
+	if out.Model == "" {
+		// Not every OpenAI-compatible server echoes the model back. Falling
+		// back to what we sent keeps the response honest about which model
+		// answered, which is the whole point of carrying it.
+		out.Model = req.Model
+	}
+	return out, nil
 }
 
 // GenerateStream sends a request and returns a channel of streaming events.
 func (o *OpenAILLM) GenerateStream(ctx context.Context, messages []Message, tools []ToolSchema) (<-chan StreamEvent, error) {
-	req := o.buildRequest(messages, tools, true)
+	req := o.buildRequest(ctx, messages, tools, true)
 
 	eventCh := make(chan StreamEvent, 100)
 
@@ -245,11 +271,99 @@ func (o *OpenAILLM) GenerateStream(ctx context.Context, messages []Message, tool
 	return eventCh, nil
 }
 
-func (o *OpenAILLM) buildRequest(messages []Message, tools []ToolSchema, stream bool) *openaiRequest {
+// servedModels returns the set of model ids this endpoint advertises, and
+// whether the lineup is known at all. A failed or unimplemented /v1/models
+// yields ok=false — plenty of OpenAI-compatible proxies do not serve it, and
+// that must cost an override, never the turn.
+func (o *OpenAILLM) servedModels(ctx context.Context) (map[string]bool, bool) {
+	o.lineupMu.Lock()
+	defer o.lineupMu.Unlock()
+	if o.lineupOK && time.Since(o.lineupAt) < lineupTTL {
+		return o.lineup, true
+	}
+
+	url := o.baseURL + "/v1/models"
+	if strings.HasSuffix(o.baseURL, "/v1") {
+		url = o.baseURL + "/models"
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, false
+	}
+	req.Header.Set("Authorization", "Bearer "+o.apiKey)
+	resp, err := o.httpClient.Do(req)
+	if err != nil {
+		slog.Debug("openai: model lineup unavailable", "url", url, "error", err)
+		return nil, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		slog.Debug("openai: model lineup unavailable", "url", url, "status", resp.StatusCode)
+		return nil, false
+	}
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		slog.Debug("openai: model lineup unparseable", "url", url, "error", err)
+		return nil, false
+	}
+
+	set := make(map[string]bool, len(body.Data))
+	for _, m := range body.Data {
+		set[m.ID] = true
+	}
+	o.lineup, o.lineupAt, o.lineupOK = set, time.Now(), true
+	return set, true
+}
+
+// resolveModel decides which model actually goes on the wire.
+//
+// Per-agent and per-step overrides (Agent.ModelFor) arrive on the context,
+// and honouring them is the point: a lineup that routes classification to a
+// small model should do that here too. But the overrides in a document
+// written for a hosted provider name models this endpoint has never heard
+// of — "claude-haiku-4-5-20251001" against LM Studio is a 404 and a dead
+// turn — so an override is taken only when the endpoint advertises it.
+//
+// A rejected override is warned about exactly once per name. Silence here is
+// what made this confusing in the first place: the caller logs the model it
+// *asked* for, so without a warning the logs name a model that never saw the
+// request.
+func (o *OpenAILLM) resolveModel(ctx context.Context, requested string) string {
+	if requested == "" || requested == o.model {
+		return o.model
+	}
+	served, known := o.servedModels(ctx)
+	if known && served[requested] {
+		return requested
+	}
+	if _, warned := o.unservable.LoadOrStore(requested, true); !warned {
+		reason := "endpoint does not serve it"
+		if !known {
+			reason = "endpoint does not advertise a model lineup"
+		}
+		slog.Warn("openai: ignoring model override",
+			"requested", requested, "using", o.model, "reason", reason)
+	}
+	return o.model
+}
+
+func (o *OpenAILLM) buildRequest(ctx context.Context, messages []Message, tools []ToolSchema, stream bool) *openaiRequest {
+	opts := OptionsFromContext(ctx)
+
+	maxTokens := 8192
+	if opts.MaxTokens > 0 {
+		maxTokens = opts.MaxTokens
+	}
+
 	req := &openaiRequest{
-		Model:     o.model,
-		MaxTokens: 8192,
-		Stream:    stream,
+		Model:       o.resolveModel(ctx, opts.Model),
+		MaxTokens:   maxTokens,
+		Temperature: opts.Temperature,
+		Stream:      stream,
 	}
 	if stream {
 		// Ask for usage on the final chunk so token/cost accounting works
@@ -549,6 +663,7 @@ func (o *OpenAILLM) doRequest(ctx context.Context, req *openaiRequest) (*openaiR
 
 func (o *OpenAILLM) parseResponse(resp *openaiResponse, latency time.Duration) (*LLMResponse, error) {
 	result := &LLMResponse{
+		Model:        resp.Model,
 		InputTokens:  resp.Usage.PromptTokens,
 		OutputTokens: resp.Usage.CompletionTokens,
 		CostUSD:      o.cost(resp.Usage.PromptTokens, resp.Usage.CompletionTokens),

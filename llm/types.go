@@ -123,6 +123,14 @@ type LLMResponse struct {
 	// ToolCalls are any tool calls the model wants to make
 	ToolCalls []ToolCall
 
+	// Model is the model that actually produced this response, as reported
+	// by the backend. It is not always the model that was asked for: the
+	// OpenAI-compatible path falls back to its configured model when an
+	// override names something the endpoint does not serve. Callers log and
+	// price this rather than the request, so a local call is never recorded
+	// as a hosted one.
+	Model string
+
 	// Token counts
 	InputTokens  int
 	OutputTokens int

@@ -121,7 +121,7 @@ func TestAnthropicStreamMessageEndCarriesCost(t *testing.T) {
 // the volatile half of a split system prompt on the floor.
 func TestOpenAIKeepsVolatileSystemContent(t *testing.T) {
 	o := &OpenAILLM{model: "gpt-4o"}
-	req := o.buildRequest([]Message{
+	req := o.buildRequest(context.Background(), []Message{
 		{Role: RoleSystem, Content: "you are sven.", Volatile: "You are talking to Ada."},
 		{Role: RoleUser, Content: "hi"},
 	}, nil, false)

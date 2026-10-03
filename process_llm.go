@@ -84,6 +84,18 @@ func getV39AReporter() *v39a.Reporter {
 // conversation row when it sees a cost for an unknown id, so no
 // separate conversation_started event is needed for the slim slice.
 // Vendor is "anthropic" for any claude-* model, "openai" otherwise.
+// effectiveModel returns the model that answered, preferring what the backend
+// reported over what was requested. They diverge whenever a backend declines
+// an override — the OpenAI-compatible path does this for models its endpoint
+// does not serve — and reporting the request there misattributes both the log
+// line and the cost event, whose vendor is read off the model-name prefix.
+func effectiveModel(resp *llm.LLMResponse, requested string) string {
+	if resp != nil && resp.Model != "" {
+		return resp.Model
+	}
+	return requested
+}
+
 func reportLLMCost(p *Process, resp *llm.LLMResponse, stepType, model string) {
 	r := getV39AReporter()
 	if r == nil || resp == nil || resp.CostUSD <= 0 {
@@ -865,17 +877,18 @@ func (p *Process) callLLMWithRetry(ctx context.Context, messages []llm.Message, 
 			if p.circuitBreaker != nil {
 				p.circuitBreaker.RecordSuccess()
 			}
+			used := effectiveModel(resp, chosenModel)
 			slog.Debug("llm call succeeded",
 				"process_id", p.ID,
 				"agent", p.Agent.Name,
 				"step_type", stepType,
-				"model", chosenModel,
+				"model", used,
 				"attempt", attempt+1,
 				"latency_ms", latency.Milliseconds(),
 				"input_tokens", resp.InputTokens,
 				"output_tokens", resp.OutputTokens,
 			)
-			reportLLMCost(p, resp, stepType, chosenModel)
+			reportLLMCost(p, resp, stepType, used)
 			return resp, nil
 		}
 

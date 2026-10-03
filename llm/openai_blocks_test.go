@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 )
@@ -25,7 +26,7 @@ func TestOpenAIBuildRequestStructuredBlocks(t *testing.T) {
 		}},
 	}
 
-	req := o.buildRequest(messages, nil, false)
+	req := o.buildRequest(context.Background(), messages, nil, false)
 
 	// Expect: user, assistant(text+tool_calls), tool.
 	if len(req.Messages) != 3 {
