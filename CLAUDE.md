@@ -53,12 +53,49 @@ Every spawned process must be completed (`proc.Complete()`) or failed (`proc.Fai
 |---------|------|
 | root (`vega`) | Core types: Agent, Process, Orchestrator, Supervisor, ProcessGroup, EventBus |
 | `dsl/` | YAML parser (`parser.go`) → AST (`types.go`) → Interpreter (`interpreter.go`). Also hosts meta-agents Hera and Iris |
-| `llm/` | LLM interface + Anthropic backend with streaming. `types.go` defines the interface, `anthropic.go` implements it |
+| `llm/` | LLM interface + two backends. `types.go` defines the interface; `anthropic.go` and `openai.go` implement it; `factory.go` picks one from the environment |
 | `tools/` | Tool registry (`tools.go`), built-ins (`builtin.go`), MCP integration (`mcp.go`), dynamic YAML tools (`dynamic.go`) |
 | `serve/` | HTTP server, REST API, SSE streaming, SQLite persistence, Telegram bot, cron scheduler, memory system, embedded React frontend |
 | `mcp/` | Model Context Protocol client (stdio + HTTP transports) |
 | `memory/` | Token budget and sliding window context management |
 | `cmd/vega/` | CLI entry point: `run`, `validate`, `repl`, `serve`, `version` |
+
+### Self-hosted backends (`llm/`)
+
+`llm.New()` returns the OpenAI-compatible client when `OPENAI_BASE_URL` is
+set, else the Anthropic one, and `requireAPIKey()` accepts that base URL in
+place of a key (the client falls back to `sk-local`). This is the whole
+self-hosting switch: LM Studio, Ollama, vLLM and LiteLLM all work unchanged.
+
+Four contracts, each of which cost a bug:
+
+- **The streaming client carries no overall `Timeout`.** `http.Client.Timeout`
+  spans the entire response body, so a bound there does not fail a slow
+  stream, it truncates a working one mid-answer. Both backends keep a separate
+  `streamClient` for this reason. The sync path stays bounded
+  (`DefaultOpenAITimeout` / `DefaultAnthropicTimeout`, `WithOpenAITimeout`);
+  streams are cancelled by the caller's context and nothing else.
+- **Model overrides are taken only when the endpoint advertises them.** Agent
+  and per-step models arrive on the context (`Agent.ModelFor` →
+  `llm.ContextWithOptions`), and `openai.go` honours them against the lineup
+  from `/v1/models` (cached, `lineupTTL`). A document written for a hosted
+  provider names models a local endpoint has never heard of, so an
+  unservable override falls back to the configured model and warns once per
+  name — never silently, which is how it went unnoticed, and never by sending
+  a request that 404s.
+- **`LLMResponse.Model` is the model that answered**, which is not always the
+  one requested. Log and price *that*: `reportLLMCost` reads the vendor off
+  the model-name prefix, so reporting the request billed a local call to
+  Anthropic from a machine with no Anthropic key. `effectiveModel` in
+  `process_llm.go` is the one place that decides.
+- **Timeouts around LLM calls are hosted-API assumptions until proven
+  otherwise.** A local model's prefill alone can run for minutes on a long
+  prompt. The bounds that exist are generous and tunable —
+  `VEGA_INTRO_TIMEOUT` (the greeting turn, `serve/agent_intro.go`) and
+  `VEGA_SUMMARY_TIMEOUT` (context compaction, `memory/memory.go`) — and both
+  reject unparseable or non-positive values rather than build an
+  already-expired context, which fails identically to a dead backend.
+  Prefer inheriting the caller's context, as `compact.go` does.
 
 ### Meta-agents (in `dsl/`)
 
