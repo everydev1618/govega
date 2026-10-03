@@ -177,4 +177,3 @@ func resolvedItems(b *fakeInboxBackend) []InboxItem {
 	}
 	return out
 }
-

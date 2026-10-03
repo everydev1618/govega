@@ -67,9 +67,9 @@ func callListMyChannels(t *testing.T, backend *mockChannelBackend, agentName str
 	t.Helper()
 
 	interp := &Interpreter{
-		doc:    &Document{Agents: map[string]*Agent{}},
-		agents: map[string]*vega.Process{},
-		tools:  tools.NewTools(),
+		doc:               &Document{Agents: map[string]*Agent{}},
+		agents:            map[string]*vega.Process{},
+		tools:             tools.NewTools(),
 		delegationConfigs: map[string]*DelegationDef{},
 	}
 	RegisterChannelTools(interp, backend, nil, nil, nil)

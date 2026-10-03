@@ -37,18 +37,18 @@ func TestEvalWhere(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-		{"", true, false},                              // empty => always pass
-		{"status == failed", true, false},              //
-		{"status == ok", false, false},                 //
-		{"status != ok", true, false},                  //
-		{"status != failed", false, false},             //
-		{`status == "failed"`, true, false},            // quoted RHS
-		{"error contains refused", true, false},        //
-		{"error contains success", false, false},       //
-		{"error ~= upstream", true, false},             // ~= is substring
-		{"count == 3", true, false},                    // non-string coerced
-		{"missing == whatever", false, false},          // missing key, != empty
-		{"missing != whatever", true, false},           // missing key
+		{"", true, false},                                // empty => always pass
+		{"status == failed", true, false},                //
+		{"status == ok", false, false},                   //
+		{"status != ok", true, false},                    //
+		{"status != failed", false, false},               //
+		{`status == "failed"`, true, false},              // quoted RHS
+		{"error contains refused", true, false},          //
+		{"error contains success", false, false},         //
+		{"error ~= upstream", true, false},               // ~= is substring
+		{"count == 3", true, false},                      // non-string coerced
+		{"missing == whatever", false, false},            // missing key, != empty
+		{"missing != whatever", true, false},             // missing key
 		{"garbage clause with no operator", false, true}, // malformed
 	}
 	for _, c := range cases {

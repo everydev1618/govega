@@ -7,8 +7,8 @@ import (
 
 func TestParseResponseStopReasons(t *testing.T) {
 	tests := []struct {
-		apiReason  string
-		wantStop   StopReason
+		apiReason string
+		wantStop  StopReason
 	}{
 		{"end_turn", StopReasonEnd},
 		{"tool_use", StopReasonToolUse},

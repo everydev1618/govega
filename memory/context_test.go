@@ -286,7 +286,7 @@ func TestTokenBudgetContext_MessagesStartAtUserBoundary(t *testing.T) {
 		}
 		return out
 	}
-	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "first question q1"})       // ~5 tokens
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "first question q1"})      // ~5 tokens
 	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: big("first answer")}) // ~40 tokens
 	ctx.Add(llm.Message{Role: llm.RoleUser, Content: "second question here"})   // ~5 tokens
 	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "second answer ok"})  // ~4 tokens
@@ -314,8 +314,8 @@ func TestTokenBudgetContext_MessagesFallsBackWhenNoUserFits(t *testing.T) {
 	for len(long) < 400 {
 		long += "user context that is quite large "
 	}
-	ctx.Add(llm.Message{Role: llm.RoleUser, Content: long})                       // ~100 tokens
-	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "short answer here"})   // ~5 tokens
+	ctx.Add(llm.Message{Role: llm.RoleUser, Content: long})                     // ~100 tokens
+	ctx.Add(llm.Message{Role: llm.RoleAssistant, Content: "short answer here"}) // ~5 tokens
 
 	msgs := ctx.Messages(15)
 	if len(msgs) != 1 {

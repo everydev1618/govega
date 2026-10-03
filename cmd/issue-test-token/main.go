@@ -4,17 +4,17 @@
 //
 // Workflow:
 //
-//   1. Run this command in one terminal:
-//        go run ./cmd/issue-test-token
-//      It prints env vars + the token, then keeps a JWKS server running.
+//  1. Run this command in one terminal:
+//     go run ./cmd/issue-test-token
+//     It prints env vars + the token, then keeps a JWKS server running.
 //
-//   2. In another terminal, source the env and start your apex backend:
-//        eval "$(go run ./cmd/issue-test-token --quiet | head -3)"
-//        export TEST_TOKEN=...    # paste from the helper's stderr output
-//        APEX_TENANT_ID=$APEX_TENANT_ID make run -C ../apexvega
+//  2. In another terminal, source the env and start your apex backend:
+//     eval "$(go run ./cmd/issue-test-token --quiet | head -3)"
+//     export TEST_TOKEN=...    # paste from the helper's stderr output
+//     APEX_TENANT_ID=$APEX_TENANT_ID make run -C ../apexvega
 //
-//   3. Curl with the token:
-//        curl -H "Authorization: Bearer $TEST_TOKEN" http://localhost:8080/api/v1/stats
+//  3. Curl with the token:
+//     curl -H "Authorization: Bearer $TEST_TOKEN" http://localhost:8080/api/v1/stats
 //
 // Use --tenant, --user, --ttl, --port to vary claims and listen address.
 //

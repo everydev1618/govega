@@ -51,19 +51,19 @@ type ChannelDef struct {
 
 // Document represents a parsed .vega.yaml file.
 type Document struct {
-	Name        string                `yaml:"name"`
-	Description string                `yaml:"description"`
-	Agents      map[string]*Agent     `yaml:"agents"`
+	Name        string                 `yaml:"name"`
+	Description string                 `yaml:"description"`
+	Agents      map[string]*Agent      `yaml:"agents"`
 	Channels    map[string]*ChannelDef `yaml:"channels"`
-	Workflows   map[string]*Workflow  `yaml:"workflows"`
-	Tools       map[string]*ToolDef   `yaml:"tools"`
+	Workflows   map[string]*Workflow   `yaml:"workflows"`
+	Tools       map[string]*ToolDef    `yaml:"tools"`
 	// Norms are named guidance blocks that can be appended to an agent's
 	// system prompt at runtime. Use the interpreter's Norm() accessor to
 	// look one up by name; the host application decides which norm (if
 	// any) applies to a given session via the ExtraSystemProvider hook.
-	Norms       map[string]*Norm      `yaml:"norms,omitempty"`
-	Settings    *Settings             `yaml:"settings"`
-	Company     *Company              `yaml:"company,omitempty"`
+	Norms    map[string]*Norm `yaml:"norms,omitempty"`
+	Settings *Settings        `yaml:"settings"`
+	Company  *Company         `yaml:"company,omitempty"`
 }
 
 // Norm is a named writing/style guidance block defined in YAML. The
@@ -77,9 +77,9 @@ type Norm struct {
 
 // Agent represents an agent definition in the DSL.
 type Agent struct {
-	Name          string            `yaml:"name"`
-	DisplayName   string            `yaml:"display_name"`
-	Title         string            `yaml:"title"`
+	Name        string `yaml:"name"`
+	DisplayName string `yaml:"display_name"`
+	Title       string `yaml:"title"`
 	// Description is a short paragraph of body text describing the agent's
 	// purpose, surfaced on agent cards and detail pages. Distinct from
 	// `system` (which is the LLM-facing prompt) — intended for users.
@@ -91,22 +91,22 @@ type Agent struct {
 	// AvatarGradient is a 2-stop CSS color array (e.g. ["#EF4444", "#DC2626"])
 	// used as the background gradient behind the icon/avatar.
 	AvatarGradient []string `yaml:"avatar_gradient,omitempty" json:"avatar_gradient,omitempty"`
-	Extends       string            `yaml:"extends"`
-	Model         string            `yaml:"model"`
-	FallbackModel string            `yaml:"fallback_model"`
+	Extends        string   `yaml:"extends"`
+	Model          string   `yaml:"model"`
+	FallbackModel  string   `yaml:"fallback_model"`
 	// Models maps step-type tags (e.g. "classify", "code", "summarize") to
 	// model IDs. Lookups that miss this map fall back to Model. Unset keys
 	// are filled at validate time from Settings.DefaultModels.
-	Models        map[string]string `yaml:"models,omitempty"`
-	System        string            `yaml:"system"`
-	Temperature *float64          `yaml:"temperature"`
-	MaxTokens   int               `yaml:"max_tokens"`
-	Effort      string            `yaml:"effort"` // "low" | "medium" | "high" | "xhigh" | "max"
-	Budget      string            `yaml:"budget"` // e.g., "$0.50"
-	Tools       []string          `yaml:"tools"`
-	Knowledge   []string          `yaml:"knowledge"`
-	Team        []string          `yaml:"team"`
-	Supervision *SupervisionDef   `yaml:"supervision"`
+	Models         map[string]string  `yaml:"models,omitempty"`
+	System         string             `yaml:"system"`
+	Temperature    *float64           `yaml:"temperature"`
+	MaxTokens      int                `yaml:"max_tokens"`
+	Effort         string             `yaml:"effort"` // "low" | "medium" | "high" | "xhigh" | "max"
+	Budget         string             `yaml:"budget"` // e.g., "$0.50"
+	Tools          []string           `yaml:"tools"`
+	Knowledge      []string           `yaml:"knowledge"`
+	Team           []string           `yaml:"team"`
+	Supervision    *SupervisionDef    `yaml:"supervision"`
 	Retry          *RetryDef          `yaml:"retry"`
 	RateLimit      *RateLimitDef      `yaml:"rate_limit"`
 	CircuitBreaker *CircuitBreakerDef `yaml:"circuit_breaker"`
@@ -208,39 +208,39 @@ type Input struct {
 // This uses a flexible structure to handle the natural language format.
 type Step struct {
 	// Agent step fields
-	Agent           string        `yaml:"-"` // Extracted from key
-	Action          string        `yaml:"-"` // Extracted from key
-	Send            string        `yaml:"send"`
-	Save            string        `yaml:"save"`
-	Timeout         string        `yaml:"timeout"`
-	Budget          string        `yaml:"budget"`
-	Retry           int           `yaml:"retry"`
-	If              string        `yaml:"if"`
-	ContinueOnError bool          `yaml:"continue_on_error"`
-	Format          string        `yaml:"format"` // json, yaml, etc.
+	Agent           string `yaml:"-"` // Extracted from key
+	Action          string `yaml:"-"` // Extracted from key
+	Send            string `yaml:"send"`
+	Save            string `yaml:"save"`
+	Timeout         string `yaml:"timeout"`
+	Budget          string `yaml:"budget"`
+	Retry           int    `yaml:"retry"`
+	If              string `yaml:"if"`
+	ContinueOnError bool   `yaml:"continue_on_error"`
+	Format          string `yaml:"format"` // json, yaml, etc.
 
 	// Control flow fields
-	Condition string  `yaml:"-"` // For if steps
-	Then      []Step  `yaml:"then"`
-	Else      []Step  `yaml:"else"`
+	Condition string `yaml:"-"` // For if steps
+	Then      []Step `yaml:"then"`
+	Else      []Step `yaml:"else"`
 
 	// Loop fields
-	ForEach   string  `yaml:"for"`   // "item in items"
-	Steps     []Step  `yaml:"steps"` // for-each body
-	Repeat    *Repeat `yaml:"repeat"`
+	ForEach string  `yaml:"for"`   // "item in items"
+	Steps   []Step  `yaml:"steps"` // for-each body
+	Repeat  *Repeat `yaml:"repeat"`
 
 	// Parallel fields
 	Parallel []Step `yaml:"parallel"`
 
 	// Sub-workflow fields
-	Workflow    string         `yaml:"workflow"`
-	With        map[string]any `yaml:"with"`
+	Workflow string         `yaml:"workflow"`
+	With     map[string]any `yaml:"with"`
 
 	// Special fields
-	Set     map[string]any `yaml:"set"`
-	Return  string         `yaml:"return"`
-	Try     []Step         `yaml:"try"`
-	Catch   []Step         `yaml:"catch"`
+	Set    map[string]any `yaml:"set"`
+	Return string         `yaml:"return"`
+	Try    []Step         `yaml:"try"`
+	Catch  []Step         `yaml:"catch"`
 
 	// Raw for flexible parsing
 	Raw map[string]any `yaml:"-"`
@@ -255,11 +255,11 @@ type Repeat struct {
 
 // ToolDef is a DSL tool definition.
 type ToolDef struct {
-	Name           string           `yaml:"name"`
-	Description    string           `yaml:"description"`
-	Params         []ToolParam      `yaml:"params"`
-	Implementation *ToolImpl        `yaml:"implementation"`
-	Include        []string         `yaml:"include"` // For loading from files
+	Name           string      `yaml:"name"`
+	Description    string      `yaml:"description"`
+	Params         []ToolParam `yaml:"params"`
+	Implementation *ToolImpl   `yaml:"implementation"`
+	Include        []string    `yaml:"include"` // For loading from files
 }
 
 // ToolParam defines a tool parameter.
@@ -286,7 +286,7 @@ type ToolImpl struct {
 
 // Settings are global configuration.
 type Settings struct {
-	DefaultModel       string            `yaml:"default_model"`
+	DefaultModel string `yaml:"default_model"`
 	// DefaultModels is a document-wide step-type → model fallback table.
 	// Each agent inherits any keys it hasn't set in its own Models map.
 	DefaultModels      map[string]string `yaml:"default_models,omitempty"`

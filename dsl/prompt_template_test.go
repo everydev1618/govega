@@ -84,7 +84,7 @@ func TestRenderIrisPrompt_LegacySubstringStillWorks(t *testing.T) {
 	cfg := IrisConfig{
 		Name: "atlas", DisplayName: "Atlas", Title: "Orchestrator",
 		BuilderName: "forge", BuilderDisplayName: "Forge",
-		ProductName: "Sky",
+		ProductName:  "Sky",
 		SystemPrompt: "I am Iris. My builder is Hera. This is the Vega platform.",
 	}
 	got := renderIrisPrompt(cfg)

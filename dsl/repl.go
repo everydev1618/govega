@@ -12,11 +12,11 @@ import (
 
 // REPL provides an interactive terminal chat for a Vega interpreter.
 type REPL struct {
-	interp       *Interpreter
-	in           io.Reader
-	out          io.Writer
-	prompt       string
-	sendTimeout  time.Duration
+	interp      *Interpreter
+	in          io.Reader
+	out         io.Writer
+	prompt      string
+	sendTimeout time.Duration
 }
 
 // REPLOption configures a REPL.

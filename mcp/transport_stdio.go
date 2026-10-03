@@ -17,15 +17,15 @@ import (
 
 // StdioTransport implements Transport over subprocess stdin/stdout.
 type StdioTransport struct {
-	config  ServerConfig
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  io.ReadCloser
-	stderr  io.ReadCloser
+	config ServerConfig
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	stderr io.ReadCloser
 
 	// Request tracking
-	nextID   int64
-	pending  map[int64]chan *JSONRPCResponse
+	nextID    int64
+	pending   map[int64]chan *JSONRPCResponse
 	pendingMu sync.Mutex
 
 	// Notification handling

@@ -31,9 +31,9 @@ type Supervision struct {
 	OnGiveUp func(p *Process, err error)
 
 	// internal state
-	mu         sync.Mutex
-	failures   []time.Time
-	restarts   int
+	mu          sync.Mutex
+	failures    []time.Time
+	restarts    int
 	lastBackoff time.Duration
 }
 
@@ -223,11 +223,11 @@ type Alert struct {
 type AlertType string
 
 const (
-	AlertStaleProgress   AlertType = "stale_progress"
-	AlertHighCost        AlertType = "high_cost"
-	AlertErrorLoop       AlertType = "error_loop"
-	AlertTimeoutWarning  AlertType = "timeout_warning"
-	AlertHighIterations  AlertType = "high_iterations"
+	AlertStaleProgress  AlertType = "stale_progress"
+	AlertHighCost       AlertType = "high_cost"
+	AlertErrorLoop      AlertType = "error_loop"
+	AlertTimeoutWarning AlertType = "timeout_warning"
+	AlertHighIterations AlertType = "high_iterations"
 )
 
 // NewHealthMonitor creates a new health monitor.

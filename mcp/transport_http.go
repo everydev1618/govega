@@ -14,8 +14,8 @@ import (
 
 // HTTPTransport implements Transport over HTTP with optional SSE.
 type HTTPTransport struct {
-	config  ServerConfig
-	client  *http.Client
+	config ServerConfig
+	client *http.Client
 
 	// Request tracking
 	nextID int64

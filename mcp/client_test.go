@@ -9,11 +9,11 @@ import (
 
 // mockTransport is a mock transport for testing.
 type mockTransport struct {
-	connected       bool
-	responses       map[string]json.RawMessage
-	notifyHandler   func(string, json.RawMessage)
-	sendCalls       []mockSendCall
-	notifyCalls     []string
+	connected     bool
+	responses     map[string]json.RawMessage
+	notifyHandler func(string, json.RawMessage)
+	sendCalls     []mockSendCall
+	notifyCalls   []string
 }
 
 type mockSendCall struct {

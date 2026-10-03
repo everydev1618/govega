@@ -8,7 +8,7 @@ func TestParseTriggerParams(t *testing.T) {
 		map[string]any{"on": "signal.deploy", "gate": "model", "prompt": "react"},
 		map[string]any{"on": "", "prompt": "no event"},       // dropped: no On
 		map[string]any{"on": "schedule.fired", "prompt": ""}, // dropped: no Prompt
-		"not-a-map",                                          // dropped: wrong shape
+		"not-a-map", // dropped: wrong shape
 	}
 	got := parseTriggerParams(raw)
 	if len(got) != 2 {

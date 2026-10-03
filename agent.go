@@ -253,4 +253,3 @@ type CircuitBreaker struct {
 	// OnClose is called when circuit closes
 	OnClose func()
 }
-

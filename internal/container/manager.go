@@ -112,7 +112,7 @@ func createDockerClient() (*client.Client, error) {
 	// Try common Docker Desktop socket locations
 	socketPaths := []string{
 		"unix://" + os.Getenv("HOME") + "/.docker/run/docker.sock", // Docker Desktop macOS
-		"unix:///var/run/docker.sock",                               // Linux default
+		"unix:///var/run/docker.sock",                              // Linux default
 		"unix://" + os.Getenv("HOME") + "/.colima/docker.sock",     // Colima
 	}
 

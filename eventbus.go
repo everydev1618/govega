@@ -161,12 +161,12 @@ func publishEventHTTP(ctx context.Context, event Event, config *CallbackConfig) 
 
 // EventPoller polls a directory for event files.
 type EventPoller struct {
-	dir      string
-	events   chan Event
-	stopCh   chan struct{}
-	wg       sync.WaitGroup
-	mu       sync.RWMutex
-	stopped  bool
+	dir     string
+	events  chan Event
+	stopCh  chan struct{}
+	wg      sync.WaitGroup
+	mu      sync.RWMutex
+	stopped bool
 }
 
 // newEventPoller creates a new event poller.

@@ -42,13 +42,13 @@ type Transport interface {
 
 // Client is an MCP client that can connect to MCP servers.
 type Client struct {
-	name      string
-	transport Transport
-	tools     []MCPTool
-	resources []MCPResource
-	connected bool
+	name       string
+	transport  Transport
+	tools      []MCPTool
+	resources  []MCPResource
+	connected  bool
 	serverInfo *ServerInfo
-	mu        sync.RWMutex
+	mu         sync.RWMutex
 }
 
 // MCPTool represents a tool provided by an MCP server.
@@ -168,8 +168,8 @@ type JSONRPCNotification struct {
 
 // InitializeParams are the parameters for the initialize request.
 type InitializeParams struct {
-	ProtocolVersion string     `json:"protocolVersion"`
-	ClientInfo      ClientInfo `json:"clientInfo"`
+	ProtocolVersion string             `json:"protocolVersion"`
+	ClientInfo      ClientInfo         `json:"clientInfo"`
 	Capabilities    ClientCapabilities `json:"capabilities"`
 }
 

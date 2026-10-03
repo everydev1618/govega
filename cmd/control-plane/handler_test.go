@@ -210,7 +210,9 @@ func TestDevMint_DefaultsTTL(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status=%d", res.StatusCode)
 	}
-	var got struct{ ExpiresIn int `json:"expires_in"` }
+	var got struct {
+		ExpiresIn int `json:"expires_in"`
+	}
 	_ = json.NewDecoder(res.Body).Decode(&got)
 	if got.ExpiresIn != 15*60 {
 		t.Errorf("default expires_in=%d, want %d (15min)", got.ExpiresIn, 15*60)

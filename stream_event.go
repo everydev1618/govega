@@ -9,11 +9,11 @@ import (
 type ChatEventType string
 
 const (
-	ChatEventTextDelta       ChatEventType = "text_delta"
-	ChatEventToolStart       ChatEventType = "tool_start"
-	ChatEventToolEnd         ChatEventType = "tool_end"
-	ChatEventError           ChatEventType = "error"
-	ChatEventDone            ChatEventType = "done"
+	ChatEventTextDelta ChatEventType = "text_delta"
+	ChatEventToolStart ChatEventType = "tool_start"
+	ChatEventToolEnd   ChatEventType = "tool_end"
+	ChatEventError     ChatEventType = "error"
+	ChatEventDone      ChatEventType = "done"
 	// ChatEventNoActiveStream is sent on the reconnect endpoint when the
 	// caller connected to an agent that has no in-progress stream. It's
 	// always followed by a `done` event and the connection closes. Lets
@@ -60,13 +60,13 @@ type ChatRecallEntry struct {
 type ChatEventCode string
 
 const (
-	ChatEventCodeRateLimit       ChatEventCode = "rate_limit"
-	ChatEventCodeOverloaded      ChatEventCode = "overloaded"
-	ChatEventCodeTimeout         ChatEventCode = "timeout"
-	ChatEventCodeTemporary       ChatEventCode = "temporary"
-	ChatEventCodeInvalidRequest  ChatEventCode = "invalid_request"
-	ChatEventCodeAuthentication  ChatEventCode = "authentication"
-	ChatEventCodeBudgetExceeded  ChatEventCode = "budget_exceeded"
+	ChatEventCodeRateLimit      ChatEventCode = "rate_limit"
+	ChatEventCodeOverloaded     ChatEventCode = "overloaded"
+	ChatEventCodeTimeout        ChatEventCode = "timeout"
+	ChatEventCodeTemporary      ChatEventCode = "temporary"
+	ChatEventCodeInvalidRequest ChatEventCode = "invalid_request"
+	ChatEventCodeAuthentication ChatEventCode = "authentication"
+	ChatEventCodeBudgetExceeded ChatEventCode = "budget_exceeded"
 )
 
 // ChatEventCodeFromError classifies an error into a ChatEventCode for
@@ -106,14 +106,14 @@ type ChatEventMetrics struct {
 // It carries text deltas alongside tool call lifecycle events so that
 // callers can render tool activity inline with the response text.
 type ChatEvent struct {
-	Type        ChatEventType     `json:"type"`
-	Delta       string            `json:"delta,omitempty"`
-	ToolCallID  string            `json:"tool_call_id,omitempty"`
-	ToolName    string            `json:"tool_name,omitempty"`
-	Arguments   map[string]any    `json:"arguments,omitempty"`
-	Result      string            `json:"result,omitempty"`
-	DurationMs  int64             `json:"duration_ms,omitempty"`
-	Error       string            `json:"error,omitempty"`
+	Type       ChatEventType  `json:"type"`
+	Delta      string         `json:"delta,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+	ToolName   string         `json:"tool_name,omitempty"`
+	Arguments  map[string]any `json:"arguments,omitempty"`
+	Result     string         `json:"result,omitempty"`
+	DurationMs int64          `json:"duration_ms,omitempty"`
+	Error      string         `json:"error,omitempty"`
 	// Code is a stable error classifier — only set on Type=="error" events.
 	// Lets callers switch on the cause without substring-matching `error`.
 	Code        ChatEventCode     `json:"code,omitempty"`

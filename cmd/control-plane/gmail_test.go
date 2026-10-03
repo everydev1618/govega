@@ -61,14 +61,14 @@ func newGmailTestServer(t *testing.T) (*httptest.Server, *authmint.Signer, *fake
 	}
 	g := newFakeGoogle(t)
 	cfg := Config{
-		Signer:                signer,
-		Issuer:                "http://control-plane.test",
-		GoogleClientID:        "client-id-fake",
-		GoogleClientSecret:    "client-secret-fake",
-		GoogleRedirectURI:     "http://control-plane.test/oauth/gmail/callback",
-		GoogleAuthURL:         "http://google.test/o/oauth2/v2/auth",
-		GoogleTokenURL:        g.URL,
-		ReturnURLPattern:      regexp.MustCompile(`^http://acme\.tenant\.test/.*$`),
+		Signer:             signer,
+		Issuer:             "http://control-plane.test",
+		GoogleClientID:     "client-id-fake",
+		GoogleClientSecret: "client-secret-fake",
+		GoogleRedirectURI:  "http://control-plane.test/oauth/gmail/callback",
+		GoogleAuthURL:      "http://google.test/o/oauth2/v2/auth",
+		GoogleTokenURL:     g.URL,
+		ReturnURLPattern:   regexp.MustCompile(`^http://acme\.tenant\.test/.*$`),
 	}
 	srv := httptest.NewServer(newHandler(cfg))
 	t.Cleanup(srv.Close)
@@ -254,7 +254,9 @@ func callbackFlow(t *testing.T, srv *httptest.Server, signer *authmint.Signer) (
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("init status=%d", res.StatusCode)
 	}
-	var got struct{ AuthorizeURL string `json:"authorize_url"` }
+	var got struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}
 	_ = json.NewDecoder(res.Body).Decode(&got)
 	u, _ := url.Parse(got.AuthorizeURL)
 	return u.Query().Get("state")

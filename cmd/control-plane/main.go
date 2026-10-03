@@ -11,22 +11,22 @@
 // honored as a fallback with a one-time deprecation warning; new
 // deployments should use the VEGA_-prefixed names.
 //
-//   CONTROL_PLANE_PORT          listen port, default 9001
-//   CONTROL_PLANE_ISSUER        iss claim baked into tokens, default
-//                               http://localhost:<port>
-//   VEGA_DEV_SECRET             shared secret for /dev/mint; if unset,
-//                               the dev-mint endpoint returns 503
+//	CONTROL_PLANE_PORT          listen port, default 9001
+//	CONTROL_PLANE_ISSUER        iss claim baked into tokens, default
+//	                            http://localhost:<port>
+//	VEGA_DEV_SECRET             shared secret for /dev/mint; if unset,
+//	                            the dev-mint endpoint returns 503
 //
 // Gmail OAuth (Phase 2E) — all optional; if unset the /oauth/gmail/*
 // endpoints return 503 and Gmail integration is unavailable in cloud
 // mode (manual paste flow on the tenant still works):
 //
-//   VEGA_GOOGLE_CLIENT_ID       OAuth client id from Google Cloud Console
-//   VEGA_GOOGLE_CLIENT_SECRET   OAuth client secret
-//   VEGA_GOOGLE_REDIRECT_URI    redirect URI registered with Google;
-//                               typically <CONTROL_PLANE_ISSUER>/oauth/gmail/callback
-//   VEGA_RETURN_URL_PATTERN     optional regex; return URLs in
-//                               /oauth/gmail/init bodies must match.
+//	VEGA_GOOGLE_CLIENT_ID       OAuth client id from Google Cloud Console
+//	VEGA_GOOGLE_CLIENT_SECRET   OAuth client secret
+//	VEGA_GOOGLE_REDIRECT_URI    redirect URI registered with Google;
+//	                            typically <CONTROL_PLANE_ISSUER>/oauth/gmail/callback
+//	VEGA_RETURN_URL_PATTERN     optional regex; return URLs in
+//	                            /oauth/gmail/init bodies must match.
 //
 // The signing key is generated fresh on every start (ephemeral). Tenant
 // backends must therefore re-fetch JWKS after a control plane restart;
