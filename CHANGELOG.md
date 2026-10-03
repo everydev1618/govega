@@ -34,6 +34,17 @@ the prompt-cache fix that shipped in v0.9.3.
 - **`go install` builds report their version.** Only GoReleaser stamped
   `-X main.version`, so `vega version` from a source install said `dev`. It now
   falls back to the module version from `debug.ReadBuildInfo()`.
+- **Files can be dropped into the UI.** Nothing in the dashboard accepted a
+  drag: the chat composer took images only (base64, inline in the turn) and the
+  Files page was read-only, so there was no way to hand an agent a document at
+  all. `POST /api/v1/files/upload` writes into the workspace — filename reduced
+  to its base name, `dir` refused rather than clamped when it escapes, existing
+  files never overwritten (`report.md` → `report-1.md`), 10 MB cap matching what
+  `/files/read` can read back — and records the write in `workspace_files` as
+  the user's. The composers in `#channels`, DMs and threads, plus the Files
+  page, now accept drops, paste and a file picker; images keep the inline vision
+  path, everything else uploads and the message carries the workspace path with
+  an instruction to open it with `read_file`.
 - Repo housekeeping: the README release badge pointed at `govega/releases`,
   which is empty — releases live in `vega-releases` — so it publicly read "no
   releases or repo not found". Added `CONTRIBUTING.md` and `SECURITY.md`,
