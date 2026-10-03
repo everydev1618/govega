@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/everydev1618/govega"
@@ -14,6 +15,34 @@ import (
 // govega#63). Held in a var rather than a const so a tenant-specific config
 // surface can override it later without an API change.
 var IntroPrompt = "Introduce yourself to the user in 2-3 sentences. Tell them who you are, what your role is, and the kinds of tasks you can help with. Be warm and concise. This is the first message they'll see from you."
+
+// DefaultIntroTimeout bounds the synthetic greeting turn when
+// VEGA_INTRO_TIMEOUT says nothing. It is deliberately as long as the LLM
+// clients' own HTTP ceiling: this bound exists to stop a wedged goroutine
+// from living forever, not to race the backend. The previous 60s raced it
+// and lost against self-hosted models — a cold 27B on LM Studio can spend
+// ~44s on prefill alone, and when the greeting lost that race the process
+// was marked failed, so the user's first real turn came back "process is
+// not running". Nothing waits on this goroutine, so patience is cheap.
+const DefaultIntroTimeout = 5 * time.Minute
+
+// introTimeout resolves the greeting-turn bound. VEGA_INTRO_TIMEOUT takes a
+// Go duration ("90s", "10m"); anything unparseable or non-positive falls
+// back to the default rather than producing an already-expired context,
+// which would be indistinguishable from a backend that never answers.
+func introTimeout() time.Duration {
+	v := os.Getenv("VEGA_INTRO_TIMEOUT")
+	if v == "" {
+		return DefaultIntroTimeout
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		slog.Warn("ignoring unusable VEGA_INTRO_TIMEOUT; using default",
+			"value", v, "default", DefaultIntroTimeout)
+		return DefaultIntroTimeout
+	}
+	return d
+}
 
 // chatSender is the slice of *dsl.Interpreter that primeAgentIntro depends
 // on. Keeping the surface narrow lets tests inject a fake without standing
@@ -64,7 +93,7 @@ func primeAgentIntro(ctx context.Context, store chatHistoryStore, sender chatSen
 // the FE's next chat-history poll / SSE update).
 func (s *Server) primeAgentIntroAsync(agent string) {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), introTimeout())
 		defer cancel()
 		primeAgentIntro(ctx, s.store, s.interp, agent)
 	}()

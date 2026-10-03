@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/everydev1618/govega/llm"
 )
@@ -143,5 +144,44 @@ func TestHydrateAgent_UserFirstUnchanged(t *testing.T) {
 	}
 	if got[0].Role != llm.RoleUser || got[0].Content != "hi" {
 		t.Errorf("got[0] = {%v, %q}", got[0].Role, got[0].Content)
+	}
+}
+
+// TestIntroTimeout_Default pins the bound used when nothing is configured.
+// The old value was 60s, which a cold local model could not clear: a 27B on
+// LM Studio spent ~44s on prefill alone for a cold prefix, so the greeting
+// turn failed the process and the first real chat turn 500'd with "process
+// is not running". The bound exists to stop a wedged goroutine, not to race
+// the backend, so it sits at the LLM client's own 5-minute ceiling.
+func TestIntroTimeout_Default(t *testing.T) {
+	t.Setenv("VEGA_INTRO_TIMEOUT", "")
+	if got := introTimeout(); got != DefaultIntroTimeout {
+		t.Fatalf("introTimeout() = %v, want %v", got, DefaultIntroTimeout)
+	}
+	if DefaultIntroTimeout < 5*time.Minute {
+		t.Fatalf("DefaultIntroTimeout = %v, want at least the 5m LLM client ceiling", DefaultIntroTimeout)
+	}
+}
+
+// TestIntroTimeout_EnvOverride lets a slow (or fast) backend tune the bound
+// without a rebuild — the knob a self-hosted deployment actually reaches for.
+func TestIntroTimeout_EnvOverride(t *testing.T) {
+	t.Setenv("VEGA_INTRO_TIMEOUT", "90s")
+	if got := introTimeout(); got != 90*time.Second {
+		t.Fatalf("introTimeout() = %v, want 90s", got)
+	}
+}
+
+// TestIntroTimeout_RejectsUnusableValues keeps a typo from silently producing
+// an already-expired context, which would look exactly like a backend that
+// never answers.
+func TestIntroTimeout_RejectsUnusableValues(t *testing.T) {
+	for _, v := range []string{"banana", "0", "-30s"} {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv("VEGA_INTRO_TIMEOUT", v)
+			if got := introTimeout(); got != DefaultIntroTimeout {
+				t.Fatalf("introTimeout() = %v for %q, want the default %v", got, v, DefaultIntroTimeout)
+			}
+		})
 	}
 }
